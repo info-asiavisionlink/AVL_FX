@@ -65,8 +65,8 @@ interface ConnectionStore {
 export const useConnectionStore = create<ConnectionStore>()(
   persist(
     (set, _get) => ({
-      // 初期値
-      config:      null,
+      // 初期値（env vars からデフォルト設定を生成）
+      config: typeof window !== "undefined" ? null : null,
       status:      "disconnected",
       error:       null,
       connectedAt: null,

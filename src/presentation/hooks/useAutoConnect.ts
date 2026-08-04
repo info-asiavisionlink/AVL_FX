@@ -11,19 +11,33 @@
 import { useEffect, useRef } from "react";
 import { useConnectionStore } from "@/application/stores/connectionStore";
 
+// 環境変数からデフォルト接続設定を生成
+function getDefaultConfig(): import("@/infrastructure/connection/types").MT5GatewayConfig {
+  return {
+    id:          "mt5_default",
+    name:        "MT5 Gateway",
+    type:        "mt5_gateway",
+    autoConnect: true,
+    gatewayUrl:  process.env.NEXT_PUBLIC_MT5_GATEWAY_HTTP_URL ?? "http://127.0.0.1:8080",
+    wsUrl:       process.env.NEXT_PUBLIC_MT5_GATEWAY_WS_URL   ?? "ws://127.0.0.1:8080",
+    secret:      "",
+  };
+}
+
 export function useAutoConnect() {
   const { config, connect, status } = useConnectionStore();
   const attempted = useRef(false);
 
   useEffect(() => {
-    // 既に接続試行済み・接続中・接続済みの場合はスキップ
     if (attempted.current) return;
     if (status === "connected" || status === "connecting") return;
-    if (!config?.autoConnect) return;
+
+    // 保存済み設定があればそれを使い、なければ env vars のデフォルトで接続
+    const cfg = (config?.autoConnect ? config : null) ?? getDefaultConfig();
 
     attempted.current = true;
-    console.log("[AutoConnect] localStorage の設定で自動接続を開始します...");
-    connect(config).catch((err) => {
+    console.log("[AutoConnect] 接続開始:", cfg.gatewayUrl);
+    connect(cfg).catch((err) => {
       console.warn("[AutoConnect] 自動接続に失敗しました:", err);
     });
   }, [config, connect, status]);
