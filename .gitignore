@@ -59,3 +59,4 @@ gateway/.next/
 
 # ログ
 /tmp/*.log
+.env*

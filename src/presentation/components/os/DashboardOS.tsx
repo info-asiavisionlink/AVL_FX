@@ -1303,9 +1303,9 @@ export function DashboardOS() {
   // 時計
   useEffect(() => { const id = setInterval(()=>setTime(new Date()),1000); return ()=>clearInterval(id); }, []);
 
-  // Gateway REST から symbolList をフェッチ（新EA未使用時のフォールバック）
+  // Gateway REST から symbolList・account をポーリング取得
+  // WebSocket初期メッセージのタイミング問題を補完するため常時実行
   useEffect(() => {
-    if (status !== "connected") return;
     const gwUrl = process.env.NEXT_PUBLIC_MT5_GATEWAY_HTTP_URL ?? "http://127.0.0.1:8080";
 
     const fetchSymbols = async () => {
@@ -1341,10 +1341,32 @@ export function DashboardOS() {
       } catch {}
     };
 
+    // account REST ポーリング
+    const fetchAccount = async () => {
+      try {
+        const res = await fetch(`${gwUrl}/account`);
+        if (res.ok) { const acc = await res.json(); setAccount(acc); }
+      } catch {}
+    };
+
+    // indicators REST ポーリング
+    const fetchIndicators = async () => {
+      try {
+        const res = await fetch(`${gwUrl}/indicators`);
+        if (!res.ok) return;
+        const list = await res.json() as Array<{ symbol: string; [k: string]: unknown }>;
+        if (Array.isArray(list)) {
+          list.forEach(ind => { if (ind.symbol) setIndicators(ind as Parameters<typeof setIndicators>[0]); });
+        }
+      } catch {}
+    };
+
     fetchSymbols();
-    const id = setInterval(fetchSymbols, 5000); // 5秒ごとに更新
+    fetchAccount();
+    fetchIndicators();
+    const id = setInterval(() => { fetchSymbols(); fetchAccount(); fetchIndicators(); }, 5000);
     return () => clearInterval(id);
-  }, [status, setSymbols]);
+  }, [setSymbols, setIndicators]);
 
   // スクロール
   useEffect(() => { scrollRef.current?.scrollTo({top:scrollRef.current.scrollHeight,behavior:"smooth"}); }, [messages]);
