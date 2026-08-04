@@ -1356,7 +1356,7 @@ export function DashboardOS() {
         if (!res.ok) return;
         const list = await res.json() as Array<{ symbol: string; [k: string]: unknown }>;
         if (Array.isArray(list)) {
-          list.forEach(ind => { if (ind.symbol) setIndicators(ind as Parameters<typeof setIndicators>[0]); });
+          list.forEach(ind => { if (ind.symbol) setIndicators(ind as unknown as Parameters<typeof setIndicators>[0]); });
         }
       } catch {}
     };
