@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env
+.env.local
+.env.*.local
+# .env.example は意図的にコミット可能にする
 
 # vercel
 .vercel
@@ -39,3 +42,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# MQL5 コンパイル済みバイナリ（ソースの .mq5 のみ管理）
+ea/*.ex5
+ea/*.ex4
+
+# 機密フォルダ
+"OPEN AI APIリストのコピー"/
+OPEN\ AI\ API*/
+
+# Gateway
+gateway/node_modules/
+gateway/dist/
+gateway/data/
+gateway/.next/
+
+# ログ
+/tmp/*.log
