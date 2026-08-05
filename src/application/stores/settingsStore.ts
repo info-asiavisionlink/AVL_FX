@@ -6,6 +6,12 @@ import { persist, createJSONStorage } from "zustand/middleware";
 // =================================================================
 
 export interface AVLSettings {
+  // AI システムプロンプト
+  operatorName:     string;  // AIが呼ぶ名前（例: ボス、田中さん）
+  aiPersonality:    "professional" | "friendly" | "concise" | "custom";
+  customSystemPrompt: string; // カスタムプロンプト（追加指示）
+  responseLanguage: "ja" | "en" | "ja_en";
+
   // AI 設定
   aiModel:          string;  // gpt-4.1 / gpt-5.6-sol / gpt-5.6-terra
   aiTemperature:    number;  // 0.1 - 1.0
@@ -32,6 +38,11 @@ export interface AVLSettings {
 }
 
 const DEFAULTS: AVLSettings = {
+  operatorName:       "ボス",
+  aiPersonality:      "professional",
+  customSystemPrompt: "",
+  responseLanguage:   "ja",
+
   aiModel:          "gpt-5.6-terra",
   aiTemperature:    0.3,
   realtimeModel:    "gpt-realtime-2.1-mini",

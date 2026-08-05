@@ -11,7 +11,7 @@ import { useSettingsStore, type AVLSettings } from "@/application/stores/setting
 import { useConnectionStore } from "@/application/stores/connectionStore";
 import { STORAGE_KEY_MT5_CONFIG } from "@/infrastructure/connection/types";
 import {
-  Brain, Shield, Wifi, Bell, Monitor, Trash2, Save, Eye, EyeOff, RefreshCw,
+  Brain, Shield, Wifi, Bell, Monitor, Trash2, Save, Eye, EyeOff, RefreshCw, MessageSquare,
 } from "lucide-react";
 
 // -----------------------------------------------------------------
@@ -151,6 +151,70 @@ export function SettingsPage() {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-2xl mx-auto space-y-6">
+
+          {/* === システムプロンプト === */}
+          <div className="border border-cyan-700/30 bg-[#060a12] p-4">
+            <SectionHeader icon={MessageSquare} title="AI PERSONA" desc="AIの人格・話し方・あなたの呼び名を設定" />
+
+            <Field label="あなたの呼び名" desc="AIがあなたを何と呼ぶか（例: ボス、さん付け、名前）">
+              <input
+                type="text"
+                value={settings.operatorName}
+                onChange={e => s({ operatorName: e.target.value || "ボス" })}
+                placeholder="ボス"
+                maxLength={20}
+                className="w-full bg-[#04060d] border border-[#0d1520] px-3 py-1.5 text-[9px] font-mono text-cyan-300 outline-none focus:border-cyan-700/60 transition-colors"
+              />
+            </Field>
+
+            <Field label="話し方スタイル" desc="AIの応答スタイルを選択">
+              <SelectInput value={settings.aiPersonality} onChange={v => s({ aiPersonality: v as AVLSettings["aiPersonality"] })}
+                options={[
+                  { value: "professional", label: "プロフェッショナル — 冷静・断定的・簡潔（デフォルト）" },
+                  { value: "friendly",     label: "フレンドリー — 親しみやすく、励ましも入れる" },
+                  { value: "concise",      label: "超簡潔 — 数字と方向だけ、説明なし" },
+                  { value: "custom",       label: "カスタム — 下のプロンプトで自由に設定" },
+                ]}
+              />
+            </Field>
+
+            <Field label="応答言語" desc="AIが話す言語">
+              <SelectInput value={settings.responseLanguage} onChange={v => s({ responseLanguage: v as AVLSettings["responseLanguage"] })}
+                options={[
+                  { value: "ja",    label: "日本語" },
+                  { value: "en",    label: "English" },
+                  { value: "ja_en", label: "日本語 + English（バイリンガル）" },
+                ]}
+              />
+            </Field>
+
+            <Field label="追加システムプロンプト" desc="AIへの追加指示。スタイルが「カスタム」の場合はここで全て定義">
+              <textarea
+                value={settings.customSystemPrompt}
+                onChange={e => s({ customSystemPrompt: e.target.value })}
+                placeholder={"例：\n・返答は必ず箇条書きにする\n・エントリー提案時は必ずリスクを先に伝える\n・毎回最後に「ご確認ください」と付け加える"}
+                rows={5}
+                className="w-full bg-[#04060d] border border-[#0d1520] px-3 py-2 text-[9px] font-mono text-cyan-300 outline-none focus:border-cyan-700/60 transition-colors resize-none placeholder-gray-700 leading-relaxed"
+              />
+            </Field>
+
+            {/* Preview */}
+            <div className="mt-3 p-3 border border-cyan-900/20 bg-[#02040a]">
+              <p className="text-[7px] text-gray-700 font-mono mb-1.5 tracking-wider">— プレビュー —</p>
+              <p className="text-[8.5px] font-mono text-cyan-300/80 leading-relaxed">
+                {settings.aiPersonality === "professional" &&
+                  `「分析完了です、${settings.operatorName}。EURUSDのバイ、エントリー1.15300、損切り1.14800、勝率82%。H4上昇トレンド継続。」`}
+                {settings.aiPersonality === "friendly" &&
+                  `「${settings.operatorName}、いいチャンス見つけましたよ！EURUSDのバイです。エントリー1.15300、損切り1.14800で、勝率82%があります！」`}
+                {settings.aiPersonality === "concise" &&
+                  `「EURUSD BUY 1.15300 / SL 1.14800 / TP 1.15800 / 82%」`}
+                {settings.aiPersonality === "custom" &&
+                  (settings.customSystemPrompt
+                    ? `カスタムプロンプト設定済み (${settings.customSystemPrompt.length}文字)`
+                    : "カスタムプロンプトを入力してください")}
+              </p>
+            </div>
+          </div>
 
           {/* === AI 設定 === */}
           <div className="border border-[#0d1520] bg-[#060a12] p-4">
