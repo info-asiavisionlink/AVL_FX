@@ -154,12 +154,18 @@ function buildTradeSetup(
 
   if (direction === 'BUY') {
     sl  = supports.length    ? Math.min(entry - minSlDist, supports[0].price)    : entry - minSlDist;
-    tp1 = resistances.length ? Math.max(entry + (entry - sl), resistances[0].price) : entry + (entry - sl);
-    tp2 = resistances.length >= 2 ? resistances[1].price : entry + 2 * (entry - sl);
+    const slDist0 = entry - sl;
+    tp1 = resistances.length ? Math.max(entry + slDist0, resistances[0].price) : entry + slDist0;
+    // TP2 must be strictly beyond TP1
+    const tp2Candidate = resistances.length >= 2 ? resistances[1].price : entry + 2 * slDist0;
+    tp2 = tp2Candidate > tp1 ? tp2Candidate : entry + 2 * slDist0;
   } else {
     sl  = resistances.length ? Math.max(entry + minSlDist, resistances[0].price) : entry + minSlDist;
-    tp1 = supports.length    ? Math.min(entry - (sl - entry), supports[0].price) : entry - (sl - entry);
-    tp2 = supports.length >= 2 ? supports[1].price                               : entry - 2 * (sl - entry);
+    const slDist0 = sl - entry;
+    tp1 = supports.length    ? Math.min(entry - slDist0, supports[0].price) : entry - slDist0;
+    // TP2 must be strictly beyond TP1
+    const tp2Candidate = supports.length >= 2 ? supports[1].price : entry - 2 * slDist0;
+    tp2 = tp2Candidate < tp1 ? tp2Candidate : entry - 2 * slDist0;
   }
 
   const slDist  = Math.abs(entry - sl);
