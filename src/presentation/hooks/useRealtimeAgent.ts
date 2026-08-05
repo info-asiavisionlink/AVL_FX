@@ -241,6 +241,61 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
         },
       });
 
+      const getEconomicCalendar = tool({
+        name:        "get_economic_calendar",
+        description: "今後24時間の経済指標・中央銀行イベント・雇用統計・CPI等の高影響イベントを取得する。トレード前に必ず確認すること。",
+        parameters:  z.object({
+          currencies: z.string().describe("カンマ区切りの通貨コード例: USD,EUR,JPY").optional(),
+        }),
+        execute: async ({ currencies }) => {
+          try {
+            const cur = currencies ?? "USD,EUR,JPY,GBP,AUD,NZD,CAD,CHF";
+            const r = await fetch(`/api/market/economic-events?currencies=${encodeURIComponent(cur)}&hours=24`);
+            if (!r.ok) return JSON.stringify({ error: "経済指標取得失敗" });
+            const events = await r.json() as Array<{time:string;currency:string;title:string;impact:string;forecast?:string}>;
+            if (!events.length) return "今後24時間に高影響イベントなし";
+            return JSON.stringify(events.slice(0, 10));
+          } catch (e) { return JSON.stringify({ error: String(e) }); }
+        },
+      });
+
+      const getMarketNews = tool({
+        name:        "get_market_news",
+        description: "指定シンボルの最新ニュース・ファンダメンタルズ情報を取得する。",
+        parameters:  z.object({
+          symbol: z.string().describe("例: EURUSD"),
+        }),
+        execute: async ({ symbol: s }) => {
+          try {
+            const r = await fetch(`/api/market/news?symbol=${encodeURIComponent(s)}&limit=5`);
+            if (!r.ok) return JSON.stringify({ error: "ニュース取得失敗" });
+            const news = await r.json() as Array<{title:string;excerpt:string;source:string;publishedAt:string}>;
+            if (!news.length) return `${s}の最新ニュースはDBにありません。search_web_newsで検索してください。`;
+            return JSON.stringify(news);
+          } catch (e) { return JSON.stringify({ error: String(e) }); }
+        },
+      });
+
+      const searchWebNews = tool({
+        name:        "search_web_news",
+        description: "Webからリアルタイムのニュース・中央銀行発言・金利・インフレ・雇用データを検索する。Supabaseにデータがない場合のフォールバック。",
+        parameters:  z.object({
+          query: z.string().describe("検索クエリ例: 'USD FRB 金利 最新ニュース 2026'"),
+        }),
+        execute: async ({ query }) => {
+          try {
+            const r = await fetch("/api/market/web-search", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify({ query }),
+            });
+            if (!r.ok) return "Web検索失敗";
+            const { result } = await r.json() as { result: string };
+            return result;
+          } catch (e) { return JSON.stringify({ error: String(e) }); }
+        },
+      });
+
       // 5. RealtimeAgent ───────────────────────────────────────────
       const agent = new RealtimeAgent({
         name: "AVL AI",
@@ -275,10 +330,13 @@ MT5接続・オープンポジション・口座残高・テクニカル指標�
 ## ツール使用 — 最重要
 データが必要な質問には、必ず先にツールを呼び出す。
 - 価格・指標 → get_market_data を即座に呼び出す
+- 経済指標・イベント → get_economic_calendar を呼び出す（高影響イベントの有無を確認）
+- ニュース・ファンダ → get_market_news を最初に試し、データがなければ search_web_news で検索
+- 金利・インフレ・中銀発言 → search_web_news で最新情報を検索
 - オープンポジション → get_positions を呼び出す
 - 口座残高・証拠金 → get_account を呼び出す
 - エントリー提案 → propose_order を呼び出す（オペレーター承認なしの発注禁止）
-記憶から価格や指標を答えない。必ずライブデータを取得してから答える。
+記憶や学習データから価格・ニュースを答えない。必ずライブデータまたはWeb検索を使うこと。
 
 ## 現在の市場データ（セッション開始時点）
 ${ctxParts.join("\n")}
@@ -287,7 +345,7 @@ ${ctxParts.join("\n")}
 - 自動注文は絶対禁止。必ず propose_order → オペレーター承認の順序を守る。
 - 市場データを捏造しない。データがない場合は素直にそう伝え、ツールを呼ぶ。
 - いかなる相場状況でも冷静さを保つ。`,
-        tools: [getMarketData, getPositions, getAccount, proposeOrder],
+        tools: [getMarketData, getPositions, getAccount, proposeOrder, getEconomicCalendar, getMarketNews, searchWebNews],
       });
 
       // 6. RealtimeSession ─────────────────────────────────────────
