@@ -60,8 +60,11 @@ interface OrderProposal {
 // All gateway calls go through Vercel API proxy (avoids CORS + env var issues)
 const API = "/api/mt5";
 
-// Silence buffer AFTER audio playback actually ends before re-enabling mic
-const POST_AUDIO_DELAY_MS = 900;
+// Minimum silence after agent_end before reopening mic
+const MIN_RESUME_DELAY_MS = 2800;
+// Per-character estimate of TTS audio duration (ms) for Japanese speech
+// WebRTC streams audio continuously — audio.ended does NOT fire between turns
+const MS_PER_CHAR = 65;
 
 export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVoiceReturn {
   const [status,       setStatus]       = useState<VoiceState>("idle");
@@ -69,13 +72,11 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
   const [muted,        setMuted]        = useState(false);
   const [speakingText, setSpeakingText] = useState("");
 
-  const sessionRef    = useRef<import("@openai/agents/realtime").RealtimeSession | null>(null);
-  const audioElRef    = useRef<HTMLAudioElement | null>(null);
-  const micTrackRef   = useRef<MediaStreamTrack | null>(null);
-  const isSpeaking    = useRef(false);
-  const audioFinished = useRef(false);  // true when audio element fires 'ended'
-  const agentFinished = useRef(false);  // true when agent_end fires
-  const resumeTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionRef  = useRef<import("@openai/agents/realtime").RealtimeSession | null>(null);
+  const audioElRef  = useRef<HTMLAudioElement | null>(null);
+  const micTrackRef = useRef<MediaStreamTrack | null>(null);
+  const isSpeaking  = useRef(false);
+  const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { addLog, setAgentStatus }  = useAIOSStore();
   const { indicators }              = useIndicatorStore();
@@ -121,9 +122,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
   // ── Stop / cleanup ─────────────────────────────────────────────
   const stop = useCallback(() => {
     clearResumeTimer();
-    isSpeaking.current    = false;
-    audioFinished.current = false;
-    agentFinished.current = false;
+    isSpeaking.current = false;
     if (micTrackRef.current) {
       micTrackRef.current.enabled = true;
       micTrackRef.current = null;
@@ -300,33 +299,10 @@ ${ctxParts.join("\n")}
       // 7. STRICT VOICE STATE MACHINE
       // ═══════════════════════════════════════════════════════════
 
-      // Both audio.ended AND agent_end must fire before mic reopens
-      const maybeUnmute = () => {
-        if (!audioFinished.current || !agentFinished.current) return;
-        if (!sessionRef.current) return;
-        clearResumeTimer();
-        resumeTimer.current = setTimeout(() => {
-          if (!sessionRef.current) return;
-          muteMic(false);
-          setStatus("listening");
-          setSpeakingText("");
-          setAgentStatus("voice", "active", "音声入力待機中");
-          addLog("[VOICE] マイク有効化 — 入力待機", "info");
-        }, POST_AUDIO_DELAY_MS);
-      };
-
-      // Hook audio element ended event immediately after creation
-      audioEl.addEventListener("ended", () => {
-        audioFinished.current = true;
-        maybeUnmute();
-      });
-
       // AI starts speaking → immediately mute microphone
       session.on("agent_start", () => {
         clearResumeTimer();
-        isSpeaking.current    = true;
-        audioFinished.current = false;
-        agentFinished.current = false;
+        isSpeaking.current = true;
         setSpeakingText("");
         muteMic(true);
         setStatus("speaking");
@@ -335,21 +311,35 @@ ${ctxParts.join("\n")}
         addLog("[VOICE] AI 発話開始 — マイク無効化", "ai");
       });
 
-      // AI model finishes generating → receive full transcript text
+      // AI model finishes generating → estimate remaining audio play time from text length
+      // WebRTC streams audio continuously so audio.ended does NOT fire between turns.
+      // Estimate: max(MIN_RESUME_DELAY_MS, chars × MS_PER_CHAR) capped at 9000ms
       session.on("agent_end", (_, __, output) => {
-        isSpeaking.current    = false;
-        agentFinished.current = true;
+        isSpeaking.current = false;
         opts.onAgentThinking?.(false);
         setStatus("processing");
 
         if (output) {
           opts.onTranscript?.(output, "assistant");
-          setSpeakingText(output); // show full text while audio finishes playing
+          setSpeakingText(output);
           addLog(`[VOICE AI] ${output.slice(0, 80)}`, "ai");
         }
 
-        // Unmute only after audio playback also ends (maybeUnmute checks both flags)
-        maybeUnmute();
+        const charCount = output?.length ?? 0;
+        const resumeDelay = Math.min(
+          Math.max(MIN_RESUME_DELAY_MS, charCount * MS_PER_CHAR),
+          9000,
+        );
+
+        clearResumeTimer();
+        resumeTimer.current = setTimeout(() => {
+          if (!sessionRef.current) return;
+          muteMic(false);
+          setStatus("listening");
+          setSpeakingText("");
+          setAgentStatus("voice", "active", "音声入力待機中");
+          addLog("[VOICE] マイク有効化 — 入力待機", "info");
+        }, resumeDelay);
       });
 
       // Try to get streaming transcript deltas from transport (best-effort)
