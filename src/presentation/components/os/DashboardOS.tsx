@@ -1887,7 +1887,7 @@ export function DashboardOS() {
                           boxShadow: isVoiceActive ? `0 0 10px ${neonHex}38` : 'none'}}/>
 
                 {/* Button core */}
-                <button type="button" disabled={!isConnected}
+                <button type="button" disabled={voice.status === "connecting"}
                   onClick={() => voice.status==="idle" ? voice.start(activeSymbol) : voice.stop()}
                   className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 disabled:opacity-30 disabled:cursor-not-allowed"
                   style={{
