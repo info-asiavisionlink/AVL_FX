@@ -1251,7 +1251,8 @@ export function DashboardOS() {
     id:"boot",role:"system",content:"AVL AI TRADING OS v3.0 起動完了\nシステム初期化... ALL SYSTEMS ONLINE",ts:Date.now()
   }]);
   const [input, setInput]           = useState("");
-  const [thinking, setThinking]     = useState(false);
+  const [thinking, setThinking]     = useState(false);  // text chat AI only
+  const [voiceThinking, setVoiceThinking] = useState(false); // voice AI only
   const [error, setError]           = useState<string|null>(null);
   const [orderProposal, setOrderProposal] = useState<OrderProposal|null>(null);
   const [positions, setPositions]   = useState<MarketPosition[]>([]);
@@ -1265,17 +1266,19 @@ export function DashboardOS() {
   const isConnected = status === "connected";
   const symInd      = indicators[activeSymbol.toUpperCase()];
 
-  // Voice Agent (useRealtimeAgent)
-  const voice = useRealtimeAgent({
-    onTranscript: (text, role) => {
+  // Stable callback refs — prevent useRealtimeAgent from re-subscribing on every render
+  const voiceCallbacks = useRef({
+    onTranscript: (text: string, role: "user" | "assistant") => {
       setMessages(prev => [...prev, { id: `v_${Date.now()}`, role, content: text, ts: Date.now() }]);
-      setShowChat(true);
     },
-    onOrderProposal: (p) => {
+    onOrderProposal: (p: Parameters<typeof setOrderProposal>[0]) => {
       setOrderProposal(p);
     },
-    onAgentThinking: (t) => setThinking(t),
+    onAgentThinking: (t: boolean) => setVoiceThinking(t),
   });
+
+  // Voice Agent (useRealtimeAgent)
+  const voice = useRealtimeAgent(voiceCallbacks.current);
 
   // Monitor フック
   const monitor = useMonitor();
@@ -1525,7 +1528,7 @@ export function DashboardOS() {
   };
   const { hex: neonHex, label: modeLabel2 } = modeNeon[mode];
   const isVoiceActive = voice.status !== "idle";
-  const isActive      = thinking || isVoiceActive;
+  const isActive      = thinking || voiceThinking || isVoiceActive;
 
   const aiStatusText =
     thinking        ? "THINKING..."   :
@@ -1750,12 +1753,12 @@ export function DashboardOS() {
 
             {/* ░░ LAYER 0 — particle background ░░ */}
             <div className="absolute inset-0 z-0">
-              <HolographicAICore mode={mode} isActive={isActive} isThinking={thinking} voiceStatus={voice.status}/>
+              <HolographicAICore mode={mode} isActive={isActive} isThinking={thinking || voiceThinking} voiceStatus={voice.status}/>
             </div>
 
             {/* ░░ LAYER 5 — torus ring ░░ */}
             <div className="absolute inset-0 z-[5] pointer-events-none">
-              <ParticleTorus voiceStatus={voice.status} isThinking={thinking} />
+              <ParticleTorus voiceStatus={voice.status} isThinking={thinking || voiceThinking} />
             </div>
 
             {/* ░░ LAYER 10 — AVL AI text, always centered ░░ */}
@@ -1800,13 +1803,20 @@ export function DashboardOS() {
 
             {/* ░░ LAYER 20 — AI status bar (waveform + mode text) ░░ */}
             <div className="absolute left-0 right-0 z-20 flex items-center gap-4 px-5 py-2" style={{bottom:"23%"}}>
-              <div className="flex items-end gap-0.5 h-5">
+              <div className="flex items-end gap-0.5 h-5 overflow-hidden">
                 {[3,5,8,12,16,20,16,12,8,5,3,6,10,15,10,6].map((h,i) => (
                   <div key={i} className="w-0.5 rounded-full"
-                    style={{height:isActive?h*1.2:h*0.4, backgroundColor:neonHex,
-                      opacity:isActive?0.7:0.18, boxShadow:isActive?`0 0 3px ${neonHex}`:"none",
-                      animation:isActive?`avl-wave-bar ${0.6+i*0.06}s ease-in-out ${i*0.06}s infinite alternate`:"none",
-                      transformOrigin:"bottom"}}/>
+                    style={{
+                      height: Math.min(h, 20),
+                      backgroundColor: neonHex,
+                      opacity: isActive ? 0.7 : 0.18,
+                      boxShadow: isActive ? `0 0 3px ${neonHex}` : "none",
+                      animation: `avl-wave-bar ${0.6+i*0.06}s ease-in-out ${i*0.06}s infinite alternate`,
+                      animationPlayState: isActive ? "running" : "paused",
+                      transformOrigin: "bottom",
+                      transition: "opacity 0.4s ease",
+                      willChange: "transform",
+                    }}/>
                 ))}
               </div>
               <p className="text-[11px] font-mono tracking-[0.2em] font-semibold"
@@ -1821,44 +1831,58 @@ export function DashboardOS() {
             <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center pb-5 gap-2">
 
               {/* Concentric ring mic button */}
-              <div className="relative flex items-center justify-center" style={{width:96,height:96}}>
+              <div className="relative flex items-center justify-center" style={{width:96,height:96,contain:'layout style'}}>
 
-                {/* Listening state: blue ambient pulse ring */}
-                {voice.status === "listening" && (
-                  <div className="absolute rounded-full pointer-events-none"
-                    style={{
-                      width:140, height:140, left:-22, top:-22,
-                      border:`1px solid ${neonHex}55`,
-                      boxShadow:`0 0 30px ${neonHex}22, 0 0 60px ${neonHex}11`,
-                      animation:"avl-ping-outer 2s ease-out infinite",
-                    }}/>
-                )}
+                {/* Listening: ambient pulse ring — always rendered, opacity-controlled */}
+                <div className="absolute rounded-full pointer-events-none"
+                  style={{
+                    width:140, height:140, left:-22, top:-22,
+                    border:`1px solid ${neonHex}55`,
+                    boxShadow:`0 0 30px ${neonHex}22, 0 0 60px ${neonHex}11`,
+                    animation:"avl-ping-outer 2s ease-out infinite",
+                    animationPlayState: voice.status === "listening" ? "running" : "paused",
+                    opacity: voice.status === "listening" ? 1 : 0,
+                    transition:"opacity 0.3s ease",
+                    willChange:"transform,opacity",
+                  }}/>
 
-                {/* Thinking state: inner convergence glow */}
-                {thinking && (
-                  <div className="absolute rounded-full pointer-events-none"
-                    style={{
-                      width:120, height:120, left:-12, top:-12,
-                      background:`radial-gradient(circle, ${neonHex}18 0%, transparent 70%)`,
-                      animation:"avl-pulse-ring-out 1.8s ease-out infinite",
-                    }}/>
-                )}
+                {/* Thinking: inner convergence glow — always rendered */}
+                <div className="absolute rounded-full pointer-events-none"
+                  style={{
+                    width:120, height:120, left:-12, top:-12,
+                    background:`radial-gradient(circle, ${neonHex}18 0%, transparent 70%)`,
+                    animation:"avl-pulse-ring-out 1.8s ease-out infinite",
+                    animationPlayState: (thinking || voiceThinking) ? "running" : "paused",
+                    opacity: (thinking || voiceThinking) ? 1 : 0,
+                    transition:"opacity 0.3s ease",
+                    willChange:"transform,opacity",
+                  }}/>
 
-                {/* Speaking state: outward energy wave */}
-                {voice.status === "speaking" && [0,1,2].map(i => (
+                {/* Speaking: outward energy waves — always rendered */}
+                {[0,1,2].map(i => (
                   <div key={i} className="absolute rounded-full pointer-events-none"
                     style={{
                       width:48+i*36, height:48+i*36,
                       left:-(i*18+4), top:-(i*18+4),
                       border:`1px solid ${neonHex}${["55","33","18"][i]}`,
                       animation:`avl-pulse-ring-out ${1.4+i*0.5}s ease-out ${i*0.4}s infinite`,
+                      animationPlayState: voice.status === "speaking" ? "running" : "paused",
+                      opacity: voice.status === "speaking" ? 1 : 0,
+                      transition:"opacity 0.3s ease",
+                      willChange:"transform,opacity",
                     }}/>
                 ))}
 
-                {isVoiceActive && (
-                  <div className="absolute inset-0 rounded-full animate-ping opacity-20"
-                    style={{border:`1px solid ${neonHex}`}}/>
-                )}
+                {/* Voice active ping — always rendered */}
+                <div className="absolute inset-0 rounded-full"
+                  style={{
+                    border:`1px solid ${neonHex}`,
+                    animation:"ping 1s cubic-bezier(0,0,0.2,1) infinite",
+                    animationPlayState: isVoiceActive ? "running" : "paused",
+                    opacity: isVoiceActive ? 0.2 : 0,
+                    transition:"opacity 0.3s ease",
+                    willChange:"transform,opacity",
+                  }}/>
 
                 {/* Ring 3 */}
                 <div className="absolute w-24 h-24 rounded-full transition-all duration-500"

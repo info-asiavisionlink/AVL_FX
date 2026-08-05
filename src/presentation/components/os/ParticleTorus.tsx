@@ -8,7 +8,7 @@
 // SPEAKING  : dramatic radial pulse bursts  ×  electric blue
 // =================================================================
 
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
 interface Props { voiceStatus?: string; isThinking?: boolean; }
@@ -139,7 +139,7 @@ void main() {
 `;
 
 // ── Component ──────────────────────────────────────────────────────
-export function ParticleTorus({ voiceStatus = 'idle', isThinking = false }: Props) {
+export const ParticleTorus = memo(function ParticleTorus({ voiceStatus = 'idle', isThinking = false }: Props) {
   const mountRef     = useRef<HTMLDivElement>(null);
   const voiceRef     = useRef(voiceStatus);
   const thinkRef     = useRef(isThinking);
@@ -268,4 +268,4 @@ export function ParticleTorus({ voiceStatus = 'idle', isThinking = false }: Prop
       style={{ zIndex: 5 }}
     />
   );
-}
+});

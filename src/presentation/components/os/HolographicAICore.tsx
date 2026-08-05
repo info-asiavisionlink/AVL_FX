@@ -7,7 +7,7 @@
 // Speaking   → concentric ring wave morph + green gradient
 // =================================================================
 
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
@@ -224,7 +224,7 @@ function randomOrbit(): { u: [number,number,number], v: [number,number,number] }
 // ── Props ─────────────────────────────────────────────────────────
 interface Props { mode: AIMode; isActive: boolean; isThinking: boolean; voiceStatus: string; }
 
-export function HolographicAICore({ mode, isThinking, voiceStatus }: Props) {
+export const HolographicAICore = memo(function HolographicAICore({ mode, isThinking, voiceStatus }: Props) {
   const mountRef  = useRef<HTMLDivElement>(null);
   const modeRef   = useRef(mode);
   const thinkRef  = useRef(isThinking);
@@ -419,4 +419,4 @@ export function HolographicAICore({ mode, isThinking, voiceStatus }: Props) {
   },[]);
 
   return <div ref={mountRef} className="w-full h-full" style={{cursor:'crosshair'}}/>;
-}
+});
