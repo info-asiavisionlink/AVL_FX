@@ -60,11 +60,10 @@ interface OrderProposal {
 // All gateway calls go through Vercel API proxy (avoids CORS + env var issues)
 const API = "/api/mt5";
 
-// Minimum silence after agent_end before reopening mic
-const MIN_RESUME_DELAY_MS = 2800;
-// Per-character estimate of TTS audio duration (ms) for Japanese speech
-// WebRTC streams audio continuously — audio.ended does NOT fire between turns
-const MS_PER_CHAR = 65;
+// How long to keep mic muted after agent_end before re-enabling
+// Text-length estimate: Japanese TTS ≈ 60ms/char, min 2500ms, max 9000ms
+const audioDelay = (charCount: number) =>
+  Math.min(Math.max(2500, charCount * 60), 9000);
 
 export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVoiceReturn {
   const [status,       setStatus]       = useState<VoiceState>("idle");
@@ -76,6 +75,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
   const audioElRef  = useRef<HTMLAudioElement | null>(null);
   const micTrackRef = useRef<MediaStreamTrack | null>(null);
   const isSpeaking  = useRef(false);
+  const statusRef   = useRef<VoiceState>("idle"); // always current, avoids stale closures
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { addLog, setAgentStatus }  = useAIOSStore();
@@ -86,6 +86,12 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
   const clearResumeTimer = () => {
     if (resumeTimer.current) { clearTimeout(resumeTimer.current); resumeTimer.current = null; }
   };
+
+  // Sync statusRef so setTimeout callbacks never read stale state
+  const setStatusSync = useCallback((s: VoiceState) => {
+    statusRef.current = s;
+    setStatus(s);
+  }, []);
 
   // Find and cache the WebRTC audio sender track for direct control
   const findMicTrack = useCallback(() => {
@@ -131,18 +137,18 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
     sessionRef.current = null;
     audioElRef.current?.remove();
     audioElRef.current = null;
-    setStatus("idle");
+    setStatusSync("idle");
     setError(null);
     setMuted(false);
     setSpeakingText("");
     setAgentStatus("voice", "idle", "停止");
-  }, [setAgentStatus]);
+  }, [setAgentStatus, setStatusSync]);
 
   // ── Start ──────────────────────────────────────────────────────
   const start = useCallback(async (symbolOverride?: string) => {
     if (typeof window === "undefined") return;
     stop();
-    setStatus("connecting");
+    setStatusSync("connecting");
     setError(null);
     setAgentStatus("voice", "thinking", "接続中...");
     addLog("[VOICE] AVL AI 音声エージェント接続中...", "ai");
@@ -299,25 +305,25 @@ ${ctxParts.join("\n")}
       // 7. STRICT VOICE STATE MACHINE
       // ═══════════════════════════════════════════════════════════
 
-      // AI starts speaking → immediately mute microphone
+      // AI starts speaking → mute mic. Do NOT clear the resume timer here —
+      // clearing it caused the timer set by a previous agent_end to be cancelled,
+      // leaving status stuck in "processing" indefinitely.
       session.on("agent_start", () => {
-        clearResumeTimer();
         isSpeaking.current = true;
         setSpeakingText("");
         muteMic(true);
-        setStatus("speaking");
+        setStatusSync("speaking");
         opts.onAgentThinking?.(true);
         setAgentStatus("voice", "thinking", "応答中...");
         addLog("[VOICE] AI 発話開始 — マイク無効化", "ai");
       });
 
-      // AI model finishes generating → estimate remaining audio play time from text length
-      // WebRTC streams audio continuously so audio.ended does NOT fire between turns.
-      // Estimate: max(MIN_RESUME_DELAY_MS, chars × MS_PER_CHAR) capped at 9000ms
+      // AI finishes generating → start timer to re-enable mic after audio plays out.
+      // WebRTC audio.ended does NOT fire between turns, so we estimate duration from text.
       session.on("agent_end", (_, __, output) => {
         isSpeaking.current = false;
         opts.onAgentThinking?.(false);
-        setStatus("processing");
+        setStatusSync("processing");
 
         if (output) {
           opts.onTranscript?.(output, "assistant");
@@ -325,37 +331,19 @@ ${ctxParts.join("\n")}
           addLog(`[VOICE AI] ${output.slice(0, 80)}`, "ai");
         }
 
-        const charCount = output?.length ?? 0;
-        const resumeDelay = Math.min(
-          Math.max(MIN_RESUME_DELAY_MS, charCount * MS_PER_CHAR),
-          9000,
-        );
-
+        // Cancel any previous timer then start a new one
         clearResumeTimer();
+        const delay = audioDelay(output?.length ?? 0);
         resumeTimer.current = setTimeout(() => {
-          if (!sessionRef.current) return;
+          // Use statusRef (not captured "status") to avoid stale closure
+          if (statusRef.current !== "processing") return;
           muteMic(false);
-          setStatus("listening");
+          setStatusSync("listening");
           setSpeakingText("");
           setAgentStatus("voice", "active", "音声入力待機中");
           addLog("[VOICE] マイク有効化 — 入力待機", "info");
-        }, resumeDelay);
+        }, delay);
       });
-
-      // Try to get streaming transcript deltas from transport (best-effort)
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const transport = (session as any).transport;
-        const handleMsg = (event: { type?: string; delta?: string }) => {
-          if (event?.type === "response.audio_transcript.delta" && event.delta) {
-            setSpeakingText(prev => prev + event.delta);
-          } else if (event?.type === "response.audio_transcript.done") {
-            // full text already set via agent_end — no-op
-          }
-        };
-        transport?.on?.("message", handleMsg);
-        transport?.on?.("server_event", handleMsg);
-      } catch { /* transport events not available in this SDK version */ }
 
       session.on("agent_tool_start", (_, __, t) => {
         addLog(`[VOICE TOOL] ${t.name} 呼び出し中...`, "info");
@@ -384,7 +372,7 @@ ${ctxParts.join("\n")}
       session.on("error", (err) => {
         const msg = err instanceof Error ? err.message : String(err);
         setError(msg);
-        setStatus("error");
+        setStatusSync("error");
         addLog(`[VOICE ERR] ${msg}`, "warn");
         setAgentStatus("voice", "error", msg);
       });
@@ -396,7 +384,7 @@ ${ctxParts.join("\n")}
 
       // Start in listening mode with mic enabled
       muteMic(false);
-      setStatus("listening");
+      setStatusSync("listening");
       setAgentStatus("voice", "active", "音声入力待機中");
       addLog("[VOICE] AVL AI 音声エージェント起動 ✓", "ok");
       addLog(`[VOICE] ${sym} モード — 話しかけてください`, "info");
@@ -407,7 +395,7 @@ ${ctxParts.join("\n")}
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      setStatus("error");
+      setStatusSync("error");
       addLog(`[VOICE ERR] ${msg}`, "warn");
       setAgentStatus("voice", "error", msg);
       stop();
@@ -434,9 +422,25 @@ ${ctxParts.join("\n")}
 
     // Re-enable mic immediately on intentional interrupt
     muteMic(false);
-    setStatus("listening");
+    setStatusSync("listening");
     addLog("[VOICE] ユーザー割り込み — マイク有効化", "info");
   }, [muteMic, addLog]);
+
+  // Watchdog: if stuck in processing/speaking for >10s, force transition to listening.
+  // Guards against edge cases (e.g. agent_start fires again and no agent_end follows).
+  useEffect(() => {
+    if (status !== "processing" && status !== "speaking") return;
+    const t = setTimeout(() => {
+      if (statusRef.current !== "processing" && statusRef.current !== "speaking") return;
+      if (!sessionRef.current) return;
+      muteMic(false);
+      setStatusSync("listening");
+      setSpeakingText("");
+      setAgentStatus("voice", "active", "音声入力待機中");
+      addLog("[VOICE] ウォッチドッグ — マイク有効化", "info");
+    }, 10000);
+    return () => clearTimeout(t);
+  }, [status, muteMic, setStatusSync, setAgentStatus, addLog]);
 
   useEffect(() => () => { stop(); }, [stop]);
 
