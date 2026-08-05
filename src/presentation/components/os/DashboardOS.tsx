@@ -1302,14 +1302,72 @@ const AIActivityPanel = memo(function AIActivityPanel() {
 });
 
 // =================================================================
-// クイックコマンド
+// Voice Telop — AI speaking subtitle
 // =================================================================
-const QUICK_CMDS = [
-  { label: "EURUSD分析", cmd: "EURUSDを詳しく分析してください" },
-  { label: "USDJPY分析", cmd: "USDJPYを詳しく分析してください" },
-  { label: "ATR確認",    cmd: "現在のATRとボラティリティを評価してください" },
-  { label: "トレンド",   cmd: "全通貨ペアのトレンド方向を確認してください" },
-];
+const VoiceTelop = memo(function VoiceTelop({
+  text, status, neonHex,
+}: { text: string; status: string; neonHex: string }) {
+  const [displayed, setDisplayed] = useState("");
+  const [visible,   setVisible]   = useState(false);
+  const idxRef  = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!text) {
+      // Fade out when text clears
+      const t = setTimeout(() => { setVisible(false); setDisplayed(""); }, 600);
+      return () => clearTimeout(t);
+    }
+    // New text: reset and typewrite character by character
+    setVisible(true);
+    setDisplayed("");
+    idxRef.current = 0;
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    const MAX_DISPLAY = 80; // characters to show at once (scrolling window)
+    const tick = () => {
+      if (idxRef.current >= text.length) return;
+      idxRef.current++;
+      const slice = text.slice(Math.max(0, idxRef.current - MAX_DISPLAY), idxRef.current);
+      setDisplayed(slice);
+      timerRef.current = setTimeout(tick, 28); // ~35 chars/sec ≈ natural speech pace
+    };
+    timerRef.current = setTimeout(tick, 40);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [text]);
+
+  const isSpeaking = status === "speaking" || status === "processing";
+
+  return (
+    <div
+      className="flex items-center justify-center px-6 transition-all duration-500"
+      style={{ minHeight: 36, opacity: visible ? 1 : 0 }}
+    >
+      {visible && (
+        <p
+          className="text-[9px] font-mono text-center leading-relaxed tracking-wide"
+          style={{
+            color: neonHex,
+            textShadow: `0 0 10px ${neonHex}70, 0 0 20px ${neonHex}30`,
+            maxWidth: 340,
+          }}
+        >
+          {displayed}
+          {isSpeaking && (
+            <span
+              className="inline-block w-[6px] h-[9px] ml-0.5 align-middle rounded-sm"
+              style={{
+                backgroundColor: neonHex,
+                opacity: 0.9,
+                animation: "avl-wave-bar 0.5s ease-in-out infinite alternate",
+              }}
+            />
+          )}
+        </p>
+      )}
+    </div>
+  );
+});
 
 // =================================================================
 // メインコンポーネント
@@ -2033,15 +2091,8 @@ export function DashboardOS() {
                 )}
               </div>
 
-              {/* Quick commands */}
-              <div className="flex gap-1.5 flex-wrap justify-center px-4">
-                {QUICK_CMDS.map(({label,cmd}) => (
-                  <button key={label} onClick={()=>sendMessage(cmd)} disabled={thinking||!isConnected}
-                    className="flex items-center gap-1 px-2.5 py-1 text-[7px] font-mono border border-cyan-900/20 text-gray-700 hover:border-cyan-700/40 hover:text-cyan-400 hover:bg-cyan-950/10 disabled:opacity-20 transition-all tracking-wide">
-                    <Zap size={7}/>{label}
-                  </button>
-                ))}
-              </div>
+              {/* AI Telop — speaking text subtitle */}
+              <VoiceTelop text={voice.speakingText} status={voice.status} neonHex={neonHex} />
             </div>
 
 
