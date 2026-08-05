@@ -5,7 +5,7 @@
 // JARVIS / Cyberpunk Style — Full Redesign
 // =================================================================
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { cn } from "@/lib/utils";
 import { useConnectionStore }  from "@/application/stores/connectionStore";
 import { usePriceStore }       from "@/application/stores/priceStore";
@@ -1005,11 +1005,10 @@ function AccountPanel({ account, positions, logs }: {
 // =================================================================
 // 右パネル: マーケット情報・分析ログ
 // =================================================================
-function MarketPanel({ symbol, indicators, watchlist, aiLogs, extQuotes }: {
+function MarketPanel({ symbol, indicators, watchlist, extQuotes }: {
   symbol: string;
   indicators: ReturnType<typeof useIndicatorStore.getState>["indicators"][string] | undefined;
   watchlist: { symbol: string; bid: number; ask: number; spread: number; isConnected: boolean }[];
-  aiLogs: { id: string; ts: number; text: string; type: string; symbol?: string }[];
   extQuotes: ExtQuote[];
 }) {
   const TFS = ["H4", "H1", "M15", "M5"] as const;
@@ -1146,28 +1145,35 @@ function MarketPanel({ symbol, indicators, watchlist, aiLogs, extQuotes }: {
           <Brain size={8} className="text-purple-400/50" />
           AI ACTIVITY
         </div>
-        <div className="space-y-1 max-h-52 overflow-y-auto">
-          {aiLogs.length === 0 && <p className="text-[7px] text-gray-800 font-mono text-center py-2">STANDBY</p>}
-          {[...aiLogs].reverse().slice(0, 30).map((log) => (
-            <div key={log.id} className="pb-1 border-b border-[#0d1520]/20 avl-slide-in">
-              <span className="text-[6px] text-gray-800 font-mono tabular-nums">
-                {new Date(log.ts).toLocaleTimeString("ja-JP")}
-              </span>
-              <p className={cn("text-[7px] font-mono leading-snug",
-                log.type==="signal" ? "text-cyan-300" :
-                log.type==="order"  ? "text-orange-300" :
-                log.type==="ai"     ? "text-purple-300" :
-                log.type==="ok"     ? "text-green-400" :
-                log.type==="warn"   ? "text-yellow-400" :
-                "text-gray-600"
-              )}>{log.text}</p>
-            </div>
-          ))}
-        </div>
+        <MarketPanelActivityLog />
       </div>
     </div>
   );
 }
+// Isolated log for MarketPanel — subscribes to aiLogs directly
+const MarketPanelActivityLog = memo(function MarketPanelActivityLog() {
+  const aiLogs = useAIOSStore(s => s.aiLogs);
+  return (
+    <div className="space-y-1 max-h-52 overflow-y-auto">
+      {aiLogs.length === 0 && <p className="text-[7px] text-gray-800 font-mono text-center py-2">STANDBY</p>}
+      {[...aiLogs].reverse().slice(0, 30).map((log) => (
+        <div key={log.id} className="pb-1 border-b border-[#0d1520]/20 avl-slide-in">
+          <span className="text-[6px] text-gray-800 font-mono tabular-nums">
+            {new Date(log.ts).toLocaleTimeString("ja-JP")}
+          </span>
+          <p className={cn("text-[7px] font-mono leading-snug",
+            log.type==="signal" ? "text-cyan-300" :
+            log.type==="order"  ? "text-orange-300" :
+            log.type==="ai"     ? "text-purple-300" :
+            log.type==="ok"     ? "text-green-400" :
+            log.type==="warn"   ? "text-yellow-400" :
+            "text-gray-600"
+          )}>{log.text}</p>
+        </div>
+      ))}
+    </div>
+  );
+});
 
 // =================================================================
 // マークダウン表示
@@ -1227,6 +1233,74 @@ function OrderCard({ p, onConfirm, onCancel }: { p: OrderProposal; onConfirm:()=
 }
 
 // =================================================================
+// Log panels — isolated memo components so aiLogs updates
+// don't re-render the entire DashboardOS tree
+// =================================================================
+const SystemLogPanel = memo(function SystemLogPanel() {
+  const aiLogs = useAIOSStore(s => s.aiLogs);
+  return (
+    <div className="avl-glass avl-top-accent relative overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/20 to-transparent"/>
+      <div className="px-3 py-2.5">
+        <p className="text-[8px] text-purple-400/50 font-mono tracking-[0.2em] mb-2 flex items-center gap-1.5">
+          <ScrollText size={8}/> SYSTEM LOG
+        </p>
+        <div className="space-y-1 max-h-36 overflow-y-auto">
+          {aiLogs.slice().reverse().slice(0,15).map(log => (
+            <div key={log.id} className="flex items-start gap-2 avl-slide-in">
+              <div className={cn("w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
+                log.type==="ok"?"bg-green-500": log.type==="warn"?"bg-yellow-500":
+                log.type==="ai"?"bg-purple-400": log.type==="signal"?"bg-cyan-400":
+                log.type==="order"?"bg-orange-400":"bg-gray-700"
+              )}/>
+              <div>
+                <span className="text-[7px] text-gray-700 font-mono tabular-nums">
+                  {new Date(log.ts).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+                </span>
+                <p className="text-[7.5px] text-gray-500 font-mono leading-snug">{log.text}</p>
+              </div>
+            </div>
+          ))}
+          {aiLogs.length === 0 && <p className="text-[7px] text-gray-800 font-mono">STANDBY</p>}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const AIActivityPanel = memo(function AIActivityPanel() {
+  const aiLogs = useAIOSStore(s => s.aiLogs);
+  return (
+    <div className="avl-glass avl-top-accent relative overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/25 to-transparent"/>
+      <div className="px-3 py-2.5">
+        <p className="text-[8px] text-purple-400/60 font-mono tracking-[0.2em] mb-2.5 flex items-center gap-1.5">
+          <Activity size={8}/> AI ACTIVITY
+        </p>
+        <div className="space-y-1.5 max-h-44 overflow-y-auto">
+          {aiLogs.length===0 && <p className="text-[7.5px] text-gray-800 font-mono text-center py-2">NO ACTIVITY</p>}
+          {[...aiLogs].reverse().slice(0,20).map(log => (
+            <div key={log.id} className="flex items-start gap-2 avl-slide-in">
+              <div className={cn("w-1.5 h-1.5 rounded-full shrink-0 mt-1",
+                log.type==="signal"?"bg-cyan-400":log.type==="order"?"bg-orange-400":
+                log.type==="ok"?"bg-green-500":log.type==="warn"?"bg-yellow-500":
+                log.type==="ai"?"bg-purple-400":"bg-gray-700"
+              )}/>
+              <div>
+                <span className="text-[7px] text-gray-700 font-mono tabular-nums">
+                  {new Date(log.ts).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+                </span>
+                <p className="text-[7.5px] text-gray-500 font-mono leading-snug">{log.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// =================================================================
 // クイックコマンド
 // =================================================================
 const QUICK_CMDS = [
@@ -1242,9 +1316,15 @@ const QUICK_CMDS = [
 export function DashboardOS() {
   const { status, connectedAt } = useConnectionStore();
   const { activeSymbol, watchlist, setActiveSymbol } = usePriceStore();
-  const { indicators, setIndicators } = useIndicatorStore();
+  const { indicators, setIndicators, setIndicatorsBatch } = useIndicatorStore();
   const { setSymbols, setOrders, symbolList } = useMarketStore();
-  const { mode, agents, aiLogs, setMode, setAgentStatus, addLog } = useAIOSStore();
+  // Use selectors — prevent re-render when unrelated store fields (aiLogs) change
+  const mode         = useAIOSStore(s => s.mode);
+  const agents       = useAIOSStore(s => s.agents);
+  const setMode      = useAIOSStore(s => s.setMode);
+  const setAgentStatus = useAIOSStore(s => s.setAgentStatus);
+  const addLog       = useAIOSStore(s => s.addLog);
+  // aiLogs NOT subscribed here — rendered by isolated memo components below
   const { settings: osSettings } = useSettingsStore();
 
   const [messages, setMessages]     = useState<Message[]>([{
@@ -1344,18 +1424,19 @@ export function DashboardOS() {
 
         if (data.account) setAccount(data.account as Parameters<typeof setAccount>[0]);
 
-        if (Array.isArray(data.indicators)) {
-          data.indicators.forEach(ind => {
-            if (ind.symbol) setIndicators(ind as unknown as Parameters<typeof setIndicators>[0]);
-          });
+        if (Array.isArray(data.indicators) && data.indicators.length > 0) {
+          // Single batch write — avoids N re-renders for N symbols
+          setIndicatorsBatch(
+            data.indicators.filter(ind => !!ind.symbol) as unknown as Parameters<typeof setIndicatorsBatch>[0]
+          );
         }
       } catch {}
     };
 
     fetchLive();
-    const id = setInterval(fetchLive, 5000);
+    const id = setInterval(fetchLive, 10000); // 10s is enough; WS provides real-time updates
     return () => clearInterval(id);
-  }, [setSymbols, setIndicators]);
+  }, [setSymbols, setIndicatorsBatch]);
 
   // スクロール
   useEffect(() => { scrollRef.current?.scrollTo({top:scrollRef.current.scrollHeight,behavior:"smooth"}); }, [messages]);
@@ -1366,11 +1447,20 @@ export function DashboardOS() {
     const client = ConnectionManager.instance.client;
     if (!client) return;
 
+    // Throttle indicator store writes: accumulate WS messages, flush as a single batch every 300ms
+    let pendingIndicators: Parameters<typeof setIndicators>[0][] = [];
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const flushIndicators = () => {
+      if (pendingIndicators.length === 0) return;
+      setIndicatorsBatch(pendingIndicators);
+      pendingIndicators = [];
+      flushTimer = null;
+    };
+
     const unsubs = [
       client.onIndicators((ind) => {
-        setIndicators(ind);
-        setAgentStatus("market", "active", `${ind.symbol} インジケーター更新`);
-        addLog(`[MKT] ${ind.symbol} インジケーター更新`, "info");
+        pendingIndicators.push(ind);
+        if (!flushTimer) flushTimer = setTimeout(flushIndicators, 300);
       }),
       client.onPosition((pos) => { setPositions(pos); }),
       client.onAccount((acc)  => { setAccount(acc); }),
@@ -1384,8 +1474,12 @@ export function DashboardOS() {
     ];
     addLog("MT5 データストリーム接続完了", "ok");
     setAgentStatus("market", "active", "データ受信中");
-    return () => { unsubs.forEach(u=>u()); setAgentStatus("market","idle"); };
-  }, [status, setIndicators, addLog, setAgentStatus]);
+    return () => {
+      unsubs.forEach(u=>u());
+      if (flushTimer) clearTimeout(flushTimer);
+      setAgentStatus("market","idle");
+    };
+  }, [status, setIndicators, setIndicatorsBatch, addLog, setAgentStatus]);
 
   useEffect(() => {
     if (status==="connected") { addLog("MT5 Gateway 接続完了","ok"); }
@@ -1679,32 +1773,7 @@ export function DashboardOS() {
             />
 
             {/* System Log */}
-            <div className="avl-glass avl-top-accent relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/20 to-transparent"/>
-              <div className="px-3 py-2.5">
-                <p className="text-[8px] text-purple-400/50 font-mono tracking-[0.2em] mb-2 flex items-center gap-1.5">
-                  <ScrollText size={8}/> SYSTEM LOG
-                </p>
-                <div className="space-y-1 max-h-36 overflow-y-auto">
-                  {aiLogs.slice().reverse().slice(0,15).map(log => (
-                    <div key={log.id} className="flex items-start gap-2 avl-slide-in">
-                      <div className={cn("w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
-                        log.type==="ok"?"bg-green-500": log.type==="warn"?"bg-yellow-500":
-                        log.type==="ai"?"bg-purple-400": log.type==="signal"?"bg-cyan-400":
-                        log.type==="order"?"bg-orange-400":"bg-gray-700"
-                      )}/>
-                      <div>
-                        <span className="text-[7px] text-gray-700 font-mono tabular-nums">
-                          {new Date(log.ts).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
-                        </span>
-                        <p className="text-[7.5px] text-gray-500 font-mono leading-snug">{log.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {aiLogs.length === 0 && <p className="text-[7px] text-gray-800 font-mono">STANDBY</p>}
-                </div>
-              </div>
-            </div>
+            <SystemLogPanel />
 
           </div>
         </div>
@@ -2053,37 +2122,8 @@ export function DashboardOS() {
               </div>
             </div>
 
-            {/* AI Activity Log */}
-            <div className="avl-glass avl-top-accent relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/25 to-transparent"/>
-              <div className="px-3 py-2.5">
-                <p className="text-[8px] text-purple-400/60 font-mono tracking-[0.2em] mb-2.5 flex items-center gap-1.5">
-                  <Activity size={8}/> AI ACTIVITY
-                </p>
-                <div className="space-y-1.5 max-h-44 overflow-y-auto">
-                  {aiLogs.length===0 && <p className="text-[7.5px] text-gray-800 font-mono text-center py-2">NO ACTIVITY</p>}
-                  {[...aiLogs].reverse().slice(0,20).map(log => (
-                    <div key={log.id} className="flex items-start gap-2 avl-slide-in">
-                      <div className={cn("w-1.5 h-1.5 rounded-full shrink-0 mt-1",
-                        log.type==="signal"?"bg-cyan-400":log.type==="order"?"bg-orange-400":
-                        log.type==="ok"?"bg-green-500":log.type==="warn"?"bg-yellow-500":
-                        log.type==="ai"?"bg-purple-400":"bg-gray-700"
-                      )}/>
-                      <div>
-                        <span className="text-[7px] text-gray-700 font-mono tabular-nums">
-                          {new Date(log.ts).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
-                        </span>
-                        <p className={cn("text-[8px] font-mono leading-snug",
-                          log.type==="signal"?"text-cyan-300":log.type==="order"?"text-orange-300":
-                          log.type==="ok"?"text-green-400":log.type==="warn"?"text-yellow-400":
-                          log.type==="ai"?"text-purple-300":"text-gray-500"
-                        )}>{log.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            {/* AI Activity Log — isolated memo component */}
+            <AIActivityPanel />
 
             {/* Risk Management */}
             <div className="avl-glass avl-top-accent relative overflow-hidden">
