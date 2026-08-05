@@ -27,6 +27,24 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as FullAnalysisResult;
+
+      try {
+        const embRes = await fetch("/api/ai/embeddings/similar-trades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            symbol: data.symbol,
+            direction: data.overall.direction,
+            trend: data.dowTheory.trend,
+            indicators: data.technicalIndicators.summary,
+          }),
+        });
+        if (embRes.ok) {
+          const { similar } = await embRes.json() as { similar: unknown[] };
+          (data as FullAnalysisResult & { similarTrades?: unknown[] }).similarTrades = similar;
+        }
+      } catch { /* embeddings optional */ }
+
       set(s => ({ results: { ...s.results, [sym]: data }, loading: { ...s.loading, [sym]: false } }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOpenAIClient, MODELS } from "@/infrastructure/ai/openai-client";
+import OpenAI from "openai";
+import { getOpenAIClient, MODELS, KNOWLEDGE_STORE_ID } from "@/infrastructure/ai/openai-client";
 import { getUpcomingEvents, getRecentNews } from "@/infrastructure/supabase/repository";
 import { analyzeMarketStructure }    from "@/infrastructure/analysis/marketStructure";
 import { analyzeSupportResistance }  from "@/infrastructure/analysis/supportResistance";
@@ -262,33 +263,78 @@ export async function POST(req: NextRequest) {
     const h4Atr = indicators?.timeframes?.H4?.atr ?? currentPrice * 0.005;
     const tradeSetup = buildTradeSetup(overall, safeTick, srResult.levels, h4Atr);
 
-    // AI Synthesis
+    // AI Synthesis with Structured Outputs via Responses API
     let aiSynthesis = '';
     try {
       const client = getOpenAIClient();
-      const prompt = `You are a professional FX analyst. Provide a concise 3-5 sentence synthesis of this analysis. Be direct about whether to trade and why.
 
-Symbol: ${sym}
-Price: ${currentPrice}
-Overall: ${overall.direction} at ${overall.confidence}% confidence (tradeable: ${overall.tradeable})
-Dow Theory: ${dowTheoryResult.trend} (${dowTheoryResult.score}%)
-Multi-TF: ${multiTFResult.direction} (${multiTFResult.score}%)
-Indicators: ${indicatorResult.direction} (${indicatorResult.score}%)
-S/R: nearest support ${srResult.nearestSupport?.toFixed(5)}, resistance ${srResult.nearestResistance?.toFixed(5)}
-Patterns: ${candleResult.patterns.map(p => p.name).join(', ') || 'none'} | Chart: ${chartResult.patterns.map(p => p.name).join(', ') || 'none'}
-Correlation: ${corrResult.summary}
-Market: ${envResult.summary}
-${tradeSetup ? `Trade Setup: ${tradeSetup.direction} Entry:${tradeSetup.entry?.toFixed(5)} SL:${tradeSetup.sl?.toFixed(5)} TP1:${tradeSetup.tp1?.toFixed(5)} RR:${tradeSetup.rrRatio1}` : 'No trade setup.'}`;
+      const tools: OpenAI.Responses.Tool[] = [
+        { type: "web_search" as const },
+      ];
 
-      const completion = await client.chat.completions.create({
-        model: process.env.OPENAI_MODEL ?? MODELS.chat,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.2,
-        max_tokens: 300,
+      if (KNOWLEDGE_STORE_ID) {
+        tools.push({ type: "file_search" as const, vector_store_ids: [KNOWLEDGE_STORE_ID] } as OpenAI.Responses.Tool);
+      }
+
+      const systemPrompt = `あなたはプロのFXトレーダー兼AIアナリスト「AVL AI」です。
+提供された多要素分析データに基づき、機関投資家レベルの総合分析を行ってください。
+- 日本語で回答
+- 簡潔・正確・プロフェッショナル
+- 1つの指標だけに依存しない
+- リスク要因も必ず言及`;
+
+      const analysisPrompt = `
+## ${sym} 分析データ (${new Date().toISOString()})
+
+**現在価格:** Bid=${currentPrice} Ask=${safeTick.ask} Spread=${safeTick.spread.toFixed(1)}pips
+
+**ダウ理論:** ${dowTheoryResult.trend} (スコア: ${dowTheoryResult.score}%)
+スウィング: ${dowTheoryResult.swingPoints.slice(-4).map(s => `${s.label}@${s.price}`).join(', ')}
+
+**マルチタイムフレーム:** ${multiTFResult.direction} (スコア: ${multiTFResult.score}%)
+${Object.entries(multiTFResult.timeframes).map(([tf, d]) => `${tf}: ${d.trend} (${d.score}%)`).join(', ')}
+
+**テクニカル指標:** ${indicatorResult.direction} (スコア: ${indicatorResult.score}%)
+${indicatorResult.summary}
+
+**サポート/レジスタンス:** 近接サポート=${srResult.nearestSupport?.toFixed(5) ?? 'N/A'} 近接レジスタンス=${srResult.nearestResistance?.toFixed(5) ?? 'N/A'}
+
+**ローソク足パターン:** ${candleResult.patterns.length > 0 ? candleResult.patterns.map(p => `${p.name}(${p.direction})`).join(', ') : 'なし'}
+
+**チャートパターン:** ${chartResult.patterns.length > 0 ? chartResult.patterns.map(p => `${p.name}(${p.direction},${p.confidence}%)`).join(', ') : 'なし'}
+
+**相関分析:** ${corrResult.summary}
+
+**市場環境:** ${envResult.summary}
+
+**総合判断:** ${overall.direction} 信頼度=${overall.confidence}% トレード可能=${overall.tradeable}
+
+${tradeSetup ? `**トレード設定:** ${tradeSetup.direction} エントリー=${tradeSetup.entry?.toFixed(5)} SL=${tradeSetup.sl?.toFixed(5)} TP1=${tradeSetup.tp1?.toFixed(5)} TP2=${tradeSetup.tp2?.toFixed(5)} RR1=${tradeSetup.rrRatio1}` : 'トレード条件未達成'}
+
+この分析データと最新の市場情報をもとに、3〜5文の総合分析コメントを日本語で提供してください。現在の相場環境、トレードの可否、主要なリスク要因を含めてください。`;
+
+      const response = await client.responses.create({
+        model: MODELS.chat,
+        tools,
+        input: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: analysisPrompt },
+        ],
       });
-      aiSynthesis = completion.choices[0]?.message?.content ?? '';
+
+      for (const item of response.output) {
+        if (item.type === "message") {
+          for (const c of item.content) {
+            if (c.type === "output_text") {
+              aiSynthesis += c.text;
+            }
+          }
+        }
+      }
+      if (!aiSynthesis) aiSynthesis = `${sym}: ${overall.direction} signal at ${overall.confidence}% confidence.`;
     } catch (e) {
-      aiSynthesis = `Analysis complete. ${overall.direction} signal at ${overall.confidence}% confidence. ${overall.tradeable ? 'Trade conditions met.' : 'Trade conditions not met.'}`;
+      console.error("[analysis/full] AI synthesis error:", e);
+      aiSynthesis = `${sym}: ${overall.direction} signal at ${overall.confidence}% confidence. ${overall.tradeable ? 'Trade conditions met.' : 'Trade conditions not met.'}`;
     }
 
     const result: FullAnalysisResult = {

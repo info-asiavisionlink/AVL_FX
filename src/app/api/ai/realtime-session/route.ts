@@ -7,8 +7,8 @@
 //   })
 // =================================================================
 
-import { NextResponse }       from "next/server";
-import { getOpenAIClient }    from "@/infrastructure/ai/openai-client";
+import { NextResponse }                    from "next/server";
+import { getOpenAIClient, MODELS }         from "@/infrastructure/ai/openai-client";
 import { buildMarketContext } from "@/infrastructure/ai/market-context";
 
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
     const client    = getOpenAIClient();
     const marketCtx = await buildMarketContext(symbol);
-    const model     = (process.env.OPENAI_REALTIME_MODEL ?? "gpt-4o-realtime-preview") as
+    const model     = (process.env.OPENAI_REALTIME_MODEL ?? MODELS.realtime) as
       "gpt-4o-realtime-preview" | "gpt-4o-mini-realtime-preview";
 
     const instructions = `あなたは AVL FX の専属 AI トレーディングアシスタント「AVL AI」です。
