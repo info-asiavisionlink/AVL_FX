@@ -13,9 +13,10 @@
 // =================================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAIOSStore }     from "@/application/stores/aiOSStore";
-import { useIndicatorStore } from "@/application/stores/indicatorStore";
-import { usePriceStore }     from "@/application/stores/priceStore";
+import { useAIOSStore }      from "@/application/stores/aiOSStore";
+import { useIndicatorStore }  from "@/application/stores/indicatorStore";
+import { usePriceStore }      from "@/application/stores/priceStore";
+import { useSettingsStore }   from "@/application/stores/settingsStore";
 
 // ── State machine (one state at a time) ──────────────────────────
 export type VoiceState =
@@ -81,6 +82,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
   const { addLog, setAgentStatus }  = useAIOSStore();
   const { indicators }              = useIndicatorStore();
   const { activeSymbol, watchlist } = usePriceStore();
+  const { settings }                = useSettingsStore();
 
   // ── Helpers ────────────────────────────────────────────────────
   const clearResumeTimer = () => {
@@ -156,11 +158,14 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
     try {
       const sym = (symbolOverride ?? activeSymbol).replace("/", "");
 
-      // 1. Ephemeral token ─────────────────────────────────────────
+      // 1. Ephemeral token — pass settings model override ─────────
       const tokenRes = await fetch("/api/ai/realtime-session", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ symbol: sym }),
+        body:    JSON.stringify({
+          symbol: sym,
+          model:  settings.realtimeModel || undefined, // settings page selection
+        }),
       });
       if (!tokenRes.ok) {
         const e = await tokenRes.json() as { error?: string };
@@ -228,16 +233,38 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
       });
 
       const proposeOrder = tool({
-        name: "propose_order", description: "売買注文の提案をUIに表示してユーザーの確認を求める。",
+        name: "propose_order", description: "売買注文の提案をUIに表示してユーザーの確認を求める。ロット数はリスク管理設定から自動適用。",
         parameters: z.object({
           direction: z.enum(["BUY","SELL"]), symbol: z.string(),
           entry: z.number(), sl: z.number(), tp: z.number(),
           rr: z.string(), confidence: z.number().min(0).max(100), reason: z.string(),
         }),
         execute: async (params) => {
-          opts.onOrderProposal?.(params as OrderProposal);
-          addLog(`[VOICE SIGNAL] ${params.direction} ${params.symbol} @ ${params.entry} (${params.confidence}%)`, "signal");
-          return JSON.stringify({ status: "proposed", message: "注文提案をUIに表示しました。" });
+          // Apply risk management settings
+          const lotSize  = settings.defaultLotSize;
+          const maxPos   = settings.maxPositions;
+          const stopLoss = settings.stopOnLoss;
+
+          // Risk guard: stop if daily loss limit active
+          if (stopLoss) {
+            try {
+              const accRes = await fetch(`${API}/live`);
+              if (accRes.ok) {
+                const { account } = await accRes.json() as { account?: { equity: number; balance: number } | null };
+                if (account && account.balance > 0) {
+                  const lossPct = ((account.balance - account.equity) / account.balance) * 100;
+                  if (lossPct >= settings.maxDailyLossPct) {
+                    addLog(`[RISK] 日次損失上限 ${settings.maxDailyLossPct}% 到達 — 注文ブロック`, "warn");
+                    return JSON.stringify({ status: "blocked", reason: `日次損失上限 ${settings.maxDailyLossPct}% に達しているため注文をブロックしました。` });
+                  }
+                }
+              }
+            } catch { /* allow trade if check fails */ }
+          }
+
+          opts.onOrderProposal?.({ ...params, volume: lotSize } as OrderProposal);
+          addLog(`[VOICE SIGNAL] ${params.direction} ${params.symbol} @ ${params.entry} (${params.confidence}%) ロット:${lotSize} 最大ポジション:${maxPos}`, "signal");
+          return JSON.stringify({ status: "proposed", lotSize, maxPositions: maxPos, message: "注文提案をUIに表示しました。" });
         },
       });
 

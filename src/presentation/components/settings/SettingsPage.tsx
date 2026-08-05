@@ -158,19 +158,19 @@ export function SettingsPage() {
             <Field label="Chat モデル" desc="市場分析・テキスト応答に使用">
               <SelectInput value={settings.aiModel} onChange={v => s({ aiModel: v })}
                 options={[
-                  { value: "gpt-4.1",      label: "GPT-4.1 (推奨)" },
-                  { value: "gpt-5.6-sol",  label: "GPT-5.6 Sol (高性能)" },
-                  { value: "gpt-5.6-terra",label: "GPT-5.6 Terra (バランス)" },
-                  { value: "gpt-4o",       label: "GPT-4o" },
+                  { value: "gpt-5.6-terra", label: "GPT-5.6 Terra — バランス (推奨)" },
+                  { value: "gpt-5.6-sol",   label: "GPT-5.6 Sol — 最高性能" },
+                  { value: "gpt-5.6-luna",  label: "GPT-5.6 Luna — 高速・低コスト" },
+                  { value: "gpt-4.1",       label: "GPT-4.1 — 旧モデル" },
                 ]}
               />
             </Field>
             <Field label="Voice モデル" desc="音声会話に使用">
               <SelectInput value={settings.realtimeModel} onChange={v => s({ realtimeModel: v })}
                 options={[
-                  { value: "gpt-realtime-2.1",             label: "gpt-realtime-2.1 (推奨)" },
-                  { value: "gpt-4o-realtime-preview",       label: "gpt-4o-realtime-preview" },
-                  { value: "gpt-4o-mini-realtime-preview",  label: "gpt-4o-mini-realtime-preview" },
+                  { value: "gpt-realtime-2.1-mini", label: "gpt-realtime-2.1-mini — 推奨 (高速)" },
+                  { value: "gpt-realtime-2.1",      label: "gpt-realtime-2.1 — 高性能 (低速)" },
+                  { value: "gpt-4o-realtime-preview", label: "gpt-4o-realtime-preview — 旧モデル" },
                 ]}
               />
             </Field>

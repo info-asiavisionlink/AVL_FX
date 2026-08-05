@@ -15,12 +15,14 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const { symbol = "EURUSD" } = await req.json().catch(() => ({})) as { symbol?: string };
+    const { symbol = "EURUSD", model: modelOverride } =
+      await req.json().catch(() => ({})) as { symbol?: string; model?: string };
 
     const client    = getOpenAIClient();
     const marketCtx = await buildMarketContext(symbol);
-    const model     = (process.env.OPENAI_REALTIME_MODEL ?? MODELS.realtime) as
-      "gpt-4o-realtime-preview" | "gpt-4o-mini-realtime-preview";
+    // Settings page model selection takes priority over env var
+    const model     = (modelOverride ?? process.env.OPENAI_REALTIME_MODEL ?? MODELS.realtime) as
+      "gpt-4o-realtime-preview" | "gpt-4o-mini-realtime-preview" | "gpt-realtime-2.1" | "gpt-realtime-2.1-mini";
 
     const instructions = `あなたは AVL FX の専属 AI トレーディングアシスタント「AVL AI」です。
 音声で自然に会話しながら FX 市場の分析・売買提案を行います。

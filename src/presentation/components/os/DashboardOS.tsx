@@ -2204,19 +2204,40 @@ export function DashboardOS() {
                     </div>
                   ))}
                 </div>
-                {/* Risk level indicator */}
-                <div className="mt-3 flex items-center gap-3">
-                  <div className="flex-1">
-                    <div className="flex justify-between text-[7px] font-mono mb-1">
-                      <span className="text-gray-700">RISK LEVEL</span>
-                      <span className="text-green-400">LOW</span>
+                {/* Daily loss progress bar — actual P&L vs limit */}
+                {(() => {
+                  const dailyLossPct = account && account.balance > 0
+                    ? Math.max(0, ((account.balance - account.equity) / account.balance) * 100)
+                    : 0;
+                  const limitPct  = osSettings.maxDailyLossPct;
+                  const usedRatio = Math.min(100, (dailyLossPct / limitPct) * 100);
+                  const riskLabel = usedRatio >= 90 ? "CRITICAL" : usedRatio >= 70 ? "HIGH" : usedRatio >= 40 ? "MEDIUM" : "LOW";
+                  const riskColor = usedRatio >= 90 ? "text-red-400" : usedRatio >= 70 ? "text-orange-400" : usedRatio >= 40 ? "text-yellow-400" : "text-green-400";
+                  return (
+                    <div className="mt-3">
+                      <div className="flex justify-between text-[7px] font-mono mb-1">
+                        <span className="text-gray-700">DAILY LOSS USED</span>
+                        <span className={riskColor}>{riskLabel} ({dailyLossPct.toFixed(2)}% / {limitPct}%)</span>
+                      </div>
+                      <div className="h-1.5 bg-[#0d1520] w-full relative overflow-hidden rounded-full">
+                        <div className="h-full transition-all duration-1000 rounded-full"
+                          style={{
+                            width: `${usedRatio}%`,
+                            background: usedRatio >= 90
+                              ? "#ef4444"
+                              : usedRatio >= 70
+                              ? "linear-gradient(90deg,#22c55e,#f97316)"
+                              : "linear-gradient(90deg,#22c55e,#eab308)",
+                          }}/>
+                      </div>
+                      {osSettings.stopOnLoss && usedRatio >= 100 && (
+                        <p className="text-[7px] text-red-400 font-mono mt-1 animate-pulse">
+                          ⚠ 損失上限到達 — 自動停止中
+                        </p>
+                      )}
                     </div>
-                    <div className="h-1 bg-[#0d1520] w-full relative overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 transition-all"
-                        style={{width:`${Math.min(100, osSettings.maxDailyLossPct * 10)}%`}}/>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
             </div>
 

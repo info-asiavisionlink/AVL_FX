@@ -32,9 +32,9 @@ export interface AVLSettings {
 }
 
 const DEFAULTS: AVLSettings = {
-  aiModel:          "gpt-4.1",
+  aiModel:          "gpt-5.6-terra",
   aiTemperature:    0.3,
-  realtimeModel:    "gpt-realtime-2.1",
+  realtimeModel:    "gpt-realtime-2.1-mini",
 
   defaultLotSize:   0.01,
   maxDailyLossPct:  2.0,
