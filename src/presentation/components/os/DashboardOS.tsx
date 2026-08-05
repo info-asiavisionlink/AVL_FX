@@ -21,6 +21,7 @@ import { useAgentPipeline }    from "@/presentation/hooks/useAgentPipeline";
 import { useSettingsStore }    from "@/application/stores/settingsStore";
 import { HolographicAICore }   from "@/presentation/components/os/HolographicAICore";
 import { ParticleTorus }       from "@/presentation/components/os/ParticleTorus";
+import { AnalysisEngine }      from "@/presentation/components/os/AnalysisEngine";
 import type { MarketPosition, MarketAccount } from "@/infrastructure/connection/GatewayClient";
 import {
   Wifi, WifiOff, Radio, Mic, MicOff, Send, Volume2, VolumeX,
@@ -1815,9 +1816,16 @@ export function DashboardOS() {
             </div>
           </div>
 
+          {/* ── ANALYSIS ENGINE (mode=analysis) ── */}
+          {mode === "analysis" && (
+            <div className="flex-1 overflow-hidden min-w-0">
+              <AnalysisEngine activeSymbol={activeSymbol}/>
+            </div>
+          )}
+
           {/* ── ONE CONTINUOUS IMMERSIVE AI CANVAS ── */}
           {/* Particles + mic all on the same plane, no separators */}
-          <div className="flex-1 relative overflow-hidden min-w-0">
+          <div className={cn("flex-1 relative overflow-hidden min-w-0", mode === "analysis" && "hidden")}>
 
 
             {/* ░░ LAYER 0 — particle background ░░ */}
