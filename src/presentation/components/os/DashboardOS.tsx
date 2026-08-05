@@ -1303,68 +1303,54 @@ export function DashboardOS() {
   // 時計
   useEffect(() => { const id = setInterval(()=>setTime(new Date()),1000); return ()=>clearInterval(id); }, []);
 
-  // Gateway REST から symbolList・account をポーリング取得
-  // WebSocket初期メッセージのタイミング問題を補完するため常時実行
+  // /api/mt5/live プロキシ経由でポーリング（CORS回避）
   useEffect(() => {
-    const gwUrl = process.env.NEXT_PUBLIC_MT5_GATEWAY_HTTP_URL ?? "http://127.0.0.1:8080";
-
-    const fetchSymbols = async () => {
+    const fetchLive = async () => {
       try {
-        const res = await fetch(`${gwUrl}/symbols`);
+        const res = await fetch("/api/mt5/live");
         if (!res.ok) return;
-        const data = await res.json() as Array<{
-          symbol: string; bid: number; ask: number; spread: number;
-          digits?: number; point?: number; changePct?: number;
-          contractSize?: number; tickValue?: number; tickSize?: number;
-          high52?: number; low52?: number; prevClose?: number; time?: number;
-        }>;
-        if (!Array.isArray(data) || data.length === 0) return;
+        const data = await res.json() as {
+          symbols: Array<{
+            symbol: string; bid: number; ask: number; spread: number;
+            digits?: number; point?: number; changePct?: number;
+            contractSize?: number; tickValue?: number; tickSize?: number;
+            high52?: number; low52?: number; prevClose?: number; time?: number;
+          }>;
+          account: unknown;
+          indicators: Array<{ symbol: string; [k: string]: unknown }>;
+        };
 
-        // useMarketStore の setSymbols は MarketSymbol[] を期待
-        const normalized = data.map(s => ({
-          symbol:       s.symbol,
-          bid:          s.bid ?? 0,
-          ask:          s.ask ?? 0,
-          spread:       s.spread ?? 0,
-          changePct:    s.changePct ?? 0,
-          digits:       s.digits ?? 5,
-          point:        s.point ?? 0.00001,
-          contractSize: s.contractSize ?? 100000,
-          tickValue:    s.tickValue ?? 0,
-          tickSize:     s.tickSize ?? 0,
-          high52:       s.high52 ?? 0,
-          low52:        s.low52 ?? 0,
-          prevClose:    s.prevClose ?? 0,
-          time:         s.time ?? 0,
-        }));
-        setSymbols(normalized);
-      } catch {}
-    };
+        if (Array.isArray(data.symbols) && data.symbols.length > 0) {
+          setSymbols(data.symbols.map(s => ({
+            symbol:       s.symbol,
+            bid:          s.bid ?? 0,
+            ask:          s.ask ?? 0,
+            spread:       s.spread ?? 0,
+            changePct:    s.changePct ?? 0,
+            digits:       s.digits ?? 5,
+            point:        s.point ?? 0.00001,
+            contractSize: s.contractSize ?? 100000,
+            tickValue:    s.tickValue ?? 0,
+            tickSize:     s.tickSize ?? 0,
+            high52:       s.high52 ?? 0,
+            low52:        s.low52 ?? 0,
+            prevClose:    s.prevClose ?? 0,
+            time:         s.time ?? 0,
+          })));
+        }
 
-    // account REST ポーリング
-    const fetchAccount = async () => {
-      try {
-        const res = await fetch(`${gwUrl}/account`);
-        if (res.ok) { const acc = await res.json(); setAccount(acc); }
-      } catch {}
-    };
+        if (data.account) setAccount(data.account as Parameters<typeof setAccount>[0]);
 
-    // indicators REST ポーリング
-    const fetchIndicators = async () => {
-      try {
-        const res = await fetch(`${gwUrl}/indicators`);
-        if (!res.ok) return;
-        const list = await res.json() as Array<{ symbol: string; [k: string]: unknown }>;
-        if (Array.isArray(list)) {
-          list.forEach(ind => { if (ind.symbol) setIndicators(ind as unknown as Parameters<typeof setIndicators>[0]); });
+        if (Array.isArray(data.indicators)) {
+          data.indicators.forEach(ind => {
+            if (ind.symbol) setIndicators(ind as unknown as Parameters<typeof setIndicators>[0]);
+          });
         }
       } catch {}
     };
 
-    fetchSymbols();
-    fetchAccount();
-    fetchIndicators();
-    const id = setInterval(() => { fetchSymbols(); fetchAccount(); fetchIndicators(); }, 5000);
+    fetchLive();
+    const id = setInterval(fetchLive, 5000);
     return () => clearInterval(id);
   }, [setSymbols, setIndicators]);
 
