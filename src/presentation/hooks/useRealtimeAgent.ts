@@ -56,7 +56,8 @@ interface OrderProposal {
   reason:     string;
 }
 
-const GW = () => process.env.NEXT_PUBLIC_MT5_GATEWAY_HTTP_URL ?? "http://127.0.0.1:8080";
+// All gateway calls go through Vercel API proxy (avoids CORS + env var issues)
+const API = "/api/mt5";
 
 // Post-speech silence before resuming mic (ms)
 // Generous buffer to let TTS audio fully drain + prevent echo re-trigger
@@ -186,8 +187,8 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
           const key = s.toUpperCase().replace("/", "");
           try {
             const [tickRes, indRes] = await Promise.all([
-              fetch(`${GW()}/tick/${key}`).then(r => r.ok ? r.json() : null),
-              fetch(`${GW()}/indicators/${key}`).then(r => r.ok ? r.json() : null),
+              fetch(`${API}/tick/${key}`).then(r => r.ok ? r.json() : null),
+              fetch(`${API}/indicators/${key}`).then(r => r.ok ? r.json() : null),
             ]);
             if (!tickRes && !indRes) return JSON.stringify({ error: `${key} のデータがGatewayにありません。` });
             const result: Record<string, unknown> = { symbol: key };
@@ -202,7 +203,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
         name: "get_positions", description: "MT5 の現在のオープンポジション一覧を取得する",
         parameters: z.object({}),
         execute: async () => {
-          try { const r = await fetch(`${GW()}/positions`); return r.ok ? await r.text() : JSON.stringify({ error: "取得失敗" }); }
+          try { const r = await fetch(`${API}/positions`); return r.ok ? await r.text() : JSON.stringify({ error: "取得失敗" }); }
           catch { return JSON.stringify({ error: "Gateway 接続失敗" }); }
         },
       });
@@ -211,7 +212,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
         name: "get_account", description: "MT5 の口座情報（残高・証拠金・損益）を取得する",
         parameters: z.object({}),
         execute: async () => {
-          try { const r = await fetch(`${GW()}/account`); return r.ok ? await r.text() : JSON.stringify({ error: "取得失敗" }); }
+          try { const r = await fetch(`${API}/live`).then(async res => { const d = await res.json(); return { ...d.account }; }); return JSON.stringify(r); }
           catch { return JSON.stringify({ error: "Gateway 接続失敗" }); }
         },
       });
