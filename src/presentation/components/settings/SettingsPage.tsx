@@ -160,7 +160,8 @@ export function SettingsPage() {
               <input
                 type="text"
                 value={settings.operatorName}
-                onChange={e => s({ operatorName: e.target.value || "ボス" })}
+                onChange={e => s({ operatorName: e.target.value })}
+                onBlur={e => { if (!e.target.value.trim()) s({ operatorName: "ボス" }); }}
                 placeholder="ボス"
                 maxLength={20}
                 className="w-full bg-[#04060d] border border-[#0d1520] px-3 py-1.5 text-[9px] font-mono text-cyan-300 outline-none focus:border-cyan-700/60 transition-colors"
