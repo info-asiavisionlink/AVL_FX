@@ -116,7 +116,12 @@ export async function buildMarketSnapshot(symbol: string): Promise<MarketSnapsho
   interface RawTFInd { ema21: number; ema200: number; sma50: number; atr: number; rsi: number; macd: number; macdSignal: number; macdHist: number; adx: number; diPlus: number; diMinus: number; bbUpper: number; bbMid: number; bbLower: number; bbWidth: number; trend: string; }
   interface GWAccount { login: number; broker: string; currency: string; balance: number; equity: number; margin: number; freeMargin: number; marginLevel: number; leverage: number; }
   interface GWPosition { ticket: number; type: number; volume: number; openPrice: number; currentPrice: number; sl: number; tp: number; profit: number; openTime: number; }
-  interface GWSymbol  { symbol: string; bid: number; receivedAt?: number; }
+  interface GWSymbol  {
+    symbol: string; bid: number; ask: number; spread: number;
+    changePct: number; digits: number; point: number;
+    contractSize: number; tickValue: number; tickSize: number;
+    receivedAt?: number;
+  }
 
   const [tick, indData, barsH4, barsH1, barsD1, barsW1, barsM15, barsM5, barsM1,
          account, positions, allSymbols, economicEvents, recentNews] = await Promise.all([
@@ -144,14 +149,21 @@ export async function buildMarketSnapshot(symbol: string): Promise<MarketSnapsho
   const safeM5  = barsM5  ?? [];
   const safeM1  = barsM1  ?? [];
 
-  // 2. 現在価格
-  const bid    = tick?.bid ?? 0;
-  const ask    = tick?.ask ?? 0;
-  const digits = tick?.digits ?? (indData?.digits ?? 5);
+  // Market Watch Symbol Store から現在価格を取得（EA が1チャートのみの場合のフォールバック）
+  // tickStore はEAが動作しているシンボルのみ。symbolStore は全Market Watchシンボルを含む。
+  const mwSymbol = (allSymbols ?? []).find(s => s.symbol.toUpperCase() === sym);
+
+  // 2. 現在価格（tickStore 優先 → symbolStore フォールバック）
+  const bid    = tick?.bid ?? mwSymbol?.bid ?? 0;
+  const ask    = tick?.ask ?? mwSymbol?.ask ?? 0;
+  const digits = tick?.digits ?? mwSymbol?.digits ?? (indData?.digits ?? 5);
   // EAのTick streamはspreadを points単位で送信する（5桁ブローカーの場合 pips×10）
-  // MarketWatch (indData) は pips変換済み。Tick は生のpoints。
+  // MarketWatch (symbolStore) は pips変換済み。Tick は生のpoints。
   const rawSpread = tick?.spread ?? 0;
-  const spread = (digits === 5 || digits === 3) ? rawSpread / 10 : rawSpread;
+  const mwSpread  = mwSymbol?.spread ?? 0;  // already in pips from MarketWatch
+  const spread = rawSpread > 0
+    ? ((digits === 5 || digits === 3) ? rawSpread / 10 : rawSpread)
+    : mwSpread;
   const currentPrice = bid || ask || 0;
 
   // 3. セッション
@@ -331,8 +343,13 @@ export async function buildMarketSnapshot(symbol: string): Promise<MarketSnapsho
   }));
 
   // 14. 鮮度サマリー
-  const overallSource: DataSource = !tick ? "UNAVAILABLE" :
-    (Date.now() - (tick?.time ?? 0) * 1000 > TICK_STALE_MS * 3) ? "MT5_STALE" : "MT5_LIVE";
+  // tick がなくても symbolStore から価格が取得できれば MT5_LIVE（Market Watch 経由）
+  const hasPriceData = bid > 0;
+  const hasTickData  = tick !== null && tick.bid > 0;
+  const overallSource: DataSource =
+    !hasPriceData ? "UNAVAILABLE" :
+    hasTickData && (Date.now() - (tick?.time ?? 0) * 1000 > TICK_STALE_MS * 3) ? "MT5_STALE" :
+    hasPriceData ? "MT5_LIVE" : "UNAVAILABLE";
   const indicatorFreshnessSec = Math.round((Date.now() - indReceivedAt) / 1000);
 
   return {
