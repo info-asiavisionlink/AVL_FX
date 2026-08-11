@@ -19,15 +19,9 @@ import { useRealtimeAgent }    from "@/presentation/hooks/useRealtimeAgent";
 import { useMonitor }          from "@/presentation/hooks/useMonitor";
 import { useAgentPipeline }    from "@/presentation/hooks/useAgentPipeline";
 import { useSettingsStore }    from "@/application/stores/settingsStore";
+import { HolographicAICore }   from "@/presentation/components/os/HolographicAICore";
+import { ParticleTorus }       from "@/presentation/components/os/ParticleTorus";
 import { AnalysisEngine }      from "@/presentation/components/os/AnalysisEngine";
-import { BrainParticleCore }   from "@/presentation/components/ai-brain/BrainParticleCore";
-import { ReasoningChain }      from "@/presentation/components/ai-brain/ReasoningChain";
-import type { ChainStage }     from "@/presentation/components/ai-brain/ReasoningChain";
-import { MarketScannerDisplay }from "@/presentation/components/ai-brain/MarketScannerDisplay";
-import { OpportunityRanker }   from "@/presentation/components/ai-brain/OpportunityRanker";
-import { ActivityStream }      from "@/presentation/components/ai-brain/ActivityStream";
-import { useBrainScanner }     from "@/presentation/hooks/useBrainScanner";
-import { useAIBrain }          from "@/presentation/hooks/useAIBrain";
 import type { MarketPosition, MarketAccount } from "@/infrastructure/connection/GatewayClient";
 import {
   Wifi, WifiOff, Radio, Mic, MicOff, Send, Volume2, VolumeX,
@@ -1431,11 +1425,6 @@ export function DashboardOS() {
   // Multi-Agent パイプライン
   const pipeline = useAgentPipeline();
 
-  // AI Brain — scanner + single-symbol analysis
-  const brainScanner = useBrainScanner();
-  const aiBrain      = useAIBrain();
-  const [brainRightTab, setBrainRightTab] = useState<"scanner"|"ranker"|"feed">("scanner");
-
   // 外部市場データ取得（Twelve Data / デモ）
   useEffect(() => {
     const SYMBOLS = "DXY,US30/USD,XAU/USD,VIX,JP225/USD,US100/USD";
@@ -1701,91 +1690,11 @@ export function DashboardOS() {
     voice.status === "connecting" ? "CONNECTING..." :
     isConnected     ? "STANDBY"     : "OFFLINE";
 
-  // ── Brain state auto tab switch ─────────────────────────────────
-  useEffect(() => { if (brainScanner.scanning) setBrainRightTab("scanner"); }, [brainScanner.scanning]);
-  useEffect(() => {
-    if (!brainScanner.scanning && brainScanner.opportunities.length > 0) setBrainRightTab("ranker");
-  }, [brainScanner.scanning, brainScanner.opportunities.length]);
-
-  // ── Brain particle state derivation ────────────────────────────
-  const brainParticleState = useMemo(() => {
-    if (voice.status === "speaking")  return "speaking";
-    if (voice.status === "listening") return "listening";
-    if (voiceThinking || thinking)    return "reasoning";
-    const vMap: Record<string,string> = {
-      scanning:"scanning", collecting:"collecting", analyzing:"analyzing",
-      complete_buy:"complete_buy", complete_sell:"complete_sell", complete_wait:"complete_wait",
-      error:"error",
-    };
-    if (vMap[brainScanner.brainVisState]) return vMap[brainScanner.brainVisState];
-    const sMap: Record<string,string> = {
-      snapshot:"collecting", decision:"analyzing", risk:"risk_check",
-      dryrun:"dryrun",
-      complete: aiBrain.proposal?.decision === "BUY"  ? "complete_buy"  :
-                aiBrain.proposal?.decision === "SELL" ? "complete_sell" : "complete_wait",
-      error:"error",
-    };
-    return sMap[aiBrain.step] ?? "idle";
-  }, [voice.status, voiceThinking, thinking, brainScanner.brainVisState, aiBrain.step, aiBrain.proposal]);
-
-  const brainDecision: "BUY"|"SELL"|"WAIT"|null =
-    aiBrain.proposal?.decision ?? (
-      brainScanner.brainVisState === "complete_buy"  ? "BUY"  :
-      brainScanner.brainVisState === "complete_sell" ? "SELL" :
-      brainScanner.brainVisState === "complete_wait" ? "WAIT" : null
-    );
-
-  // ── Reasoning chain stage derivation ───────────────────────────
-  const CHAIN_ALL: ChainStage[] = [
-    "market_structure","dow_theory","multi_tf","momentum","oscillators",
-    "correlation","fundamental","news","risk","decision",
-  ];
-  const { chainActive, chainCompleted, chainRunning } = useMemo(() => {
-    if (brainScanner.scanning) {
-      const m: Record<string,{a:ChainStage|null;d:number}> = {
-        scanning:   {a:"market_structure", d:0},
-        collecting: {a:"dow_theory",       d:1},
-        analyzing:  {a:"correlation",      d:5},
-      };
-      const sm = m[brainScanner.brainVisState];
-      if (sm) return {chainActive:sm.a, chainCompleted:CHAIN_ALL.slice(0,sm.d), chainRunning:true};
-      if (brainScanner.brainVisState.startsWith("complete"))
-        return {chainActive:null, chainCompleted:CHAIN_ALL, chainRunning:false};
-    }
-    const bs: Record<string,{a:ChainStage|null;d:number;r:boolean}> = {
-      snapshot:{a:"market_structure",d:0,r:true}, decision:{a:"fundamental",d:4,r:true},
-      risk:{a:"risk",d:8,r:true}, dryrun:{a:"decision",d:9,r:true},
-      complete:{a:null,d:10,r:false},
-    };
-    const b = bs[aiBrain.step];
-    if (b) return {chainActive:b.a, chainCompleted:CHAIN_ALL.slice(0,b.d), chainRunning:b.r};
-    return {chainActive:null, chainCompleted:[], chainRunning:false};
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brainScanner.scanning, brainScanner.brainVisState, aiBrain.step]);
-
-  // ── Brain state label/color for HUD ────────────────────────────
-  const BRAIN_STATE_META: Record<string,{label:string;color:string}> = {
-    idle:         {label:"STANDBY",    color:"#2a3a4a"},
-    scanning:     {label:"SCANNING",   color:"#00e5ff"},
-    collecting:   {label:"COLLECTING", color:"#00bfff"},
-    analyzing:    {label:"ANALYZING",  color:"#a855f7"},
-    reasoning:    {label:"REASONING",  color:"#a855f7"},
-    risk_check:   {label:"RISK CHECK", color:"#f97316"},
-    complete_buy: {label:"BUY",        color:"#00ff88"},
-    complete_sell:{label:"SELL",       color:"#ff1a4e"},
-    complete_wait:{label:"WAIT",       color:"#00e5ff"},
-    error:        {label:"ERROR",      color:"#ef4444"},
-    speaking:     {label:"SPEAKING",   color:"#7c3aed"},
-    listening:    {label:"LISTENING",  color:"#2563eb"},
-    dryrun:       {label:"DRY RUN",    color:"#22c55e"},
-  };
-  const brainMeta = BRAIN_STATE_META[brainParticleState] ?? BRAIN_STATE_META.idle;
-
   // =================================================================
   // レンダリング — JARVIS Style v4.0
   // =================================================================
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden relative" style={{background:"radial-gradient(ellipse at 50% 0%, #020c1a 0%, #030508 60%, #020408 100%)"}}>
+    <div className="flex flex-col h-full overflow-hidden relative" style={{background:"radial-gradient(ellipse at 50% 0%, #020c1a 0%, #030508 60%, #020408 100%)"}}>
       {/* Multi-layer animated background */}
       <div className="absolute inset-0 avl-grid-fine opacity-100 pointer-events-none z-0"/>
       <div className="absolute inset-0 avl-scanlines pointer-events-none z-0"/>
@@ -1972,201 +1881,37 @@ export function DashboardOS() {
             </div>
           )}
 
-          {/* ── AVL AI BRAIN COMMAND CENTER ── */}
+          {/* ── ONE CONTINUOUS IMMERSIVE AI CANVAS ── */}
+          {/* Particles + mic all on the same plane, no separators */}
           <div className={cn("flex-1 relative overflow-hidden min-w-0", mode === "analysis" && "hidden")}>
 
-            {/* ░░ LAYER 0 — BrainParticleCore fills the entire canvas ░░ */}
+
+            {/* ░░ LAYER 0 — particle background ░░ */}
             <div className="absolute inset-0 z-0">
-              <BrainParticleCore
-                brainState={brainParticleState}
-                decision={brainDecision}
-                voiceAmp={voice.status === "speaking" ? 0.65 : voice.status === "listening" ? 0.3 : 0}
-                className="w-full h-full"
-              />
+              <HolographicAICore mode={mode} isActive={isActive} isThinking={thinking || voiceThinking} voiceStatus={voice.status}/>
             </div>
 
-            {/* ░░ LAYER 8 — HUD corner brackets ░░ */}
+            {/* ░░ LAYER 5 — torus ring ░░ */}
+            <div className="absolute inset-0 z-[5] pointer-events-none">
+              <ParticleTorus voiceStatus={voice.status} isThinking={thinking || voiceThinking} />
+            </div>
+
+            {/* ░░ LAYER 10 — AVL AI text, always centered ░░ */}
+            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+              <p className="font-black font-mono tracking-[0.55em] select-none"
+                style={{fontSize:30, color:"#ffffff",
+                  textShadow:"0 0 12px #ffffff, 0 0 30px #ffffff99, 0 0 60px #aaddff66, 0 0 100px #88bbff33"}}>
+                AVL AI
+              </p>
+            </div>
+
+            {/* ░░ LAYER 10 — HUD corner brackets ░░ */}
             {["top-3 left-3 border-t-2 border-l-2","top-3 right-3 border-t-2 border-r-2",
               "bottom-3 left-3 border-b-2 border-l-2","bottom-3 right-3 border-b-2 border-r-2"
             ].map((cls,i) => (
-              <div key={i} className={`absolute w-5 h-5 pointer-events-none z-[8] ${cls}`}
-                style={{borderColor:`${brainMeta.color}50`}}/>
+              <div key={i} className={`absolute w-5 h-5 pointer-events-none z-10 ${cls}`}
+                style={{borderColor:`${neonHex}50`}}/>
             ))}
-
-            {/* ░░ LAYER 10 — TOP CENTER: title + state ░░ */}
-            <div className="absolute top-3 left-0 right-0 z-10 flex flex-col items-center gap-1 pointer-events-none">
-              <p className="text-[7.5px] font-mono tracking-[0.4em] text-purple-400/45">AVL AI BRAIN</p>
-              <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full"
-                  style={{
-                    backgroundColor: brainMeta.color,
-                    boxShadow: `0 0 5px ${brainMeta.color}`,
-                    animation: chainRunning || brainScanner.scanning ? "avl-blink 0.65s ease-in-out infinite" : "none",
-                  }}/>
-                <span className="text-[9px] font-mono font-bold tracking-[0.2em]"
-                  style={{color: brainMeta.color, textShadow:`0 0 8px ${brainMeta.color}60`}}>
-                  {brainMeta.label}
-                </span>
-                <span className="text-[7px] font-mono border px-1.5 py-0.5 ml-1"
-                  style={{borderColor:"#f59e0b40", color:"#f59e0b70"}}>DRY RUN</span>
-              </div>
-            </div>
-
-            {/* ░░ LAYER 12 — CENTER: currently scanning symbol ░░ */}
-            {brainScanner.currentSym && (
-              <div className="absolute inset-0 z-[12] flex flex-col items-center justify-center pointer-events-none">
-                <p className="text-[9px] font-mono text-gray-600 tracking-[0.25em] mb-1">SCANNING</p>
-                <p className="text-[28px] font-black font-mono"
-                  style={{color:neonHex, textShadow:`0 0 20px ${neonHex}80, 0 0 40px ${neonHex}40`}}>
-                  {brainScanner.currentSym}
-                </p>
-                <p className="text-[8px] font-mono text-gray-600 tracking-[0.2em] mt-1">TECHNICAL ANALYSIS</p>
-              </div>
-            )}
-
-            {/* ░░ LAYER 14 — LEFT HUD: AI State + Confidence + controls ░░ */}
-            <div className="absolute top-12 left-2 z-[14] w-[150px] flex flex-col gap-1.5">
-
-              {/* AI State block */}
-              <div className="border px-2 py-1.5 relative overflow-hidden"
-                style={{borderColor:`${brainMeta.color}35`, background:"rgba(2,4,10,0.88)"}}>
-                <div className="absolute top-0 left-0 right-0 h-px"
-                  style={{background:`linear-gradient(90deg,transparent,${brainMeta.color}40,transparent)`}}/>
-                <p className="text-[6px] font-mono text-gray-700 tracking-[0.2em] mb-1">AI STATE</p>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{backgroundColor:brainMeta.color}}/>
-                  <span className="text-[9px] font-black font-mono" style={{color:brainMeta.color}}>
-                    {brainMeta.label}
-                  </span>
-                </div>
-              </div>
-
-              {/* Best opportunity */}
-              {(() => {
-                const best = brainScanner.opportunities[0];
-                const clr  = best?.direction === "BUY" ? "#00ff88" : best?.direction === "SELL" ? "#ff1a4e" : "#00e5ff";
-                return best ? (
-                  <div className="border px-2 py-1.5 relative overflow-hidden"
-                    style={{borderColor:`${clr}30`, background:"rgba(2,4,10,0.88)"}}>
-                    <p className="text-[6px] font-mono text-gray-700 tracking-[0.2em] mb-1">BEST OPP</p>
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <span className="text-[10px] font-black font-mono" style={{color:clr}}>{best.symbol}</span>
-                      <span className="text-[7px] font-mono font-bold ml-1" style={{color:clr}}>{best.direction}</span>
-                    </div>
-                    <div className="flex gap-2 text-[6.5px] font-mono">
-                      <span className="text-gray-700">CONF <span style={{color:clr}}>{best.confidence}%</span></span>
-                      {best.rr && <span className="text-gray-700">RR <span className="text-cyan-400">{best.rr.toFixed(1)}</span></span>}
-                    </div>
-                  </div>
-                ) : null;
-              })()}
-
-              {/* Scan / Analyze buttons */}
-              <div className="flex gap-1" style={{pointerEvents:"auto"}}>
-                <button
-                  onClick={brainScanner.scanning ? brainScanner.stop : brainScanner.runScan}
-                  disabled={!["idle","complete","error"].includes(aiBrain.step)}
-                  className="flex-1 flex items-center justify-center gap-0.5 py-1 text-[6.5px] font-mono border transition-all disabled:opacity-40"
-                  style={brainScanner.scanning
-                    ? {borderColor:"#ff1a4e50", color:"#ff1a4e", background:"rgba(255,26,78,0.08)"}
-                    : {borderColor:`${neonHex}40`, color:neonHex, background:`rgba(0,229,255,0.06)`}}>
-                  {brainScanner.scanning ? "■ STOP" : "▶ SCAN"}
-                </button>
-                <button
-                  onClick={() => aiBrain.run(activeSymbol)}
-                  disabled={brainScanner.scanning || !["idle","complete","error"].includes(aiBrain.step)}
-                  className="flex-1 py-1 text-[6.5px] font-mono border transition-all disabled:opacity-40"
-                  style={{borderColor:"#a855f740", color:"#a855f7", background:"rgba(168,85,247,0.06)"}}>
-                  ANALYZE
-                </button>
-              </div>
-
-              {/* Brain step progress (single analysis) */}
-              {aiBrain.step !== "idle" && (
-                <div className="border px-2 py-1.5"
-                  style={{borderColor:"#a855f725", background:"rgba(2,4,10,0.88)"}}>
-                  <p className="text-[6px] font-mono text-purple-400/60 tracking-[0.2em] mb-1">BRAIN STEP</p>
-                  {(["snapshot","decision","risk","dryrun","complete"] as const).map(s => {
-                    const ORDER = ["idle","snapshot","decision","risk","dryrun","executing","complete","error"];
-                    const done  = ORDER.indexOf(aiBrain.step) > ORDER.indexOf(s);
-                    const act   = aiBrain.step === s;
-                    return (
-                      <div key={s} className="flex items-center gap-1 py-0.5">
-                        <div className={cn("w-1 h-1 rounded-full shrink-0",
-                          done ? "bg-green-500" : act ? "bg-cyan-400 animate-pulse" : "bg-gray-800")}/>
-                        <span className={cn("text-[6px] font-mono",
-                          done ? "text-green-400/50" : act ? "text-cyan-400" : "text-gray-800")}>
-                          {s.toUpperCase()}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* ░░ LAYER 14 — RIGHT HUD: Scanner/Ranker/Feed tabs ░░ */}
-            <div className="absolute top-12 right-2 z-[14] w-[192px] flex flex-col gap-0"
-              style={{maxHeight:"calc(100% - 190px)", pointerEvents:"auto"}}>
-
-              {/* Tab bar */}
-              <div className="flex border border-cyan-900/20 shrink-0" style={{background:"rgba(2,4,10,0.92)"}}>
-                {([
-                  {id:"scanner" as const, label:"SCAN"},
-                  {id:"ranker"  as const, label:"OPP"},
-                  {id:"feed"    as const, label:"FEED"},
-                ] as const).map(({id,label}) => (
-                  <button key={id} onClick={() => setBrainRightTab(id)}
-                    className={cn("flex-1 py-1 text-[6.5px] font-mono tracking-wider border-b-2 transition-all",
-                      brainRightTab === id
-                        ? "border-cyan-400 text-cyan-400 bg-cyan-950/20"
-                        : "border-transparent text-gray-700 hover:text-gray-500"
-                    )}>
-                    {label}
-                    {id === "ranker" && brainScanner.opportunities.filter(o=>o.direction!=="WAIT").length > 0 && (
-                      <span className="ml-1 text-cyan-400/60">
-                        {brainScanner.opportunities.filter(o=>o.direction!=="WAIT").length}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 min-h-0 overflow-hidden border border-t-0 border-cyan-900/20"
-                style={{background:"rgba(2,4,10,0.88)"}}>
-                {brainRightTab === "scanner" && (
-                  <MarketScannerDisplay
-                    symbols={brainScanner.symbols}
-                    scanning={brainScanner.scanning}
-                    rows={brainScanner.scanRows}
-                    currentSym={brainScanner.currentSym}
-                  />
-                )}
-                {brainRightTab === "ranker" && (
-                  <OpportunityRanker
-                    opportunities={brainScanner.opportunities}
-                    scanning={brainScanner.scanning}
-                  />
-                )}
-                {brainRightTab === "feed" && (
-                  <ActivityStream events={brainScanner.events} maxVisible={30}/>
-                )}
-              </div>
-            </div>
-
-            {/* ░░ LAYER 18 — Reasoning Chain (above mic area) ░░ */}
-            <div className="absolute left-0 right-0 z-[18] px-1 pointer-events-none" style={{bottom:"168px"}}>
-              <div className="border border-cyan-900/20" style={{background:"rgba(2,4,10,0.88)"}}>
-                <ReasoningChain
-                  activeStage={chainActive}
-                  completedStages={chainCompleted}
-                  decision={brainDecision}
-                  running={chainRunning}
-                />
-              </div>
-            </div>
 
             {/* ░░ LAYER 20 — signal notification (floats above mic) ░░ */}
             {monitor.signals.length > 0 && (
