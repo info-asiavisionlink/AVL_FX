@@ -204,6 +204,15 @@ export class GatewayClient {
     } catch { return []; }
   }
 
+  /** 現在の全インジケーターデータを HTTP で取得（接続直後の初期ロードに使用） */
+  async getIndicators(): Promise<IndicatorData[]> {
+    try {
+      const res = await fetch(`${this.httpUrl}/indicators`, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return [];
+      return res.json() as Promise<IndicatorData[]>;
+    } catch { return []; }
+  }
+
   async getLatestTick(symbol: string): Promise<MarketTick | null> {
     try {
       const res = await fetch(`${this.httpUrl}/tick/${symbol.toUpperCase()}`, {
