@@ -200,8 +200,9 @@ void main() {
   vGlow  = (isBuy + isSell + isThinking) * uEnergy;
 
   vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
-  float ptSz = aSize * 300.0 / -mvPos.z;
-  gl_PointSize = clamp(ptSz, 0.5, 6.0);
+  // サイズ制限を 4px に → 粒子間に黒い空間を確保、白塊防止
+  float ptSz = aSize * 260.0 / -mvPos.z;
+  gl_PointSize = clamp(ptSz, 0.5, 4.0);
   gl_Position  = projectionMatrix * mvPos;
 }
 `;
@@ -219,30 +220,37 @@ void main() {
   float d = length(uv);
   if (d > 0.5) discard;
 
-  // soft disc with glow center
-  float core = exp(-d * d * 18.0);
-  float ring = (1.0 - smoothstep(0.3, 0.5, d)) * 0.5;
-  float alpha = vAlpha * (core + ring * 0.4);
+  // soft disc — 中心だけ明るく、外側はすぐ透明になる
+  float core = exp(-d * d * 22.0);
+  float halo = exp(-d * d * 7.0) * 0.3;
+  float alpha = vAlpha * (core + halo);
+  // 粒子1個のmax alpha を抑えて密集箇所の白塊を防止
+  alpha = min(alpha, 0.78);
 
-  gl_FragColor = vec4(vColor + vGlow * core * 0.5, alpha);
+  gl_FragColor = vec4(vColor + vGlow * core * 0.35, alpha);
 }
 `;
 
 // ── State → uniforms mapping ───────────────────────────────────────
 const STATE_MAP: Record<string, { stateIdx: number; energy: number }> = {
-  idle:       { stateIdx: 0, energy: 0.35 },
-  scanning:   { stateIdx: 1, energy: 0.75 },
-  snapshot:   { stateIdx: 2, energy: 0.65 },
-  decision:   { stateIdx: 3, energy: 0.90 },
-  risk:       { stateIdx: 4, energy: 0.85 },
-  dryrun:     { stateIdx: 5, energy: 0.80 },
-  complete_buy:  { stateIdx: 5, energy: 0.95 },
-  complete_sell: { stateIdx: 6, energy: 0.95 },
-  complete_wait: { stateIdx: 7, energy: 0.50 },
-  complete:   { stateIdx: 7, energy: 0.45 },
-  error:      { stateIdx: 6, energy: 0.40 },
-  listening:  { stateIdx: 8, energy: 0.70 },
-  speaking:   { stateIdx: 9, energy: 0.80 },
+  idle:          { stateIdx: 0, energy: 0.30 },
+  standby:       { stateIdx: 0, energy: 0.30 },
+  scanning:      { stateIdx: 1, energy: 0.70 },
+  collecting:    { stateIdx: 2, energy: 0.60 },
+  snapshot:      { stateIdx: 2, energy: 0.60 },
+  analyzing:     { stateIdx: 3, energy: 0.82 },
+  decision:      { stateIdx: 3, energy: 0.82 },
+  reasoning:     { stateIdx: 4, energy: 0.78 },
+  risk:          { stateIdx: 4, energy: 0.78 },
+  risk_check:    { stateIdx: 4, energy: 0.78 },
+  dryrun:        { stateIdx: 5, energy: 0.72 },
+  complete_buy:  { stateIdx: 5, energy: 0.88 },
+  complete_sell: { stateIdx: 6, energy: 0.88 },
+  complete_wait: { stateIdx: 7, energy: 0.45 },
+  complete:      { stateIdx: 7, energy: 0.42 },
+  error:         { stateIdx: 6, energy: 0.38 },
+  listening:     { stateIdx: 8, energy: 0.65 },
+  speaking:      { stateIdx: 9, energy: 0.75 },
 };
 
 // ── Component ──────────────────────────────────────────────────────
@@ -253,10 +261,11 @@ interface Props {
   className?: string;
 }
 
-const N_CORE    = 5_000;
+// 白塊防止のため CORE を減らし、ORBITAL を維持してシルエット感を出す
+const N_CORE    = 3_000;
 const N_ORBITAL = 10_000;
-const N_STREAM  = 7_000;
-const N_AMBIENT = 3_000;
+const N_STREAM  = 6_000;
+const N_AMBIENT = 2_500;
 const N_TOTAL   = N_CORE + N_ORBITAL + N_STREAM + N_AMBIENT;
 
 function rand(a = 0, b = 1) { return a + Math.random() * (b - a); }
@@ -289,13 +298,15 @@ export const BrainParticleCore = memo(function BrainParticleCore({ brainState, d
     el.appendChild(renderer.domElement);
 
     const scene  = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(60, W / H, 0.01, 100);
-    camera.position.set(0, 0, 5.5);
+    // FOV 55° / z=6.5 → 粒子がコンテナ内に収まり密集しすぎない
+    const camera = new THREE.PerspectiveCamera(55, W / H, 0.01, 100);
+    camera.position.set(0, 0, 6.5);
 
     // ── Bloom post-processing ───────────────────────────────────
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 1.2, 0.5, 0.1);
+    // strength低め・threshold高め → 白塊防止、粒子が個別認識できる明るさに
+    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.45, 0.7, 0.22);
     composer.addPass(bloom);
 
     // ── Build geometry ──────────────────────────────────────────
