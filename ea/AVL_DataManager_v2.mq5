@@ -349,25 +349,26 @@ void IndicatorStream_Send()
       // RSI14
       double rsi14  = GetIndicatorValue(iRSI(g_Symbol, tf, 14, PRICE_CLOSE), 0, 1);
 
-      // MACD(12,26,9)
+      // MACD(12,26,9) — マルチバッファ: ReadBuffer()を使用（ハンドルを保持）
       int hMACD = iMACD(g_Symbol, tf, 12, 26, 9, PRICE_CLOSE);
-      double macdMain = GetIndicatorValue(hMACD, 0, 1);
-      double macdSig  = GetIndicatorValue(hMACD, 1, 1);
+      double macdMain = ReadBuffer(hMACD, 0, 1);
+      double macdSig  = ReadBuffer(hMACD, 1, 1);
       double macdHist = macdMain - macdSig;
       if(hMACD != INVALID_HANDLE) IndicatorRelease(hMACD);
 
-      // ADX14
+      // ADX14 — マルチバッファ
       int hADX = iADX(g_Symbol, tf, 14);
-      double adx    = GetIndicatorValue(hADX, 0, 1);
-      double diPlus = GetIndicatorValue(hADX, 1, 1);
-      double diMinus= GetIndicatorValue(hADX, 2, 1);
+      double adx    = ReadBuffer(hADX, 0, 1);
+      double diPlus = ReadBuffer(hADX, 1, 1);
+      double diMinus= ReadBuffer(hADX, 2, 1);
       if(hADX != INVALID_HANDLE) IndicatorRelease(hADX);
 
-      // Bollinger Bands(20, 2)
+      // Bollinger Bands(20, 2) — マルチバッファ
+      // Buffer 0=BASE_LINE(mid), 1=UPPER_BAND, 2=LOWER_BAND
       int hBB = iBands(g_Symbol, tf, 20, 0, 2.0, PRICE_CLOSE);
-      double bbUpper = GetIndicatorValue(hBB, 1, 1);
-      double bbMid   = GetIndicatorValue(hBB, 0, 1);
-      double bbLower = GetIndicatorValue(hBB, 2, 1);
+      double bbMid   = ReadBuffer(hBB, 0, 1);
+      double bbUpper = ReadBuffer(hBB, 1, 1);
+      double bbLower = ReadBuffer(hBB, 2, 1);
       double bbWidth = (bbMid > 0) ? (bbUpper - bbLower) / bbMid * 100.0 : 0;
       if(hBB != INVALID_HANDLE) IndicatorRelease(hBB);
 
@@ -405,7 +406,8 @@ void IndicatorStream_Send()
    HTTP_Post("/indicators", body);
 }
 
-// インジケーターハンドルから値を1件取得してリリース
+// ── 単一バッファ読み取り + ハンドル解放（単一バッファインジケーター用）──
+// EMA, ATR, RSI など1バッファのインジケーターに使用する
 double GetIndicatorValue(int handle, int buffer, int shift)
 {
    if(handle == INVALID_HANDLE) return 0.0;
@@ -413,8 +415,20 @@ double GetIndicatorValue(int handle, int buffer, int shift)
    ArraySetAsSeries(buf, true);
    double val = 0.0;
    if(CopyBuffer(handle, buffer, shift, 1, buf) > 0) val = buf[0];
-   IndicatorRelease(handle);
+   IndicatorRelease(handle);   // 1バッファのみなのでここで解放
    return val;
+}
+
+// ── マルチバッファ読み取り（ハンドルを解放しない）──
+// MACD, ADX, Bollinger など複数バッファを同一ハンドルから読む際に使用する
+// 呼び出し側で IndicatorRelease() を明示的に呼ぶこと
+double ReadBuffer(int handle, int buffer, int shift)
+{
+   if(handle == INVALID_HANDLE) return 0.0;
+   double buf[];
+   ArraySetAsSeries(buf, true);
+   if(CopyBuffer(handle, buffer, shift, 1, buf) > 0) return buf[0];
+   return 0.0;
 }
 
 //=================================================================//

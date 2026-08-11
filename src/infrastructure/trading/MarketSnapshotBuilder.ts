@@ -21,6 +21,7 @@ import { analyzeSupportResistance }  from "@/infrastructure/analysis/supportResi
 import { analyzeCandlestickPatterns } from "@/infrastructure/analysis/candlestickPatterns";
 import { analyzeChartPatterns }      from "@/infrastructure/analysis/chartPatterns";
 import { getUpcomingEvents, getRecentNews } from "@/infrastructure/supabase/repository";
+import { evalCorrelation, updatePrice } from "./CorrelationCache";
 import type { Bar } from "@/infrastructure/analysis/types";
 
 // -----------------------------------------------------------------
@@ -30,27 +31,34 @@ const INDICATOR_STALE_MS = 60_000;   // 60s: EA は30s毎に送信
 const TICK_STALE_MS      = 10_000;   // 10s
 const NEWS_STALE_MS      = 300_000;  // 5min
 
+// 相関マップ — ブローカーの実際のシンボル名を使用
+// XAUUSD は XM では GOLD として表示されるケースあり → 両方登録
 const CORR_MAP: Record<string, { symbol: string; relationship: "positive" | "negative"; weight: number }[]> = {
   EURUSD: [
     { symbol: "GBPUSD",     relationship: "positive", weight: 0.80 },
     { symbol: "USDJPY",     relationship: "negative", weight: 0.70 },
-    { symbol: "XAUUSD",     relationship: "negative", weight: 0.50 },
+    { symbol: "GOLD",       relationship: "negative", weight: 0.45 },
     { symbol: "USDX-SEP26", relationship: "negative", weight: 0.90 },
+    { symbol: "USDCHF",     relationship: "negative", weight: 0.75 },
   ],
   USDJPY: [
     { symbol: "USDX-SEP26", relationship: "positive", weight: 0.90 },
     { symbol: "US30Cash",   relationship: "positive", weight: 0.60 },
-    { symbol: "XAUUSD",     relationship: "negative", weight: 0.50 },
+    { symbol: "GOLD",       relationship: "negative", weight: 0.50 },
     { symbol: "JP225Cash",  relationship: "positive", weight: 0.65 },
+    { symbol: "EURUSD",     relationship: "negative", weight: 0.60 },
   ],
   GBPUSD: [
     { symbol: "EURUSD",     relationship: "positive", weight: 0.80 },
     { symbol: "USDX-SEP26", relationship: "negative", weight: 0.85 },
+    { symbol: "USDJPY",     relationship: "negative", weight: 0.55 },
+    { symbol: "USDCHF",     relationship: "negative", weight: 0.65 },
   ],
   AUDUSD: [
     { symbol: "USDX-SEP26", relationship: "negative", weight: 0.80 },
-    { symbol: "XAUUSD",     relationship: "positive", weight: 0.65 },
+    { symbol: "GOLD",       relationship: "positive", weight: 0.65 },
     { symbol: "NZDUSD",     relationship: "positive", weight: 0.85 },
+    { symbol: "US500Cash",  relationship: "positive", weight: 0.55 },
   ],
   NZDUSD: [
     { symbol: "AUDUSD",     relationship: "positive", weight: 0.85 },
@@ -59,15 +67,33 @@ const CORR_MAP: Record<string, { symbol: string; relationship: "positive" | "neg
   USDCAD: [
     { symbol: "OILCash",    relationship: "negative", weight: 0.70 },
     { symbol: "USDX-SEP26", relationship: "positive", weight: 0.80 },
+    { symbol: "AUDUSD",     relationship: "negative", weight: 0.55 },
   ],
-  XAUUSD: [
-    { symbol: "USDX-SEP26", relationship: "negative", weight: 0.85 },
-    { symbol: "EURUSD",     relationship: "positive", weight: 0.60 },
-    { symbol: "USDJPY",     relationship: "negative", weight: 0.50 },
+  USDCHF: [
+    { symbol: "USDX-SEP26", relationship: "positive", weight: 0.80 },
+    { symbol: "EURUSD",     relationship: "negative", weight: 0.75 },
+    { symbol: "GOLD",       relationship: "negative", weight: 0.55 },
   ],
+  // XM GOLD シンボル（XAUUSD の代わり）
   GOLD: [
     { symbol: "USDX-SEP26", relationship: "negative", weight: 0.85 },
     { symbol: "EURUSD",     relationship: "positive", weight: 0.60 },
+    { symbol: "USDJPY",     relationship: "negative", weight: 0.55 },
+    { symbol: "US30Cash",   relationship: "negative", weight: 0.45 },
+    { symbol: "SILVER",     relationship: "positive", weight: 0.80 },
+  ],
+  XAUUSD: [  // 他ブローカー用フォールバック
+    { symbol: "USDX-SEP26", relationship: "negative", weight: 0.85 },
+    { symbol: "EURUSD",     relationship: "positive", weight: 0.60 },
+    { symbol: "USDJPY",     relationship: "negative", weight: 0.55 },
+  ],
+  EURJPY: [
+    { symbol: "EURUSD",     relationship: "positive", weight: 0.75 },
+    { symbol: "USDJPY",     relationship: "positive", weight: 0.80 },
+  ],
+  GBPJPY: [
+    { symbol: "GBPUSD",     relationship: "positive", weight: 0.75 },
+    { symbol: "USDJPY",     relationship: "positive", weight: 0.80 },
   ],
 };
 
@@ -97,6 +123,23 @@ function calcStochastic(bars: Bar[], k = 14): number {
   const ll = Math.min(...win.map(b => b.low));
   const d = hh - ll || 0.00001;
   return ((bars[bars.length - 1].close - ll) / d) * 100;
+}
+
+// BB を bars から直接計算（EAのマルチバッファバグ時のフォールバック）
+function calcBollingerBands(bars: Bar[], period = 20, mult = 2.0): {
+  upper: number; mid: number; lower: number; width: number; valid: boolean;
+} {
+  if (bars.length < period) {
+    return { upper: 0, mid: 0, lower: 0, width: 0, valid: false };
+  }
+  const closes = bars.slice(-period).map(b => b.close);
+  const mid    = closes.reduce((a, b) => a + b, 0) / period;
+  const variance = closes.reduce((a, c) => a + (c - mid) ** 2, 0) / period;
+  const std    = Math.sqrt(variance);
+  const upper  = mid + mult * std;
+  const lower  = mid - mult * std;
+  const width  = mid > 0 ? (upper - lower) / mid * 100 : 0;
+  return { upper, mid, lower, width, valid: true };
 }
 
 // -----------------------------------------------------------------
@@ -187,12 +230,28 @@ export async function buildMarketSnapshot(symbol: string): Promise<MarketSnapsho
     );
 
     if (raw) {
+      // BB フォールバック: EAのマルチバッファバグで bbLower=0 の場合、bars から再計算
+      let bbUpper = raw.bbUpper;
+      let bbMid   = raw.bbMid;
+      let bbLower = raw.bbLower;
+      let bbWidth = raw.bbWidth;
+
+      if (bbLower === 0 && bars.length >= 20) {
+        const bbCalc = calcBollingerBands(bars, 20, 2.0);
+        if (bbCalc.valid) {
+          bbUpper = bbCalc.upper;
+          bbMid   = bbCalc.mid   > 0 ? bbCalc.mid : raw.bbMid;
+          bbLower = bbCalc.lower;
+          bbWidth = bbCalc.width;
+        }
+      }
+
       indicators[tf] = {
         ema21: raw.ema21, ema200: raw.ema200, sma50: raw.sma50,
         atr: raw.atr, rsi: raw.rsi,
         macd: raw.macd, macdSignal: raw.macdSignal, macdHist: raw.macdHist,
         adx: raw.adx, diPlus: raw.diPlus, diMinus: raw.diMinus,
-        bbUpper: raw.bbUpper, bbMid: raw.bbMid, bbLower: raw.bbLower, bbWidth: raw.bbWidth,
+        bbUpper, bbMid, bbLower, bbWidth,
         stochastic: stoch,
         trend: (raw.ema21 > raw.ema200 ? "UP" : raw.ema21 < raw.ema200 ? "DOWN" : "FLAT"),
         freshness,
@@ -279,14 +338,30 @@ export async function buildMarketSnapshot(symbol: string): Promise<MarketSnapsho
   const candlePatterns: CandlePatternSnapshot[] = candleResult.patterns;
   const chartPatterns: ChartPatternSnapshot[]   = chartResult.patterns;
 
-  // 9. 相関市場
-  const corrDef = CORR_MAP[sym] ?? [];
+  // 9. 相関市場 — CorrelationCache で方向を判定
+  const primaryDir = multiTF.direction;
+  const corrDef    = CORR_MAP[sym] ?? [];
   const corrSymPrices = Object.fromEntries((allSymbols ?? []).map(s => [s.symbol.toUpperCase(), s.bid]));
+
+  // 現在価格を CorrelationCache に更新（次回呼び出しで方向判定に使用）
+  updatePrice(sym, bid);
+  for (const c of corrDef) {
+    const cBid = corrSymPrices[c.symbol.toUpperCase()] ?? 0;
+    if (cBid > 0) updatePrice(c.symbol, cBid);
+  }
+
   const correlatedMarkets: CorrelatedMarket[] = corrDef.map(c => {
     const cBid = corrSymPrices[c.symbol.toUpperCase()] ?? 0;
-    // 方向の一致判定（簡易: 価格がある場合のみ）
-    const confirms = cBid > 0; // 実際の確認は tick 比較が必要
-    return { symbol: c.symbol, bid: cBid, relationship: c.relationship, confirms, weight: c.weight };
+    // CorrelationCache で方向判定
+    const corrStatus = evalCorrelation(c.symbol, c.relationship, c.weight, primaryDir, cBid);
+    return {
+      symbol:       c.symbol,
+      bid:          cBid,
+      relationship: c.relationship,
+      confirms:     corrStatus.state === "CONFIRMING",
+      weight:       c.weight,
+      // 追加フィールド（型の拡張なしに details として埋め込み可）
+    };
   });
 
   // 10. 経済指標
@@ -352,6 +427,35 @@ export async function buildMarketSnapshot(symbol: string): Promise<MarketSnapsho
     hasPriceData ? "MT5_LIVE" : "UNAVAILABLE";
   const indicatorFreshnessSec = Math.round((Date.now() - indReceivedAt) / 1000);
 
+  // 15. データ品質スコア（インライン計算）
+  const hasH4ind  = !!indicators.H4;
+  const hasH1ind  = !!indicators.H1;
+  const hasBBFixed = hasH4ind && indicators.H4!.bbLower > 0;
+  const hasBBRaw   = !!(indData?.timeframes?.H4?.bbLower && indData.timeframes.H4.bbLower > 0);
+  const bbFixed    = hasBBFixed && !hasBBRaw;  // true if we recalculated from bars
+
+  let dqScore = 100;
+  const dqIssues: string[] = [];
+  if (!bid) { dqScore = 0; dqIssues.push("No price data"); }
+  else {
+    if (!hasH4ind)       { dqScore -= 30; dqIssues.push("No H4 indicators (EA not attached)"); }
+    if (!hasH1ind)       { dqScore -= 15; dqIssues.push("No H1 indicators"); }
+    if (!indicators.M15) { dqScore -= 10; dqIssues.push("No M15 indicators"); }
+    if (!indicators.M5)  { dqScore -= 5;  dqIssues.push("No M5 indicators"); }
+    if (hasH4ind && !hasBBFixed && !bbFixed) { dqScore -= 8; dqIssues.push("BB data invalid (EA multi-buffer bug)"); }
+    if (hasH4ind && (indicators.H4!.diPlus === 0 && indicators.H4!.diMinus === 0)) { dqScore -= 5; dqIssues.push("DI+/DI- invalid (EA multi-buffer bug)"); }
+    if (hasH4ind && indicators.H4!.macdSignal === 0 && indicators.H4!.macd !== 0) { dqScore -= 5; dqIssues.push("MACD signal invalid (EA multi-buffer bug)"); }
+    if (srLevels.length === 0 && hasH4ind) { dqScore -= 5; dqIssues.push("No S/R levels (insufficient history)"); }
+    if (spread > 10) { dqScore -= 10; dqIssues.push(`Very high spread ${spread.toFixed(1)}p`); }
+    else if (spread > 5) { dqScore -= 5; dqIssues.push(`High spread ${spread.toFixed(1)}p`); }
+    if (indicatorFreshnessSec > 120) { dqScore -= 5; dqIssues.push(`Indicators stale (${indicatorFreshnessSec}s)`); }
+  }
+  const dqFinal = Math.max(0, Math.min(100, dqScore));
+  const dqGrade: MarketSnapshot["dataQualityGrade"] =
+    dqFinal >= 75 ? "COMPLETE" :
+    dqFinal >= 50 ? "PARTIAL" :
+    bid > 0       ? "PRICE_ONLY" : "UNAVAILABLE";
+
   return {
     snapshotId: id,
     symbol: sym,
@@ -376,5 +480,9 @@ export async function buildMarketSnapshot(symbol: string): Promise<MarketSnapsho
     symbolPositionsCount: posSnap.filter(p => p.symbol === sym).length,
     overallSource,
     indicatorFreshnessSec,
+    dataQualityScore:  dqFinal,
+    dataQualityGrade:  dqGrade,
+    dataQualityIssues: dqIssues,
+    bbFixed,
   };
 }

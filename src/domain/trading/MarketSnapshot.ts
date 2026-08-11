@@ -227,8 +227,12 @@ export interface MarketSnapshot {
   symbolPositionsCount: number;
 
   // Overall data quality
-  overallSource: DataSource;
-  indicatorFreshnessSec: number;  // 最新インジケーターの経過秒数
+  overallSource:         DataSource;
+  indicatorFreshnessSec: number;   // 最新インジケーターの経過秒数
+  dataQualityScore:      number;   // 0-100: 100=complete, <60=insufficient for trading
+  dataQualityGrade:      "COMPLETE" | "PARTIAL" | "PRICE_ONLY" | "UNAVAILABLE";
+  dataQualityIssues:     string[];
+  bbFixed:               boolean;  // true if BB was recalculated from bars (EA bug workaround)
 }
 
 // -----------------------------------------------------------------
