@@ -169,10 +169,9 @@ export async function POST(req: NextRequest) {
     const client = getOpenAIClient();
 
     const response = await client.chat.completions.create({
-      model:           MODELS.chat,
-      temperature:     0.1,
-      max_tokens:      1200,
-      response_format: { type: "json_object" },
+      model:               MODELS.chat,
+      max_completion_tokens: 1200,
+      response_format:     { type: "json_object" },
       messages: [
         { role: "system", content: buildSystemPrompt() },
         { role: "user",   content: buildUserPrompt(snapshot) },
