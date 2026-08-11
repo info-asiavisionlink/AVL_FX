@@ -108,38 +108,53 @@ export function AVLChart() {
   const { status }                        = useConnectionStore();
 
   // ---------------------------------------------------------------
-  // チャート初期化（マウント時1回）
+  // チャート初期化 — ResizeObserver で確定サイズが取得できてから生成
   // ---------------------------------------------------------------
   useEffect(() => {
-    if (!containerRef.current) return;
+    const el = containerRef.current;
+    if (!el) return;
 
-    const chart  = createChart(containerRef.current, {
-      ...CHART_THEME,
-      width:  containerRef.current.clientWidth,
-      height: containerRef.current.clientHeight,
-    });
-    const series = chart.addSeries(CandlestickSeries, CANDLE_STYLE);
+    let chart: IChartApi | null = null;
+    let series: ISeriesApi<"Candlestick"> | null = null;
 
-    chart.subscribeCrosshairMove((param) => {
-      if (!param.seriesData.size) { setOhlc(null); return; }
-      const d = param.seriesData.get(series) as CandlestickData | undefined;
-      if (d) setOhlc({ o: d.open, h: d.high, l: d.low, c: d.close });
-    });
+    const initChart = (w: number, h: number) => {
+      if (chart || w === 0 || h === 0) return; // 既に初期化済み or サイズ未確定
+      chart  = createChart(el, { ...CHART_THEME, width: w, height: h });
+      series = chart.addSeries(CandlestickSeries, CANDLE_STYLE);
 
-    chartRef.current  = chart;
-    seriesRef.current = series;
+      chart.subscribeCrosshairMove((param) => {
+        if (!param.seriesData.size) { setOhlc(null); return; }
+        const d = param.seriesData.get(series!) as CandlestickData | undefined;
+        if (d) setOhlc({ o: d.open, h: d.high, l: d.low, c: d.close });
+      });
+
+      chartRef.current  = chart;
+      seriesRef.current = series;
+    };
 
     const obs = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
-      chart.applyOptions({ width, height });
+      if (!chart) {
+        initChart(width, height);
+      } else {
+        chart.applyOptions({ width, height });
+      }
     });
-    obs.observe(containerRef.current);
+    obs.observe(el);
+
+    // 既にサイズがある場合は即時初期化
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      initChart(rect.width, rect.height);
+    }
 
     return () => {
       obs.disconnect();
-      chart.remove();
-      chartRef.current  = null;
-      seriesRef.current = null;
+      if (chart) {
+        chart.remove();
+        chartRef.current  = null;
+        seriesRef.current = null;
+      }
     };
   }, []);
 
@@ -208,12 +223,19 @@ export function AVLChart() {
     });
 
     // -------------------------------------------------------
-    // ② 過去バーを REST で取得
+    // ② 過去バーを REST で取得（Vercel プロキシ経由でCORSを回避）
     // -------------------------------------------------------
     loadingRef.current = true;
     setLoading(true);
 
-    const bars = await client.getBars(activeSymbol, tf, BAR_COUNT);
+    let bars: Awaited<ReturnType<typeof client.getBars>> = [];
+    try {
+      const p = new URLSearchParams({ symbol: activeSymbol, tf, count: String(BAR_COUNT) });
+      const res = await fetch(`/api/mt5/bars/simple?${p}`, {
+        signal: AbortSignal.timeout(12000),
+      });
+      if (res.ok) bars = await res.json();
+    } catch { bars = []; }
 
     loadingRef.current = false;
     setLoading(false);
