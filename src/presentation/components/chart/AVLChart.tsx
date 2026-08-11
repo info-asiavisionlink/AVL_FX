@@ -90,15 +90,15 @@ function toSec(t: number): number {
 // -----------------------------------------------------------------
 
 export function AVLChart() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef     = useRef<IChartApi | null>(null);
-  const seriesRef    = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  // チャートに描画済みの最終バー時刻（秒）
-  const lastTimeRef  = useRef<number>(0);
-  const unsubBarRef  = useRef<(() => void) | null>(null);
-  // 初期ロード中にWebSocketで届いたバーのバッファ
-  const pendingRef   = useRef<CandlestickData[]>([]);
-  const loadingRef   = useRef(false);
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const chartRef      = useRef<IChartApi | null>(null);
+  const seriesRef     = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const lastTimeRef   = useRef<number>(0);
+  const unsubBarRef   = useRef<(() => void) | null>(null);
+  const pendingRef    = useRef<CandlestickData[]>([]);
+  const loadingRef    = useRef(false);
+  // in-flight HTTP リクエストをキャンセルするためのAbortController
+  const abortRef      = useRef<AbortController | null>(null);
 
   const [ohlc,    setOhlc]    = useState<{ o: number; h: number; l: number; c: number } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -166,48 +166,43 @@ export function AVLChart() {
     const chart  = chartRef.current;
     if (!series || !chart) return;
 
-    // 前回の購読・状態をリセット
+    // ── 前回リクエストをキャンセル（シンボル切替時の競合防止）──
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     if (unsubBarRef.current) { unsubBarRef.current(); unsubBarRef.current = null; }
-    lastTimeRef.current  = 0;
-    pendingRef.current   = [];
-    loadingRef.current   = false;
+
+    lastTimeRef.current = 0;
+    pendingRef.current  = [];
+    loadingRef.current  = false;
     setNoData(false);
 
-    if (status !== "connected") {
-      series.setData([]);
-      return;
-    }
+    // 接続状態に関わらず前のシンボルのデータを即時クリア
+    // → 切替時に古い銘柄のバーが残らないようにする
+    series.setData([]);
+
+    if (status !== "connected") return;
 
     const client = ConnectionManager.instance.client;
     if (!client) return;
 
     const tf = TF_TO_MT5[activeTimeframe] ?? "H1";
 
-    // -------------------------------------------------------
-    // ① WebSocket 購読を先に開始
-    //    → getBars 中にバーが届いても取りこぼさない
-    // -------------------------------------------------------
+    // ── ① WebSocket 購読を先に開始 ──────────────────────────────
+    // getBars 中にバーが届いても取りこぼさない
     unsubBarRef.current = client.onBar(activeSymbol, tf, (bar) => {
-      const s    = seriesRef.current;
+      const s = seriesRef.current;
       if (!s) return;
 
       const t = toSec(bar.time);
       const candle: CandlestickData = {
-        time:  t as Time,
-        open:  bar.open,
-        high:  bar.high,
-        low:   bar.low,
-        close: bar.close,
+        time: t as Time, open: bar.open, high: bar.high, low: bar.low, close: bar.close,
       };
 
       if (loadingRef.current) {
-        // 初期ロード中 → バッファに積む
         pendingRef.current.push(candle);
         return;
       }
 
       if (lastTimeRef.current === 0) {
-        // 初期データなし → このバーでチャートを開始
         s.setData([candle]);
         lastTimeRef.current = t;
         setNoData(false);
@@ -215,16 +210,14 @@ export function AVLChart() {
         return;
       }
 
-      // 逆行スキップ
       if (t < lastTimeRef.current) return;
-
       s.update(candle);
       lastTimeRef.current = Math.max(lastTimeRef.current, t);
     });
 
-    // -------------------------------------------------------
-    // ② 過去バーを REST で取得（Vercel プロキシ経由でCORSを回避）
-    // -------------------------------------------------------
+    // ── ② 過去バーを REST で取得 ────────────────────────────────
+    const abort = new AbortController();
+    abortRef.current = abort;
     loadingRef.current = true;
     setLoading(true);
 
@@ -232,22 +225,26 @@ export function AVLChart() {
     try {
       const p = new URLSearchParams({ symbol: activeSymbol, tf, count: String(BAR_COUNT) });
       const res = await fetch(`/api/mt5/bars/simple?${p}`, {
-        signal: AbortSignal.timeout(12000),
+        signal: abort.signal,
       });
       if (res.ok) bars = await res.json();
-    } catch { bars = []; }
+    } catch (e) {
+      // AbortError = 新しいシンボルに切り替わった → このロードを破棄
+      if ((e as Error)?.name === "AbortError") return;
+      bars = [];
+    }
+
+    // リクエストが途中でキャンセルされていたら結果を捨てる
+    if (abort.signal.aborted) return;
+    abortRef.current = null;
 
     loadingRef.current = false;
     setLoading(false);
 
     if (bars.length > 0) {
-      // EAから受け取ったOHLCをそのまま渡す（加工禁止）
       const lwBars: CandlestickData[] = bars.map((b) => ({
-        time:  toSec(b.time) as Time,
-        open:  b.open,
-        high:  b.high,
-        low:   b.low,
-        close: b.close,
+        time: toSec(b.time) as Time,
+        open: b.open, high: b.high, low: b.low, close: b.close,
       }));
 
       series.setData(lwBars);
@@ -255,7 +252,7 @@ export function AVLChart() {
       chart.timeScale().fitContent();
       setNoData(false);
 
-      // ③ 初期ロード中にバッファに溜まったバーを反映
+      // ③ バッファに溜まったバーを反映
       for (const candle of pendingRef.current) {
         const t = candle.time as number;
         if (t >= lastTimeRef.current) {
@@ -264,7 +261,6 @@ export function AVLChart() {
         }
       }
     } else {
-      // 過去バーなし → WebSocket バーを待つ（購読は ① で設定済み）
       setNoData(true);
     }
 
@@ -275,6 +271,8 @@ export function AVLChart() {
     const raf = requestAnimationFrame(() => { loadChart().catch(console.error); });
     return () => {
       cancelAnimationFrame(raf);
+      // in-flight HTTPリクエストをキャンセル（シンボル切替・アンマウント時）
+      if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
       if (unsubBarRef.current) { unsubBarRef.current(); unsubBarRef.current = null; }
     };
   }, [loadChart]);
