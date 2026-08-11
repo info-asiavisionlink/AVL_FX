@@ -269,6 +269,11 @@ const orderStore    = new Map<number, Order>();
 /** 注文キュー（AI → EA 発注用） */
 const orderQueue:   Array<Record<string, unknown>> = [];
 
+// Diagnostic timestamps for health endpoint
+let lastTickTs:      number = 0;
+let lastSymbolTs:    number = 0;
+let lastIndicatorTs: number = 0;
+
 // -----------------------------------------------------------------
 // WebSocket サーバー /ws
 // -----------------------------------------------------------------
@@ -348,6 +353,7 @@ app.post("/event", auth, (req, res) => {
 app.post("/tick", auth, (req, res) => {
   const tick = req.body as Tick;
   tickStore.set(tick.symbol, tick);
+  lastTickTs = Date.now();
   broadcast({ type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
   res.json({ ok: true });
 });
@@ -442,6 +448,7 @@ app.post("/symbols/bulk", auth, (req, res) => {
     updated++;
   }
 
+  lastSymbolTs = now;
   broadcast({ type: "SYMBOLS", data: Array.from(symbolStore.values()), ts: now });
   res.json({ ok: true, updated });
 });
@@ -475,6 +482,7 @@ app.post("/indicators", auth, (req, res) => {
   const sessions = getTradingSessions(body.brokerTime);
   const data: Indicators = { ...body, receivedAt: Date.now(), sessions };
   indicatorStore.set(body.symbol.toUpperCase(), data);
+  lastIndicatorTs = Date.now();
   broadcast({ type: "INDICATORS", symbol: body.symbol, data, ts: Date.now() });
   res.json({ ok: true });
 });
@@ -583,9 +591,12 @@ app.post("/orders", (req, res) => {
 
 /** ヘルスチェック */
 app.get("/health", (_req, res) => {
+  const mem = process.memoryUsage();
   res.json({
     status:           "ok",
+    version:          "3.0",
     ea:               eaInfo ? { symbol: eaInfo.symbol, login: eaInfo.login, version: eaInfo.version } : null,
+    eaConnected:      eaInfo !== null,
     marketWatch:      symbolStore.size,
     tickSymbols:      Array.from(tickStore.keys()),
     barKeys:          Array.from(barStore.keys()),
@@ -594,6 +605,10 @@ app.get("/health", (_req, res) => {
     clients:          clients.size,
     uptime:           Math.floor(process.uptime()),
     serverTime:       Date.now(),
+    lastTickTs,
+    lastSymbolTs,
+    lastIndicatorTs,
+    memoryMB:         Math.round(mem.rss / 1024 / 1024),
   });
 });
 
@@ -705,17 +720,19 @@ function upsertBar(symbol: string, timeframe: string, rawBar: Bar & { symbol?: s
 // 起動
 // -----------------------------------------------------------------
 
-const PORT = parseInt(process.env.MT5_WEBSOCKET_PORT ?? "8080", 10);
+// Railway provides PORT env var. Fall back to MT5_WEBSOCKET_PORT for local dev.
+const PORT = parseInt(process.env.PORT ?? process.env.MT5_WEBSOCKET_PORT ?? "8080", 10);
 
 // 起動時にディスクからバーデータを復元
 persistLoad();
 
-server.listen(PORT, () => {
+// Railway requires binding to 0.0.0.0
+server.listen(PORT, "0.0.0.0", () => {
   console.log("==============================================");
   console.log("  AVL Market Server v3.0");
   console.log("==============================================");
-  console.log(`  HTTP REST : http://localhost:${PORT}`);
-  console.log(`  WebSocket : ws://localhost:${PORT}/ws`);
+  console.log(`  HTTP REST : http://0.0.0.0:${PORT}`);
+  console.log(`  WebSocket : ws://0.0.0.0:${PORT}/ws`);
   console.log(`  Auth      : ${SECRET ? "✓ 有効" : "⚠ 未設定"}`);
   console.log(`  Data      : ${PERSIST_FILE}`);
   console.log("==============================================");

@@ -7,7 +7,7 @@ import { useConnectionStore } from "@/application/stores/connectionStore";
 import {
   LayoutDashboard, BarChart2, Globe, CalendarDays,
   Newspaper, Briefcase, History, Settings,
-  ScrollText, Cable,
+  ScrollText, Cable, Brain,
 } from "lucide-react";
 
 const NAV = [
@@ -16,6 +16,7 @@ const NAV = [
   { href: "/chart",     icon: BarChart2,       label: "CHART",     group: 1 },
   { href: "/positions", icon: Briefcase,       label: "POSITIONS", group: 1 },
   { href: "/history",   icon: History,         label: "HISTORY",   group: 1 },
+  { href: "/ai",        icon: Brain,           label: "AI BRAIN",  group: 2 },
   { href: "/calendar",  icon: CalendarDays,    label: "CALENDAR",  group: 2 },
   { href: "/news",      icon: Newspaper,       label: "NEWS",      group: 2 },
   { href: "/logs",      icon: ScrollText,      label: "AI LOGS",   group: 3 },

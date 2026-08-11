@@ -1,13 +1,15 @@
 import type { Bar, SwingPoint, ModuleResult } from "./types";
 
-function detectSwings(bars: Bar[]): SwingPoint[] {
+// ── ZigZag swing detection ──────────────────────────────────────
+// lookback: 各サイドの確認バー数。高時間足は5、低時間足は3
+function detectSwings(bars: Bar[], lookback = 2): SwingPoint[] {
   const highs: SwingPoint[] = [];
   const lows:  SwingPoint[] = [];
 
-  for (let i = 2; i < bars.length - 2; i++) {
-    const window = bars.slice(i - 2, i + 3);
-    const maxH = Math.max(...window.map(b => b.high));
-    const minL = Math.min(...window.map(b => b.low));
+  for (let i = lookback; i < bars.length - lookback; i++) {
+    const win  = bars.slice(i - lookback, i + lookback + 1);
+    const maxH = Math.max(...win.map(b => b.high));
+    const minL = Math.min(...win.map(b => b.low));
 
     if (bars[i].high === maxH) {
       highs.push({ time: bars[i].time, price: bars[i].high, type: 'high', label: 'H' });
@@ -28,6 +30,41 @@ function detectSwings(bars: Bar[]): SwingPoint[] {
   });
 
   return [...labeledHighs, ...labeledLows].sort((a, b) => a.time - b.time);
+}
+
+// ── Lower-TF (M5/M1) Dow structure for scalping context ─────────
+export interface ScalpingStructure {
+  tf:        string;
+  trend:     'UPTREND' | 'DOWNTREND' | 'RANGE';
+  lastSwing: SwingPoint | null;
+  pullback:  boolean;    // 短期プルバック中かどうか
+  summary:   string;
+}
+
+export function analyzeScalpingStructure(bars: Bar[], tf: string): ScalpingStructure {
+  try {
+    const lookback = tf === 'M1' ? 2 : 3;
+    const swings   = detectSwings(bars, lookback);
+    const highs    = swings.filter(s => s.type === 'high');
+    const lows     = swings.filter(s => s.type === 'low');
+    const trend    = classifyTrend(highs, lows);
+    const lastSwing = swings.length > 0 ? swings[swings.length - 1] : null;
+
+    // プルバック検出: 上昇トレンド中に直近バーが下落している
+    const recentBars = bars.slice(-5);
+    const recentDown = recentBars.length >= 2 &&
+      recentBars[recentBars.length - 1].close < recentBars[0].close;
+    const recentUp   = recentBars.length >= 2 &&
+      recentBars[recentBars.length - 1].close > recentBars[0].close;
+    const pullback   = (trend === 'UPTREND' && recentDown) || (trend === 'DOWNTREND' && recentUp);
+
+    return {
+      tf, trend, lastSwing, pullback,
+      summary: `${tf}: ${trend}${pullback ? ' (pullback)' : ''}. Swings: ${swings.length}`,
+    };
+  } catch {
+    return { tf, trend: 'RANGE', lastSwing: null, pullback: false, summary: `${tf}: error` };
+  }
 }
 
 function classifyTrend(highs: SwingPoint[], lows: SwingPoint[]): 'UPTREND'|'DOWNTREND'|'RANGE' {

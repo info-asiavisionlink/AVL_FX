@@ -157,7 +157,6 @@ export class GatewayClient {
   private ws:             WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectCount  = 0;
-  private readonly maxReconnect = 10;
   private destroyed = false;
 
   private tickHandlers      = new Map<string, Set<TickHandler>>();
@@ -264,7 +263,7 @@ export class GatewayClient {
       const wsUrl    = `${this.wsBaseUrl}/ws`;
       this.ws        = new WebSocket(wsUrl);
 
-      const onOpen  = () => { this.reconnectCount = 0; this.notifyStatus("connected"); resolve(); };
+      const onOpen  = () => { this.reconnectCount = 0; this.notifyStatus("connected"); resolve(); console.log("[GatewayClient] WebSocket 接続確立"); };
       const onError = (e: Event) => reject(new Error(`WS接続失敗: ${wsUrl} (${String(e)})`));
 
       this.ws.addEventListener("open",    onOpen,  { once: true });
@@ -391,10 +390,11 @@ export class GatewayClient {
   };
 
   private scheduleReconnect(): void {
-    if (this.destroyed || this.reconnectCount >= this.maxReconnect) return;
+    if (this.destroyed) return;
+    // Exponential backoff: 2s, 3s, 4.5s, ... capped at 30s. No attempt limit.
     const delay = Math.min(2000 * Math.pow(1.5, this.reconnectCount), 30000);
     this.reconnectCount++;
-    console.log(`[GatewayClient] ${(delay / 1000).toFixed(1)}s 後に再接続... (${this.reconnectCount}/${this.maxReconnect})`);
+    console.log(`[GatewayClient] ${(delay / 1000).toFixed(1)}s 後に再接続... (attempt ${this.reconnectCount})`);
     this.reconnectTimer = setTimeout(() => {
       if (this.destroyed) return;
       this.notifyStatus("connecting");
