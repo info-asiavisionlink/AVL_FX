@@ -1694,7 +1694,7 @@ export function DashboardOS() {
   // レンダリング — JARVIS Style v4.0
   // =================================================================
   return (
-    <div className="flex flex-col h-full overflow-hidden relative" style={{background:"radial-gradient(ellipse at 50% 0%, #020c1a 0%, #030508 60%, #020408 100%)"}}>
+    <div className="flex flex-col h-full w-full overflow-hidden relative" style={{background:"radial-gradient(ellipse at 50% 0%, #020c1a 0%, #030508 60%, #020408 100%)"}}>
       {/* Multi-layer animated background */}
       <div className="absolute inset-0 avl-grid-fine opacity-100 pointer-events-none z-0"/>
       <div className="absolute inset-0 avl-scanlines pointer-events-none z-0"/>
