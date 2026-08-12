@@ -22,6 +22,15 @@ import { useSettingsStore }    from "@/application/stores/settingsStore";
 import { HolographicAICore }   from "@/presentation/components/os/HolographicAICore";
 import { ParticleTorus }       from "@/presentation/components/os/ParticleTorus";
 import { AnalysisEngine }      from "@/presentation/components/os/AnalysisEngine";
+import dynamic from "next/dynamic";
+const AVLAICore = dynamic(
+  () => import("@/presentation/components/os/AVLAICore").then(m => ({ default: m.AVLAICore })),
+  { ssr: false }
+);
+const OrbitalParticleSystem = dynamic(
+  () => import("@/presentation/components/os/OrbitalParticleSystem").then(m => ({ default: m.OrbitalParticleSystem })),
+  { ssr: false }
+);
 import type { MarketPosition, MarketAccount } from "@/infrastructure/connection/GatewayClient";
 import {
   Wifi, WifiOff, Radio, Mic, MicOff, Send, Volume2, VolumeX,
@@ -1605,6 +1614,18 @@ export function DashboardOS() {
         <ParticleTorus voiceStatus={voice.status} isThinking={thinking || voiceThinking}/>
       </div>
 
+      {/* ░░ LAYER 8 — OrbitalParticleSystem (3D GPU orbits around AI CORE) ░░ */}
+      {mode !== "analysis" && (
+        <div className="absolute inset-0 z-[8] pointer-events-none">
+          <OrbitalParticleSystem
+            brainState={brainState}
+            voiceStatus={voice.status}
+            isActive={isActive}
+            isThinking={thinking || voiceThinking}
+          />
+        </div>
+      )}
+
       {/* ░░ LAYER 3 — Ambient effects ░░ */}
       <div className="absolute inset-0 z-[3] pointer-events-none">
         <div className="absolute left-0 right-0 h-px avl-scan-line"
@@ -1702,25 +1723,16 @@ export function DashboardOS() {
         </div>
       )}
 
-      {/* ░░ LAYER 10 — Center AI Display ░░ */}
+      {/* ░░ LAYER 12 — AVL AI CORE (SVG Ring HUD + Brand text) ░░ */}
       {mode !== "analysis" && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none select-none"
-          style={{paddingTop:"96px",paddingBottom:"210px"}}>
-          <p className="text-[8px] font-mono tracking-[0.5em] mb-5 transition-all duration-1000"
-            style={{color:aiStateCol,opacity:0.65,textShadow:`0 0 18px ${aiStateCol}44`}}>
-            {aiStateLbl}
-          </p>
-          <p className="font-black font-mono tracking-[0.55em] select-none"
-            style={{fontSize:30, color:"#ffffff",
-              textShadow:"0 0 12px #ffffff, 0 0 30px #ffffff99, 0 0 60px #aaddff66, 0 0 100px #88bbff33"}}>
-            AVL AI
-          </p>
-          {(brainState==="scanning"||brainState==="analyzing"||brainState==="reasoning") && (
-            <p className="text-[10px] font-mono font-bold mt-4 tracking-[0.35em] transition-all duration-500"
-              style={{color:aiStateCol,textShadow:`0 0 14px ${aiStateCol}55`,opacity:0.85}}>
-              {activeSymbol}
-            </p>
-          )}
+        <div className="absolute inset-0 z-[12]" style={{paddingTop:"88px",paddingBottom:"160px"}}>
+          <AVLAICore
+            brainState={brainState}
+            voiceStatus={voice.status}
+            isActive={isActive}
+            isThinking={thinking || voiceThinking}
+            neonHex={neonHex}
+          />
         </div>
       )}
 

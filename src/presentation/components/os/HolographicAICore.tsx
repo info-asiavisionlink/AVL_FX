@@ -172,39 +172,41 @@ void main() {
 }
 `;
 
-// ── Neon palette ──────────────────────────────────────────────────
+// ── Neon palette — White + Red scheme ─────────────────────────────
 type RGB = [number,number,number];
 const P: Record<string,RGB> = {
-  blue:   [0.05, 0.55, 1.00],
-  cyan:   [0.00, 0.90, 1.00],
-  white:  [0.85, 0.92, 1.00],
-  red:    [1.00, 0.06, 0.20],
-  green:  [0.00, 1.00, 0.38],
-  yellow: [1.00, 0.88, 0.00],
-  purple: [0.65, 0.00, 1.00],
-  orange: [1.00, 0.42, 0.00],
-  pink:   [1.00, 0.18, 0.65],
+  white:  [1.00, 1.00, 1.00],   // pure neon white
+  wsoft:  [0.90, 0.88, 0.88],   // soft white
+  red:    [1.00, 0.10, 0.10],   // neon red (primary)
+  redmid: [0.85, 0.06, 0.06],   // mid red
+  reddark:[0.60, 0.02, 0.02],   // dark red
+  redwarm:[1.00, 0.25, 0.10],   // warm red-orange accent
+  wdim:   [0.55, 0.50, 0.50],   // dim white
+  wgray:  [0.35, 0.33, 0.33],   // gray white (far outer)
+  // keep for morph color variety
+  orange: [1.00, 0.35, 0.05],
+  pink:   [1.00, 0.15, 0.35],
 };
 const PAL = Object.values(P);
 
-// ── Mode & voice state config ─────────────────────────────────────
+// ── Mode & voice state config — White + Red theme ─────────────────
 type Cfg = { bloom: number; energy: number; speed: number; hex: number; hex2: number; morphType: number; morphTarget: number };
 const MODE_CFG: Record<AIMode, Cfg> = {
-  analysis:   { bloom:0.50, energy:0.78, speed:0.90, hex:0x0066ff, hex2:0x002266, morphType:0, morphTarget:0 },
-  monitor:    { bloom:0.40, energy:0.72, speed:0.55, hex:0xffdd00, hex2:0xff8800, morphType:0, morphTarget:0 },
-  assisted:   { bloom:0.65, energy:0.88, speed:1.40, hex:0x00ff88, hex2:0x00ffcc, morphType:0, morphTarget:0 },
-  autonomous: { bloom:0.90, energy:1.00, speed:2.80, hex:0xffd700, hex2:0xffffff, morphType:0, morphTarget:0 },
+  analysis:   { bloom:0.55, energy:0.78, speed:0.90, hex:0xff1515, hex2:0x550000, morphType:0, morphTarget:0 },
+  monitor:    { bloom:0.45, energy:0.72, speed:0.55, hex:0xffffff, hex2:0x661111, morphType:0, morphTarget:0 },
+  assisted:   { bloom:0.70, energy:0.88, speed:1.40, hex:0xff2020, hex2:0xffffff, morphType:0, morphTarget:0 },
+  autonomous: { bloom:0.92, energy:1.00, speed:2.80, hex:0xffffff, hex2:0xff0808, morphType:0, morphTarget:0 },
 };
 
 type VoiceCfg = { bloom: number; energy: number; speed: number; hex: number; hex2: number; morphType: number; morphTarget: number };
 const VOICE_CFG: Record<string, VoiceCfg> = {
-  listening:  { bloom:0.55, energy:0.85, speed:1.8,  hex:0x00eeff, hex2:0x001833, morphType:1, morphTarget:0.88 },
-  speaking:   { bloom:0.60, energy:0.92, speed:2.2,  hex:0x00ff88, hex2:0x00ffcc, morphType:2, morphTarget:0.80 },
-  connecting: { bloom:0.50, energy:0.80, speed:1.5,  hex:0x00eeff, hex2:0x002244, morphType:1, morphTarget:0.40 },
+  listening:  { bloom:0.55, energy:0.72, speed:1.0,  hex:0xff1515, hex2:0x550000, morphType:0, morphTarget:0 },
+  speaking:   { bloom:0.65, energy:0.92, speed:2.2,  hex:0xff1c1c, hex2:0xffffff, morphType:0, morphTarget:0 },
+  connecting: { bloom:0.48, energy:0.68, speed:0.9,  hex:0xff1515, hex2:0x440000, morphType:0, morphTarget:0 },
 };
 
 const THINKING_CFG: VoiceCfg = {
-  bloom:0.70, energy:0.95, speed:3.5, hex:0xffd700, hex2:0xffeeaa, morphType:0, morphTarget:0,
+  bloom:0.75, energy:0.95, speed:3.5, hex:0xffffff, hex2:0xff1010, morphType:0, morphTarget:0,
 };
 
 const N_TOTAL = 100_000;
@@ -270,14 +272,22 @@ export const HolographicAICore = memo(function HolographicAICore({ mode, isThink
 
     type Group = { r0:number; r1:number; s0:number; s1:number; sz0:number; sz1:number; a0:number; a1:number; nm:number; cols:RGB[] };
     const groups: Group[] = [
-      { r0:0.00, r1:0.35, s0:0.1, s1:0.6,  sz0:0.024, sz1:0.046, a0:0.06, a1:0.14, nm:0.03, cols:[P.cyan,P.blue] },
-      { r0:0.32, r1:0.72, s0:0.2, s1:1.0,  sz0:0.022, sz1:0.042, a0:0.04, a1:0.10, nm:0.06, cols:PAL },
-      { r0:0.66, r1:1.15, s0:0.2, s1:1.0,  sz0:0.021, sz1:0.038, a0:0.025,a1:0.065,nm:0.08, cols:PAL },
-      { r0:1.08, r1:1.55, s0:0.2, s1:0.9,  sz0:0.021, sz1:0.038, a0:0.030,a1:0.080,nm:0.10, cols:PAL },
-      { r0:1.50, r1:2.05, s0:0.3, s1:1.0,  sz0:0.018, sz1:0.034, a0:0.040,a1:0.100,nm:0.06, cols:[P.cyan,P.blue,P.purple] },
-      { r0:1.80, r1:2.40, s0:0.2, s1:0.8,  sz0:0.016, sz1:0.030, a0:0.035,a1:0.090,nm:0.05, cols:[P.red,P.orange,P.pink] },
-      { r0:1.30, r1:3.50, s0:0.05,s1:0.3,  sz0:0.013, sz1:0.026, a0:0.050,a1:0.120,nm:0.08, cols:PAL },
-      { r0:3.50, r1:18.0, s0:0.01,s1:0.1,  sz0:0.009, sz1:0.018, a0:0.070,a1:0.160,nm:0.02, cols:[P.blue,P.white,P.cyan] },
+      // inner core — bright white + red
+      { r0:0.00, r1:0.35, s0:0.1, s1:0.6,  sz0:0.024, sz1:0.046, a0:0.06, a1:0.14, nm:0.03, cols:[P.white, P.red] },
+      // mid inner — red dominant
+      { r0:0.32, r1:0.72, s0:0.2, s1:1.0,  sz0:0.022, sz1:0.042, a0:0.04, a1:0.10, nm:0.06, cols:[P.red, P.redmid, P.white, P.red] },
+      // mid — red + warm red
+      { r0:0.66, r1:1.15, s0:0.2, s1:1.0,  sz0:0.021, sz1:0.038, a0:0.025,a1:0.065,nm:0.08, cols:[P.red, P.redmid, P.reddark, P.redwarm] },
+      // outer mid — mostly red, some white sparks
+      { r0:1.08, r1:1.55, s0:0.2, s1:0.9,  sz0:0.021, sz1:0.038, a0:0.030,a1:0.080,nm:0.10, cols:[P.red, P.redmid, P.wsoft, P.reddark] },
+      // outer — sparse red sparks
+      { r0:1.50, r1:2.05, s0:0.3, s1:1.0,  sz0:0.018, sz1:0.034, a0:0.040,a1:0.100,nm:0.06, cols:[P.reddark, P.redmid, P.wdim] },
+      // far outer — dark red + warm
+      { r0:1.80, r1:2.40, s0:0.2, s1:0.8,  sz0:0.016, sz1:0.030, a0:0.035,a1:0.090,nm:0.05, cols:[P.reddark, P.redwarm, P.orange, P.pink] },
+      // ambient — dim red + gray
+      { r0:1.30, r1:3.50, s0:0.05,s1:0.3,  sz0:0.013, sz1:0.026, a0:0.050,a1:0.120,nm:0.08, cols:[P.reddark, P.wdim, P.wgray] },
+      // scattered sparks (very far) — tiny dim red
+      { r0:3.50, r1:18.0, s0:0.01,s1:0.1,  sz0:0.009, sz1:0.018, a0:0.070,a1:0.160,nm:0.02, cols:[P.reddark, P.wgray, P.redmid] },
     ];
     const groupWeights = [2,15,35,20,10,8,6,4];
     const groupSizes   = groupWeights.map(w => Math.floor(N_TOTAL*w/100));
