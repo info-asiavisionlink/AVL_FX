@@ -1,32 +1,18 @@
-// =================================================================
 // GET /api/economic-calendar
-// =================================================================
-//
-// パラメータ:
-//   key   - Twelve Data APIキー（省略時はenv変数を使用）
-//   range - "today" | "tomorrow" | "week" (デフォルト: "today")
-//
-// タイムゾーン: Asia/Tokyo (JST)
-//   今日 = JST 00:00 〜 23:59 の範囲
-//
-// レスポンス:
-//   { events: CalEvent[], meta: CalMeta }
-//
-// DEMO DATA 禁止:
-//   APIキー未設定 or API失敗の場合は空配列を返す。
-//   架空の経済指標は返さない。
-// =================================================================
+// ソース: Forex Factory JSON (nfs.faireconomy.media) — APIキー不要
+// キャッシュ: インメモリ1時間（Next.jsキャッシュを使わない）
+// range: "today" | "tomorrow" | "week"
 
 import { NextRequest, NextResponse } from "next/server";
-import { upsertEconomicEvents }      from "@/infrastructure/supabase/repository";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-// ── 型定義 ─────────────────────────────────────────────────────────
+// ── 型定義 ──────────────────────────────────────────────────────────
 
 export interface CalEvent {
   id:        string;
-  time:      number;   // Unix秒 (UTC)
+  time:      number;
   currency:  string;
   country:   string;
   title:     string;
@@ -37,177 +23,109 @@ export interface CalEvent {
 }
 
 export interface CalMeta {
-  source:    "twelve_data" | "none";
+  source:    "forex_factory" | "none";
   isDemo:    false;
-  dateJST:   string;   // YYYY-MM-DD (JST)
+  dateJST:   string;
   range:     string;
-  fetchedAt: string;   // ISO8601 (UTC)
+  fetchedAt: string;
   error?:    string;
 }
 
-interface TDCalendarItem {
-  datetime:  string;
-  country:   string;
-  currency?: string;
-  impact:    string;
-  title:     string;
-  actual?:   string;
-  forecast?: string;
-  prev?:     string;
+interface FFEvent {
+  title:    string;
+  country:  string;
+  date:     string;
+  impact:   string;
+  forecast: string;
+  previous: string;
 }
 
-interface TDCalendarResponse {
-  status?: string;
-  code?:   number;
-  result?: { list?: TDCalendarItem[] };
-}
+// ── インメモリキャッシュ ─────────────────────────────────────────────
 
-// ── JST 日付計算 ──────────────────────────────────────────────────
-// JST = UTC+9
+let _cache: { data: FFEvent[]; ts: number } | null = null;
+const CACHE_TTL = 60 * 60 * 1000; // 1時間
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-function toJSTDate(utcMs: number): string {
-  return new Date(utcMs + JST_OFFSET_MS).toISOString().slice(0, 10);
-}
-
-/** JST の today/tomorrow/week の UTC 範囲を返す */
-function jstRange(range: string): { from: string; to: string } {
-  const nowMs      = Date.now();
-  const todayJST   = toJSTDate(nowMs);
-
-  if (range === "tomorrow") {
-    const tomorrowJST = toJSTDate(nowMs + 86400_000);
-    return { from: tomorrowJST, to: tomorrowJST };
+async function getFFData(): Promise<FFEvent[]> {
+  if (_cache && Date.now() - _cache.ts < CACHE_TTL) {
+    return _cache.data;
   }
-  if (range === "week") {
-    const weekEndJST = toJSTDate(nowMs + 6 * 86400_000);
-    return { from: todayJST, to: weekEndJST };
-  }
-  // デフォルト: today
-  return { from: todayJST, to: todayJST };
+  const res = await fetch(
+    "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+    {
+      cache: "no-store",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.forexfactory.com/",
+      },
+    }
+  );
+  if (!res.ok) throw new Error(`FF HTTP ${res.status}`);
+  const text = await res.text();
+  if (text.trim().startsWith("<")) throw new Error("FF rate limited (HTML response)");
+  const data = JSON.parse(text) as FFEvent[];
+  _cache = { data, ts: Date.now() };
+  return data;
 }
 
-const IMPACT_MAP: Record<string, number> = {
-  high: 3, medium: 2, low: 1,
-};
+// ── JST ユーティリティ ───────────────────────────────────────────────
 
-function guessCurrency(country: string): string {
-  const MAP: Record<string, string> = {
-    "United States": "USD", "Euro Zone": "EUR",   "Japan": "JPY",
-    "United Kingdom": "GBP", "Australia": "AUD",  "Canada": "CAD",
-    "Switzerland": "CHF",   "New Zealand": "NZD", "China": "CNH",
-    "Germany": "EUR",       "France": "EUR",      "Italy": "EUR",
-    "Spain": "EUR",         "South Korea": "KRW", "India": "INR",
-  };
-  return MAP[country] ?? "USD";
+const JST = 9 * 3600_000;
+
+function toJSTDate(ms: number): string {
+  return new Date(ms + JST).toISOString().slice(0, 10);
 }
 
-// ── メインハンドラー ──────────────────────────────────────────────
+function dateRange(range: string) {
+  const now = Date.now();
+  const today = toJSTDate(now);
+  if (range === "tomorrow") { const d = toJSTDate(now + 86400_000); return { from: d, to: d }; }
+  if (range === "week")     return { from: today, to: toJSTDate(now + 6 * 86400_000) };
+  return { from: today, to: today };
+}
+
+const IMPACT: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
+// ── ハンドラー ──────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const sp    = req.nextUrl.searchParams;
-  const key   = sp.get("key") ?? process.env.TWELVE_DATA_API_KEY ?? "";
-  const range = sp.get("range") ?? "today";
-
+  const range     = req.nextUrl.searchParams.get("range") ?? "today";
   const nowMs     = Date.now();
   const dateJST   = toJSTDate(nowMs);
   const fetchedAt = new Date(nowMs).toISOString();
-  const { from, to } = jstRange(range);
-
-  // APIキーがない場合 → demo禁止、空返却
-  if (!key) {
-    return NextResponse.json({
-      events: [] as CalEvent[],
-      meta: {
-        source: "none",
-        isDemo: false,
-        dateJST,
-        range,
-        fetchedAt,
-        error: "TWELVE_DATA_API_KEY not configured",
-      } satisfies CalMeta,
-    });
-  }
+  const { from, to } = dateRange(range);
 
   try {
-    const url = `https://api.twelvedata.com/economic_calendar?from=${from}&to=${to}&apikey=${key}`;
-    const res  = await fetch(url, {
-      signal: AbortSignal.timeout(10_000),
-      next: { revalidate: 300 }, // 5分キャッシュ
+    const raw    = await getFFData();
+    const events: CalEvent[] = raw
+      .filter(e => {
+        if (e.impact === "Holiday") return false;
+        const d = toJSTDate(new Date(e.date).getTime());
+        return d >= from && d <= to;
+      })
+      .map((e, i) => ({
+        id:       `ff_${i}_${e.country}_${new Date(e.date).getTime()}`,
+        time:     Math.floor(new Date(e.date).getTime() / 1000),
+        currency: e.country,
+        country:  e.country,
+        title:    e.title,
+        impact:   IMPACT[e.impact.toLowerCase()] ?? 1,
+        actual:   null,
+        forecast: e.forecast || null,
+        previous: e.previous || null,
+      }))
+      .sort((a, b) => a.time - b.time);
+
+    return NextResponse.json({
+      events,
+      meta: { source: "forex_factory", isDemo: false, dateJST, range, fetchedAt } satisfies CalMeta,
     });
-
-    if (!res.ok) {
-      throw new Error(`Twelve Data HTTP ${res.status}`);
-    }
-
-    const raw  = await res.json() as TDCalendarResponse;
-
-    // エラーレスポンス確認
-    if (raw.status && raw.status !== "ok") {
-      throw new Error(`Twelve Data error: code=${raw.code} status=${raw.status}`);
-    }
-
-    const list = raw.result?.list ?? [];
-
-    const events: CalEvent[] = list.map((item, i) => {
-      // Twelve Data の datetime は "YYYY-MM-DD HH:mm:ss" 形式 (UTC)
-      const utcStr = item.datetime.replace(" ", "T") + "Z";
-      const time   = Math.floor(new Date(utcStr).getTime() / 1000);
-      return {
-        id:       `td_${i}_${item.datetime}`,
-        time,
-        currency: item.currency ?? guessCurrency(item.country),
-        country:  item.country,
-        title:    item.title,
-        impact:   IMPACT_MAP[item.impact?.toLowerCase()] ?? 1,
-        actual:   item.actual   || null,
-        forecast: item.forecast || null,
-        previous: item.prev     || null,
-      };
-    });
-
-    // Supabase に非同期保存（バックグラウンド）
-    void upsertEconomicEvents(events.map(e => ({
-      event_id:   e.id,
-      event_time: new Date(e.time * 1000).toISOString(),
-      currency:   e.currency,
-      country:    e.country,
-      title:      e.title,
-      impact:     e.impact,
-      actual:     e.actual   ?? null,
-      forecast:   e.forecast ?? null,
-      previous:   e.previous ?? null,
-    })));
-
-    return NextResponse.json(
-      {
-        events,
-        meta: {
-          source: "twelve_data",
-          isDemo: false,
-          dateJST,
-          range,
-          fetchedAt,
-        } satisfies CalMeta,
-      },
-      { headers: { "Cache-Control": "public, max-age=300" } }
-    );
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error("[economic-calendar]", error);
-
-    // 失敗時はデモデータを返さず、エラー状態を明示する
     return NextResponse.json({
       events: [] as CalEvent[],
-      meta: {
-        source: "none",
-        isDemo: false,
-        dateJST,
-        range,
-        fetchedAt,
-        error,
-      } satisfies CalMeta,
+      meta: { source: "none", isDemo: false, dateJST, range, fetchedAt, error } satisfies CalMeta,
     });
   }
 }
