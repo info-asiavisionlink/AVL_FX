@@ -1,6 +1,5 @@
 import { DashboardShell } from "@/presentation/components/layout/DashboardShell";
 import { Header } from "@/presentation/components/layout/Header";
-import { BottomPanel } from "@/presentation/components/layout/BottomPanel";
 import { WatchlistPanel } from "@/presentation/components/watchlist/WatchlistPanel";
 import { EconomicCalendarPanel } from "@/presentation/components/economic-calendar/EconomicCalendarPanel";
 import { AVLChart } from "@/presentation/components/chart/AVLChart";
@@ -21,7 +20,6 @@ export default function ChartPage() {
         <div className="flex-1 overflow-hidden">
           <AVLChart />
         </div>
-        <BottomPanel />
       </div>
     </DashboardShell>
   );
