@@ -5,14 +5,20 @@
 // AI 設定 / リスク管理 / 外部データ / 通知 / UI
 // =================================================================
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useSettingsStore, type AVLSettings } from "@/application/stores/settingsStore";
 import { useConnectionStore } from "@/application/stores/connectionStore";
 import { STORAGE_KEY_MT5_CONFIG } from "@/infrastructure/connection/types";
 import {
-  Brain, Shield, Wifi, Bell, Monitor, Trash2, Save, Eye, EyeOff, RefreshCw, MessageSquare,
+  Brain, Shield, Wifi, Bell, Monitor, Trash2, Save, Eye, EyeOff, RefreshCw, MessageSquare, Activity,
 } from "lucide-react";
+
+type AccountInfo = {
+  balance: number; equity: number; currency: string;
+  freeMargin: number; marginLevel: number; leverage: number;
+  broker: string;
+};
 
 // -----------------------------------------------------------------
 // セクション共通ヘッダー
@@ -113,9 +119,27 @@ function SelectInput({ value, onChange, options }: {
 // -----------------------------------------------------------------
 export function SettingsPage() {
   const { settings, set, reset } = useSettingsStore();
-  const { disconnect }           = useConnectionStore();
+  const { disconnect, status }   = useConnectionStore();
   const [saved, setSaved]        = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [account, setAccount]    = useState<AccountInfo | null>(null);
+
+  const isConnected = status === "connected";
+
+  useEffect(() => {
+    if (!isConnected) { setAccount(null); return; }
+    const fetchAccount = async () => {
+      try {
+        const res = await fetch("/api/mt5/live");
+        if (!res.ok) return;
+        const data = await res.json() as { account?: AccountInfo };
+        if (data.account) setAccount(data.account);
+      } catch {}
+    };
+    fetchAccount();
+    const id = setInterval(fetchAccount, 10_000);
+    return () => clearInterval(id);
+  }, [isConnected]);
 
   const s = (patch: Partial<AVLSettings>) => { set(patch); setSaved(false); };
 
@@ -151,6 +175,83 @@ export function SettingsPage() {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-2xl mx-auto space-y-6">
+
+          {/* === ACCOUNT STATUS === */}
+          <div className="border border-cyan-700/30 bg-[#060a12] p-4">
+            <SectionHeader icon={Activity} title="ACCOUNT STATUS" desc="MT5 リアルタイム口座情報" />
+
+            <div className="flex items-center gap-2 mb-4">
+              <div className={cn("w-2 h-2 rounded-full", isConnected ? "bg-green-400" : "bg-gray-700")}
+                style={isConnected ? { boxShadow: "0 0 6px #22c55e" } : undefined}/>
+              <span className={cn("text-[9px] font-mono", isConnected ? "text-green-400" : "text-gray-600")}>
+                {isConnected ? "MT5 CONNECTED" : "MT5 OFFLINE"}
+              </span>
+              {account && (
+                <span className="text-[8px] text-gray-700 font-mono ml-auto">{account.broker}</span>
+              )}
+            </div>
+
+            {account ? (
+              <div className="space-y-3">
+                {/* Primary metrics */}
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "BALANCE",      value: `${account.balance.toLocaleString()} ${account.currency}`,  col: "text-gray-100" },
+                    { label: "EQUITY",       value: `${account.equity.toLocaleString()} ${account.currency}`,   col: account.equity >= account.balance ? "text-green-400" : "text-red-400" },
+                    { label: "UNREALIZED P&L", value: `${(account.equity - account.balance) >= 0 ? "+" : ""}${(account.equity - account.balance).toFixed(2)} ${account.currency}`, col: (account.equity - account.balance) >= 0 ? "text-green-400" : "text-red-400" },
+                    { label: "FREE MARGIN",  value: `${account.freeMargin.toFixed(0)} ${account.currency}`,     col: "text-gray-300" },
+                  ].map(({ label, value, col }) => (
+                    <div key={label} className="border border-cyan-900/20 px-3 py-2">
+                      <p className="text-[7px] text-gray-700 font-mono mb-0.5">{label}</p>
+                      <p className={cn("text-[10px] font-mono font-semibold tabular-nums", col)}>{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Secondary metrics */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "MARGIN LEVEL", value: account.marginLevel > 0 ? `${account.marginLevel.toFixed(2)}%` : "—" },
+                    { label: "LEVERAGE",     value: `1:${account.leverage}` },
+                    { label: "CURRENCY",     value: account.currency },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="border border-[#0d1520] px-2 py-1.5 text-center">
+                      <p className="text-[6.5px] text-gray-700 font-mono">{label}</p>
+                      <p className="text-[9px] text-gray-300 font-mono font-semibold">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Equity bar */}
+                <div>
+                  <div className="flex justify-between text-[7px] font-mono text-gray-700 mb-1">
+                    <span>EQUITY vs BALANCE</span>
+                    <span className={account.equity >= account.balance ? "text-green-400" : "text-red-400"}>
+                      {account.equity >= account.balance ? "+" : ""}{((account.equity - account.balance) / Math.max(1, account.balance) * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-[#0d1520] rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-1000"
+                      style={{
+                        width: `${Math.min(100, (account.equity / Math.max(1, account.balance)) * 100)}%`,
+                        background: account.equity >= account.balance
+                          ? "linear-gradient(90deg,#00ff8840,#00ff88)"
+                          : "linear-gradient(90deg,#ff1a4e40,#ff1a4e)",
+                      }}/>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-6 text-center space-y-2">
+                <p className="text-[9px] text-gray-700 font-mono">
+                  {isConnected ? "口座データ取得中..." : "MT5に接続してください"}
+                </p>
+                <p className="text-[8px] text-gray-800 font-mono">
+                  Sidebar → MT5 で接続設定
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* === システムプロンプト === */}
           <div className="border border-cyan-700/30 bg-[#060a12] p-4">

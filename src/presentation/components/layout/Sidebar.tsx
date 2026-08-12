@@ -15,14 +15,14 @@ const NG      = "#00ff88";
 const NG_rgba = "rgba(0,255,136,";
 
 const NAV = [
-  { href: "/",          icon: LayoutDashboard, label: "DASHBOARD", group: 1 },
+  { href: "/",          icon: LayoutDashboard, label: "AI起動",    group: 1 },
   { href: "/markets",   icon: Globe,           label: "MARKETS",   group: 1 },
   { href: "/chart",     icon: BarChart2,       label: "CHART",     group: 1 },
   { href: "/calendar",  icon: CalendarDays,    label: "CALENDAR",  group: 1 },
   { href: "/news",      icon: Newspaper,       label: "NEWS",      group: 1 },
   { href: "/positions", icon: Briefcase,       label: "POSITIONS", group: 2 },
   { href: "/history",   icon: History,         label: "HISTORY",   group: 2 },
-  { href: "/logs",      icon: ScrollText,      label: "AI LOGS",   group: 2 },
+  { href: "/logs",      icon: ScrollText,      label: "SYS LOGS",  group: 2 },
   { href: "/settings",  icon: Settings,        label: "SETTINGS",  group: 2 },
 ];
 
