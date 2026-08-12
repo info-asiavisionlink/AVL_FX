@@ -1129,6 +1129,73 @@ const AIActivityPanel = memo(function AIActivityPanel() {
 });
 
 // =================================================================
+// Agent Flow — horizontal chain with live state visualization
+// =================================================================
+const AGENT_ICONS: Record<string, typeof Brain> = {
+  market: Activity, analysis: Brain, decision: Zap, order: Shield, voice: Volume2,
+};
+
+function AgentFlow({ agents }: { agents: AgentState[] }) {
+  return (
+    <div className="flex items-center w-full gap-0">
+      {agents.map((agent, idx) => {
+        const Icon     = AGENT_ICONS[agent.id] ?? Brain;
+        const isThink  = agent.status === "thinking";
+        const isActive = agent.status === "active";
+        const isError  = agent.status === "error";
+        const isLit    = isThink || isActive;
+        const col      = isThink ? "#00e5ff" : isActive ? "#00ff88" : isError ? "#ef4444" : "#1e2d3a";
+        return (
+          <div key={agent.id} className="flex items-center flex-1">
+            {idx > 0 && (
+              <div className="h-px flex-1 transition-all duration-500 min-w-[6px]"
+                style={{background: isLit ? `${col}35` : "#0d1520"}}/>
+            )}
+            <div className="flex flex-col items-center gap-0.5 px-2 py-1 shrink-0 relative transition-all duration-300 rounded-sm"
+              style={{
+                background: isLit ? `${col}07` : "transparent",
+                border: `1px solid ${isLit ? col + "20" : "transparent"}`,
+              }}>
+              <div className="flex items-center gap-1">
+                <div className={cn("w-1.5 h-1.5 rounded-full transition-all duration-300", isThink && "animate-pulse")}
+                  style={{backgroundColor: col, boxShadow: isLit ? `0 0 5px ${col}` : "none"}}/>
+                <Icon size={9} style={{color: isLit ? col : "#2a3a4a"}}/>
+              </div>
+              <span className="text-[6px] font-mono tracking-wider transition-colors"
+                style={{color: isLit ? col : "#283545"}}>
+                {agent.name.replace(" Agent","").toUpperCase()}
+              </span>
+              {isThink && (
+                <div className="absolute inset-0 rounded-sm overflow-hidden pointer-events-none">
+                  <div className="absolute inset-x-0 h-px top-0"
+                    style={{
+                      background:`linear-gradient(90deg,transparent,${col},transparent)`,
+                      animation:"avl-scan-h 1.2s linear infinite",
+                    }}/>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// =================================================================
+// AI State Meta — single source of truth for state colors/labels
+// =================================================================
+const AI_STATE_META: Record<string, {color: string; label: string}> = {
+  standby:    { color: "#00e5ff", label: "STANDBY"     },
+  scanning:   { color: "#00ff88", label: "SCANNING"    },
+  analyzing:  { color: "#a855f7", label: "ANALYZING"   },
+  reasoning:  { color: "#f59e0b", label: "REASONING"   },
+  risk_check: { color: "#f97316", label: "RISK CHECK"  },
+  listening:  { color: "#00e5ff", label: "LISTENING"   },
+  speaking:   { color: "#7c3aed", label: "AI SPEAKING" },
+};
+
+// =================================================================
 // Voice Telop — AI speaking subtitle
 // =================================================================
 const VoiceTelop = memo(function VoiceTelop({
@@ -1501,353 +1568,363 @@ export function DashboardOS() {
     isConnected     ? "STANDBY"     : "OFFLINE";
 
   // =================================================================
-  // レンダリング — JARVIS Style v4.0
+  // AI Brain State — derived from actual agent/voice states
+  // =================================================================
+  const brainState = useMemo((): string => {
+    if (voice.status === "listening")  return "listening";
+    if (voice.status === "speaking")   return "speaking";
+    if (voice.status === "processing" || voiceThinking) return "analyzing";
+    if (thinking)         return "analyzing";
+    if (pipeline.running) return "analyzing";
+    const dec = agents.find(a => a.id === "decision");
+    const ana = agents.find(a => a.id === "analysis");
+    const mkt = agents.find(a => a.id === "market");
+    if (dec?.status === "thinking") return "reasoning";
+    if (ana?.status === "thinking") return "analyzing";
+    if (mkt?.status === "active" || mkt?.status === "thinking") return "scanning";
+    return "standby";
+  }, [voice.status, voiceThinking, thinking, pipeline.running, agents]);
+
+  const stateMeta  = AI_STATE_META[brainState] ?? AI_STATE_META["standby"];
+  const aiStateCol = stateMeta.color;
+  const aiStateLbl = stateMeta.label;
+
+  // =================================================================
+  // レンダリング — Full-Screen AI Command Environment v5.1
   // =================================================================
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden relative" style={{background:"radial-gradient(ellipse at 50% 0%, #020c1a 0%, #030508 60%, #020408 100%)"}}>
-      {/* Multi-layer animated background */}
-      <div className="absolute inset-0 avl-grid-fine opacity-100 pointer-events-none z-0"/>
-      <div className="absolute inset-0 avl-scanlines pointer-events-none z-0"/>
-      {/* Radial ambient glow at center */}
-      <div className="absolute inset-0 pointer-events-none z-0" style={{background:"radial-gradient(ellipse 60% 40% at 50% 45%, rgba(0,180,255,0.04) 0%, transparent 70%)"}}/>
-      {/* Animated scanning line */}
-      <div className="absolute left-0 right-0 h-px pointer-events-none z-0 avl-scan-line" style={{background:"linear-gradient(to right, transparent, rgba(0,200,255,0.15), transparent)"}} />
+    <div className="relative h-full w-full overflow-hidden" style={{background:"#020408"}}>
 
-      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          TOP STATUS BAR
-      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="relative z-10 h-11 shrink-0 flex items-center px-5 gap-6 bg-[#05070A] border-b border-cyan-900/25">
-        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/25 to-transparent"/>
+      {/* ░░ LAYER 0 — HolographicAICore (Full-Screen AI Environment) ░░ */}
+      <div className="absolute inset-0 z-0">
+        <HolographicAICore mode={mode} isActive={isActive} isThinking={thinking || voiceThinking} voiceStatus={voice.status}/>
+      </div>
 
-        {/* Brand */}
+      {/* ░░ LAYER 5 — ParticleTorus (orbital ring overlay) ░░ */}
+      <div className="absolute inset-0 z-[5] pointer-events-none">
+        <ParticleTorus voiceStatus={voice.status} isThinking={thinking || voiceThinking}/>
+      </div>
+
+      {/* ░░ LAYER 3 — Ambient effects ░░ */}
+      <div className="absolute inset-0 z-[3] pointer-events-none">
+        <div className="absolute left-0 right-0 h-px avl-scan-line"
+          style={{background:"linear-gradient(to right,transparent,rgba(0,255,136,0.08),transparent)"}}/>
+      </div>
+
+      {/* ░░ LAYER 20 — TOP STATUS BAR (Glass HUD) ░░ */}
+      <div className="absolute top-0 left-0 right-0 z-20 h-11 flex items-center px-5 gap-5"
+        style={{
+          background:"rgba(2,5,10,0.62)",
+          backdropFilter:"blur(18px)",
+          borderBottom:"1px solid rgba(0,255,136,0.09)",
+          boxShadow:"0 1px 24px rgba(0,0,0,0.50)",
+        }}>
         <div className="flex items-center gap-2.5 shrink-0">
           <div className="flex gap-0.5">
             <div className="w-0.5 h-5 bg-cyan-400" style={{boxShadow:"0 0 6px #00e5ff"}}/>
-            <div className="w-0.5 h-5 bg-cyan-400/30"/>
+            <div className="w-0.5 h-5 bg-cyan-400/25"/>
           </div>
           <div>
             <p className="text-[11px] font-black font-mono tracking-[0.2em]" style={{color:"#00e5ff",textShadow:"0 0 12px #00e5ff88"}}>AVL AI</p>
-            <p className="text-[7px] font-mono tracking-[0.15em] text-gray-600 -mt-0.5">OPERATING SYSTEM</p>
+            <p className="text-[6.5px] font-mono tracking-[0.15em] text-gray-600 -mt-0.5">COMMAND CENTER</p>
           </div>
         </div>
-
-        <div className="w-px h-5 bg-cyan-900/40"/>
-
-        {/* Status indicators */}
+        <div className="w-px h-4 bg-gray-800/60"/>
         {[
-          { dot:isConnected?"bg-green-400":"bg-gray-700", glow:isConnected?"0 0 6px #22c55e":"none", label:"MT5 LIVE",          active:isConnected },
-          { dot:"bg-green-400", glow:"0 0 6px #22c55e",  label:"GATEWAY CONNECTED",  active:isConnected },
-          { dot:`${isActive?"bg-cyan-400 animate-pulse":"bg-gray-600"}`, glow:isActive?"0 0 6px #00e5ff":"none", label:"AI ONLINE", active:true },
-          { dot:isVoiceActive?"bg-purple-400 animate-pulse":"bg-gray-700", glow:isVoiceActive?"0 0 6px #a855f7":"none", label:"VOICE ACTIVE", active:isVoiceActive },
-        ].map(({ dot, glow, label, active }) => (
+          {dot:isConnected?"bg-green-400":"bg-gray-700",glow:isConnected?"0 0 6px #22c55e":"none",label:"MT5 LIVE",active:isConnected},
+          {dot:"bg-green-400",glow:"0 0 6px #22c55e",label:"GATEWAY",active:isConnected},
+          {dot:isActive?"bg-cyan-400 animate-pulse":"bg-gray-600",glow:isActive?"0 0 6px #00e5ff":"none",label:"AI ONLINE",active:true},
+          {dot:isVoiceActive?"bg-purple-400 animate-pulse":"bg-gray-700",glow:isVoiceActive?"0 0 6px #a855f7":"none",label:"VOICE",active:isVoiceActive},
+        ].map(({dot,glow,label,active})=>(
           <div key={label} className="flex items-center gap-1.5">
-            <div className={cn("w-2 h-2 rounded-full", dot)} style={{boxShadow:glow}}/>
-            <span className={cn("text-[9px] font-mono tracking-wider", active ? "text-gray-200" : "text-gray-600")}>{label}</span>
+            <div className={cn("w-1.5 h-1.5 rounded-full",dot)} style={{boxShadow:glow}}/>
+            <span className={cn("text-[8px] font-mono tracking-wider",active?"text-gray-300":"text-gray-700")}>{label}</span>
           </div>
         ))}
-
         <div className="flex-1"/>
-
-        {/* Sessions */}
         {symInd?.sessions && symInd.sessions.length > 0 && (
           <div className="flex gap-1.5 items-center">
-            {symInd.sessions.map(s => (
-              <span key={s} className={cn("text-[7px] font-mono border px-2 py-0.5 tracking-wider",
-                s.includes("Tokyo")  ? "border-blue-700/50 text-blue-300 bg-blue-950/20" :
-                s.includes("London") ? "border-purple-700/50 text-purple-300 bg-purple-950/20" :
-                s.includes("York")   ? "border-orange-700/50 text-orange-300 bg-orange-950/20" :
-                "border-gray-700/40 text-gray-500"
+            {symInd.sessions.map(s=>(
+              <span key={s} className={cn("text-[7px] font-mono border px-1.5 py-0.5 tracking-wider",
+                s.includes("Tokyo")?"border-blue-700/40 text-blue-300/75 bg-blue-950/15":
+                s.includes("London")?"border-purple-700/40 text-purple-300/75 bg-purple-950/15":
+                s.includes("York")?"border-orange-700/40 text-orange-300/75 bg-orange-950/15":
+                "border-gray-700/30 text-gray-500"
               )}>{s.replace(" Session","")}</span>
             ))}
           </div>
         )}
-
-        {/* Time */}
-        <div className="flex items-center gap-2 text-[10px] font-mono">
+        <div className="flex items-center gap-2 text-[9.5px] font-mono">
           <span className="text-gray-100 tabular-nums font-semibold" suppressHydrationWarning>
             {time.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
           </span>
-          <span className="text-gray-600">JST</span>
-          <span className="text-gray-500 tabular-nums" suppressHydrationWarning>
-            {time.toLocaleDateString("en-US",{year:"numeric",month:"2-digit",day:"2-digit"})}
-          </span>
+          <span className="text-gray-700">JST</span>
         </div>
       </div>
 
-      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          MAIN CONTENT — 3 COLUMN LAYOUT
-      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="flex flex-1 overflow-hidden z-10 relative">
-
-
-        {/* ╔══════════════════════════════════════════╗
-            ║  CENTER PANEL — AI OPERATIONS            ║
-            ╚══════════════════════════════════════════╝ */}
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-
-          {/* Header: Title + Mode + Agent Cards */}
-          <div className="relative shrink-0 border-b border-cyan-900/20 px-4 py-2.5 bg-[#05070A]">
-            <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent"/>
-            <div className="flex items-center justify-between mb-2.5">
-              <div className="flex items-center gap-3">
-                <div className="flex gap-0.5">
-                  <div className="w-0.5 h-5 bg-cyan-400/80" style={{boxShadow:"0 0 4px #00e5ff"}}/>
-                  <div className="w-0.5 h-5 bg-cyan-400/20"/>
-                </div>
-                <span className="text-[9.5px] font-mono tracking-[0.2em] text-cyan-400/80 font-semibold">AI OPERATIONS CENTER</span>
-                <span className={cn("text-[7px] font-mono border px-2 py-0.5 tracking-wider",
-                  isConnected ? "border-green-600/40 text-green-400/80 bg-green-950/15" : "border-red-800/40 text-red-500/60"
-                )}>● {isConnected?"ONLINE":"OFFLINE"}</span>
+      {/* ░░ LAYER 20 — AI OPERATIONS CENTER (Glass HUD) ░░ */}
+      <div className="absolute top-11 left-0 right-0 z-20"
+        style={{
+          background:"rgba(2,5,10,0.50)",
+          backdropFilter:"blur(14px)",
+          borderBottom:"1px solid rgba(0,255,136,0.07)",
+        }}>
+        <div className="px-4 py-2.5">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2.5">
+              <div className="flex gap-0.5">
+                <div className="w-0.5 h-4" style={{background:"#00ff88",boxShadow:"0 0 4px #00ff88"}}/>
+                <div className="w-0.5 h-4" style={{background:"rgba(0,255,136,0.18)"}}/>
               </div>
-              <ModeSelector mode={mode} onChange={setMode} />
+              <span className="text-[9px] font-mono tracking-[0.2em] font-semibold" style={{color:"rgba(0,255,136,0.80)"}}>
+                AI OPERATIONS CENTER
+              </span>
+              <span className={cn("text-[7px] font-mono border px-1.5 py-0.5 tracking-wider",
+                isConnected?"border-green-600/25 text-green-400/65 bg-green-950/10":"border-red-800/25 text-red-500/50"
+              )}>● {isConnected?"ONLINE":"OFFLINE"}</span>
             </div>
-
-            {/* Agent Cards */}
-            <div className="flex gap-1.5 items-stretch">
-              {agents.map(agent => <AgentCard key={agent.id} agent={agent}/>)}
-              <button onClick={() => pipeline.run()} disabled={pipeline.running||!isConnected}
-                className={cn("ml-auto px-4 text-[7.5px] font-mono border flex items-center gap-1.5 transition-all shrink-0 tracking-wider",
-                  pipeline.running ? "border-purple-700/50 text-purple-300 bg-purple-950/20 cursor-wait"
-                    : isConnected   ? "border-cyan-700/40 text-cyan-400 bg-cyan-950/20 hover:bg-cyan-900/30 hover:border-cyan-600/50"
-                    : "border-gray-800/40 text-gray-700 cursor-not-allowed"
+            <div className="flex items-center gap-2">
+              <ModeSelector mode={mode} onChange={setMode}/>
+              <button onClick={()=>pipeline.run()} disabled={pipeline.running||!isConnected}
+                className={cn("px-3 py-1 text-[7px] font-mono border flex items-center gap-1.5 tracking-wider transition-all",
+                  pipeline.running?"border-purple-600/30 text-purple-300/70 bg-purple-950/12 cursor-wait"
+                    :isConnected?"border-cyan-700/25 text-cyan-400/70 hover:bg-cyan-950/20"
+                    :"border-gray-800/25 text-gray-700 cursor-not-allowed"
                 )}>
                 <Brain size={8} className={pipeline.running?"animate-pulse":""}/>
-                {pipeline.running ? "ANALYZING..." : "3-AGENT ANALYSIS"}
+                {pipeline.running?"ANALYZING...":"3-AGENT"}
               </button>
             </div>
           </div>
-
-          {/* ── ANALYSIS ENGINE (mode=analysis) ── */}
-          {mode === "analysis" && (
-            <div className="flex-1 overflow-hidden min-w-0">
-              <AnalysisEngine activeSymbol={activeSymbol}/>
-            </div>
-          )}
-
-          {/* ── ONE CONTINUOUS IMMERSIVE AI CANVAS ── */}
-          {/* Particles + mic all on the same plane, no separators */}
-          <div className={cn("flex-1 relative overflow-hidden min-w-0", mode === "analysis" && "hidden")}>
-
-
-            {/* ░░ LAYER 0 — particle background ░░ */}
-            <div className="absolute inset-0 z-0">
-              <HolographicAICore mode={mode} isActive={isActive} isThinking={thinking || voiceThinking} voiceStatus={voice.status}/>
-            </div>
-
-            {/* ░░ LAYER 5 — torus ring ░░ */}
-            <div className="absolute inset-0 z-[5] pointer-events-none">
-              <ParticleTorus voiceStatus={voice.status} isThinking={thinking || voiceThinking} />
-            </div>
-
-            {/* ░░ LAYER 10 — AVL AI text, always centered ░░ */}
-            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-              <p className="font-black font-mono tracking-[0.55em] select-none"
-                style={{fontSize:30, color:"#ffffff",
-                  textShadow:"0 0 12px #ffffff, 0 0 30px #ffffff99, 0 0 60px #aaddff66, 0 0 100px #88bbff33"}}>
-                AVL AI
-              </p>
-            </div>
-
-            {/* ░░ LAYER 10 — HUD corner brackets ░░ */}
-            {["top-3 left-3 border-t-2 border-l-2","top-3 right-3 border-t-2 border-r-2",
-              "bottom-3 left-3 border-b-2 border-l-2","bottom-3 right-3 border-b-2 border-r-2"
-            ].map((cls,i) => (
-              <div key={i} className={`absolute w-5 h-5 pointer-events-none z-10 ${cls}`}
-                style={{borderColor:`${neonHex}50`}}/>
-            ))}
-
-            {/* ░░ LAYER 20 — signal notification (floats above mic) ░░ */}
-            {monitor.signals.length > 0 && (
-              <div className="absolute left-0 right-0 z-20 flex justify-center" style={{bottom:"33%"}}>
-                <div className="flex items-center gap-2 px-3 py-1.5 border"
-                  style={{borderColor:`${neonHex}40`, backgroundColor:`${neonHex}08`}}>
-                  <Bell size={9} style={{color:neonHex}} className="animate-pulse"/>
-                  <span className="text-[8px] font-mono tracking-wider" style={{color:neonHex}}>
-                    {monitor.signals[monitor.signals.length-1]?.message}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* ░░ LAYER 20 — order proposal card (floats above mic) ░░ */}
-            {orderProposal && (
-              <div className="absolute left-0 right-0 z-20 px-4" style={{bottom:"28%"}}>
-                <OrderCard p={orderProposal}
-                  onConfirm={()=>executeOrder(orderProposal)}
-                  onCancel={()=>{setOrderProposal(null);addLog("[ORDER] キャンセル","info");}}
-                />
-              </div>
-            )}
-
-            {/* ░░ LAYER 20 — AI status bar (waveform + mode text) ░░ */}
-            <div className="absolute left-0 right-0 z-20 flex items-center gap-4 px-5 py-2" style={{bottom:"23%"}}>
-              <div className="flex items-end gap-0.5 h-5 overflow-hidden">
-                {[3,5,8,12,16,20,16,12,8,5,3,6,10,15,10,6].map((h,i) => (
-                  <div key={i} className="w-0.5 rounded-full"
-                    style={{
-                      height: Math.min(h, 20),
-                      backgroundColor: neonHex,
-                      opacity: isActive ? 0.7 : 0.18,
-                      boxShadow: isActive ? `0 0 3px ${neonHex}` : "none",
-                      animation: `avl-wave-bar ${0.6+i*0.06}s ease-in-out ${i*0.06}s infinite alternate`,
-                      animationPlayState: isActive ? "running" : "paused",
-                      transformOrigin: "bottom",
-                      transition: "opacity 0.4s ease",
-                      willChange: "transform",
-                    }}/>
-                ))}
-              </div>
-              <p className="text-[11px] font-mono tracking-[0.2em] font-semibold"
-                style={{color:neonHex, textShadow:`0 0 8px ${neonHex}88`}}>{aiStatusText}</p>
-              <button onClick={()=>{setMessages([{id:"r",role:"system",content:"RESET",ts:Date.now()}]);setOrderProposal(null);setError(null);}}
-                className="ml-auto text-gray-700 hover:text-gray-400 transition-colors p-1">
-                <RefreshCw size={11}/>
-              </button>
-            </div>
-
-            {/* ░░ LAYER 30 — holographic mic floating at bottom ░░ */}
-            <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center pb-5 gap-2">
-
-              {/* Concentric ring mic button */}
-              <div className="relative flex items-center justify-center" style={{width:96,height:96,contain:'layout style'}}>
-
-                {/* Listening: ambient pulse ring — always rendered, opacity-controlled */}
-                <div className="absolute rounded-full pointer-events-none"
-                  style={{
-                    width:140, height:140, left:-22, top:-22,
-                    border:`1px solid ${neonHex}55`,
-                    boxShadow:`0 0 30px ${neonHex}22, 0 0 60px ${neonHex}11`,
-                    animation:"avl-ping-outer 2s ease-out infinite",
-                    animationPlayState: voice.status === "listening" ? "running" : "paused",
-                    opacity: voice.status === "listening" ? 1 : 0,
-                    transition:"opacity 0.3s ease",
-                    willChange:"transform,opacity",
-                  }}/>
-
-                {/* Thinking: inner convergence glow — always rendered */}
-                <div className="absolute rounded-full pointer-events-none"
-                  style={{
-                    width:120, height:120, left:-12, top:-12,
-                    background:`radial-gradient(circle, ${neonHex}18 0%, transparent 70%)`,
-                    animation:"avl-pulse-ring-out 1.8s ease-out infinite",
-                    animationPlayState: (thinking || voiceThinking) ? "running" : "paused",
-                    opacity: (thinking || voiceThinking) ? 1 : 0,
-                    transition:"opacity 0.3s ease",
-                    willChange:"transform,opacity",
-                  }}/>
-
-                {/* Speaking: outward energy waves — always rendered */}
-                {[0,1,2].map(i => (
-                  <div key={i} className="absolute rounded-full pointer-events-none"
-                    style={{
-                      width:48+i*36, height:48+i*36,
-                      left:-(i*18+4), top:-(i*18+4),
-                      border:`1px solid ${neonHex}${["55","33","18"][i]}`,
-                      animation:`avl-pulse-ring-out ${1.4+i*0.5}s ease-out ${i*0.4}s infinite`,
-                      animationPlayState: voice.status === "speaking" ? "running" : "paused",
-                      opacity: voice.status === "speaking" ? 1 : 0,
-                      transition:"opacity 0.3s ease",
-                      willChange:"transform,opacity",
-                    }}/>
-                ))}
-
-                {/* Voice active ping — always rendered */}
-                <div className="absolute inset-0 rounded-full"
-                  style={{
-                    border:`1px solid ${neonHex}`,
-                    animation:"ping 1s cubic-bezier(0,0,0.2,1) infinite",
-                    animationPlayState: isVoiceActive ? "running" : "paused",
-                    opacity: isVoiceActive ? 0.2 : 0,
-                    transition:"opacity 0.3s ease",
-                    willChange:"transform,opacity",
-                  }}/>
-
-                {/* Ring 3 */}
-                <div className="absolute w-24 h-24 rounded-full transition-all duration-500"
-                  style={{border:`1px solid ${isVoiceActive ? neonHex+'35' : '#1a2a35'}`,
-                          boxShadow: isVoiceActive ? `0 0 18px ${neonHex}18` : 'none'}}/>
-
-                {/* Ring 2 + cardinal dots */}
-                <div className="absolute w-[70px] h-[70px] rounded-full transition-all duration-500"
-                  style={{border:`1px solid ${isVoiceActive ? neonHex+'55' : '#1e303d'}`,
-                          boxShadow: isVoiceActive ? `0 0 14px ${neonHex}28` : 'none'}}>
-                  {[
-                    'absolute top-0    left-1/2 -translate-x-1/2 -translate-y-1/2',
-                    'absolute bottom-0 left-1/2 -translate-x-1/2  translate-y-1/2',
-                    'absolute right-0  top-1/2   translate-x-1/2 -translate-y-1/2',
-                    'absolute left-0   top-1/2  -translate-x-1/2 -translate-y-1/2',
-                  ].map((cls,i) => (
-                    <div key={i} className={`${cls} w-1.5 h-1.5 rounded-full transition-all duration-500`}
-                      style={{backgroundColor: isVoiceActive ? neonHex : '#1e3a4a',
-                              boxShadow:       isVoiceActive ? `0 0 6px ${neonHex}` : 'none'}}/>
-                  ))}
-                </div>
-
-                {/* Ring 1 */}
-                <div className="absolute w-[50px] h-[50px] rounded-full transition-all duration-500"
-                  style={{border:`1px solid ${isVoiceActive ? neonHex+'75' : '#1e303d'}`,
-                          boxShadow: isVoiceActive ? `0 0 10px ${neonHex}38` : 'none'}}/>
-
-                {/* Button core */}
-                <button type="button" disabled={voice.status === "connecting"}
-                  onClick={() => voice.status==="idle" ? voice.start(activeSymbol) : voice.stop()}
-                  className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 disabled:opacity-30 disabled:cursor-not-allowed"
-                  style={{
-                    background: isVoiceActive
-                      ? `radial-gradient(circle, ${neonHex}30 0%, ${neonHex}08 70%)`
-                      : 'radial-gradient(circle, rgba(0,70,110,0.45) 0%, rgba(0,25,50,0.2) 70%)',
-                    border: `2px solid ${isVoiceActive ? neonHex : neonHex+'30'}`,
-                    boxShadow: isVoiceActive
-                      ? `0 0 22px ${neonHex}55, 0 0 44px ${neonHex}18, inset 0 0 14px ${neonHex}12`
-                      : `0 0 8px ${neonHex}18`,
-                  }}>
-                  <Mic size={17}
-                    style={{color: isVoiceActive ? neonHex : `${neonHex}60`}}
-                    className={isVoiceActive ? 'animate-pulse' : ''}/>
-                </button>
-              </div>
-
-              {/* Voice status + wave bars */}
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[8px] font-mono tracking-[0.35em] transition-all duration-300"
-                  style={{color: isVoiceActive ? neonHex : '#2a3a4a',
-                          textShadow: isVoiceActive ? `0 0 8px ${neonHex}60` : 'none'}}>
-                  {isVoiceActive ? aiStatusText : 'VOICE STANDBY'}
-                </span>
-                {isVoiceActive && (
-                  <div className="flex items-end gap-0.5 h-3">
-                    {[2,4,6,9,6,4,2,4,6,4,2].map((h,i) => (
-                      <div key={i} className="w-0.5 rounded-full"
-                        style={{height:h,backgroundColor:neonHex,opacity:0.75,
-                          animation:`avl-wave-bar 0.8s ease-in-out ${i*0.07}s infinite alternate`}}/>
-                    ))}
-                  </div>
-                )}
-                {isVoiceActive && voice.status !== 'idle' && (
-                  <div className="flex items-center gap-3 mt-0.5">
-                    {voice.muted && <span className="text-[7px] text-yellow-400 font-mono">MUTED</span>}
-                    <button onClick={voice.interrupt}
-                      className="text-[7px] text-gray-600 hover:text-red-400 font-mono transition-colors tracking-wider">
-                      INTERRUPT
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* AI Telop — speaking text subtitle */}
-              <VoiceTelop text={voice.speakingText} status={voice.status} neonHex={neonHex} />
-            </div>
-
-
-          </div>{/* end immersive AI canvas */}
+          <AgentFlow agents={agents}/>
         </div>
-
       </div>
 
+      {/* ░░ LAYER 25 — Analysis Engine (mode=analysis) ░░ */}
+      {mode === "analysis" && (
+        <div className="absolute inset-0 z-[25]" style={{paddingTop:"88px"}}>
+          <AnalysisEngine activeSymbol={activeSymbol}/>
+        </div>
+      )}
 
-      {/* Order Proposal Modal */}
+      {/* ░░ LAYER 10 — Center AI Display ░░ */}
+      {mode !== "analysis" && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none select-none"
+          style={{paddingTop:"96px",paddingBottom:"210px"}}>
+          <p className="text-[8px] font-mono tracking-[0.5em] mb-5 transition-all duration-1000"
+            style={{color:aiStateCol,opacity:0.65,textShadow:`0 0 18px ${aiStateCol}44`}}>
+            {aiStateLbl}
+          </p>
+          <p className="font-black font-mono tracking-[0.55em] select-none"
+            style={{fontSize:30, color:"#ffffff",
+              textShadow:"0 0 12px #ffffff, 0 0 30px #ffffff99, 0 0 60px #aaddff66, 0 0 100px #88bbff33"}}>
+            AVL AI
+          </p>
+          {(brainState==="scanning"||brainState==="analyzing"||brainState==="reasoning") && (
+            <p className="text-[10px] font-mono font-bold mt-4 tracking-[0.35em] transition-all duration-500"
+              style={{color:aiStateCol,textShadow:`0 0 14px ${aiStateCol}55`,opacity:0.85}}>
+              {activeSymbol}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ░░ LAYER 10 — HUD corner brackets ░░ */}
+      {["absolute top-[92px] left-3 border-t border-l","absolute top-[92px] right-3 border-t border-r",
+        "absolute bottom-3 left-3 border-b border-l","absolute bottom-3 right-3 border-b border-r"
+      ].map((cls,i)=>(
+        <div key={i} className={`${cls} w-5 h-5 pointer-events-none z-10`}
+          style={{borderColor:`${neonHex}25`}}/>
+      ))}
+
+      {/* ░░ LAYER 20 — Monitor signal ░░ */}
+      {monitor.signals.length > 0 && mode !== "analysis" && (
+        <div className="absolute left-0 right-0 z-20 flex justify-center" style={{bottom:"32%"}}>
+          <div className="flex items-center gap-2 px-4 py-2 border"
+            style={{background:"rgba(2,5,10,0.72)",backdropFilter:"blur(12px)",borderColor:`${neonHex}28`}}>
+            <Bell size={9} style={{color:neonHex}} className="animate-pulse"/>
+            <span className="text-[8px] font-mono tracking-wider" style={{color:neonHex}}>
+              {monitor.signals[monitor.signals.length-1]?.message}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ░░ LAYER 20 — Order proposal card ░░ */}
+      {orderProposal && mode !== "analysis" && (
+        <div className="absolute left-0 right-0 z-20 px-4" style={{bottom:"28%"}}>
+          <OrderCard p={orderProposal}
+            onConfirm={()=>executeOrder(orderProposal)}
+            onCancel={()=>{setOrderProposal(null);addLog("[ORDER] キャンセル","info");}}
+          />
+        </div>
+      )}
+
+      {/* ░░ LAYER 20 — AI status waveform (bottom-left float) ░░ */}
+      {mode !== "analysis" && (
+        <div className="absolute z-20 flex items-center gap-3 px-4 py-2" style={{bottom:"22%",left:0,right:0}}>
+          <div className="flex items-end gap-0.5 h-5 overflow-hidden">
+            {[3,5,8,12,16,20,16,12,8,5,3,6,10,15,10,6].map((h,i)=>(
+              <div key={i} className="w-0.5 rounded-full"
+                style={{
+                  height:Math.min(h,20),
+                  backgroundColor:neonHex,
+                  opacity:isActive?0.65:0.15,
+                  boxShadow:isActive?`0 0 3px ${neonHex}`:"none",
+                  animation:`avl-wave-bar ${0.6+i*0.06}s ease-in-out ${i*0.06}s infinite alternate`,
+                  animationPlayState:isActive?"running":"paused",
+                  transformOrigin:"bottom",
+                  transition:"opacity 0.4s ease",
+                  willChange:"transform",
+                }}/>
+            ))}
+          </div>
+          <p className="text-[11px] font-mono tracking-[0.2em] font-semibold"
+            style={{color:neonHex,textShadow:`0 0 8px ${neonHex}88`}}>{aiStatusText}</p>
+          <button onClick={()=>{setMessages([{id:"r",role:"system",content:"RESET",ts:Date.now()}]);setOrderProposal(null);setError(null);}}
+            className="ml-auto text-gray-700 hover:text-gray-400 transition-colors p-1">
+            <RefreshCw size={11}/>
+          </button>
+        </div>
+      )}
+
+      {/* ░░ LAYER 30 — holographic mic floating at bottom ░░ */}
+      {mode !== "analysis" && (
+        <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center pb-5 gap-2">
+
+          {/* Concentric ring mic button */}
+          <div className="relative flex items-center justify-center" style={{width:96,height:96,contain:'layout style'}}>
+
+            {/* Listening: ambient pulse ring */}
+            <div className="absolute rounded-full pointer-events-none"
+              style={{
+                width:140, height:140, left:-22, top:-22,
+                border:`1px solid ${neonHex}55`,
+                boxShadow:`0 0 30px ${neonHex}22, 0 0 60px ${neonHex}11`,
+                animation:"avl-ping-outer 2s ease-out infinite",
+                animationPlayState: voice.status === "listening" ? "running" : "paused",
+                opacity: voice.status === "listening" ? 1 : 0,
+                transition:"opacity 0.3s ease",
+                willChange:"transform,opacity",
+              }}/>
+
+            {/* Thinking: inner convergence glow */}
+            <div className="absolute rounded-full pointer-events-none"
+              style={{
+                width:120, height:120, left:-12, top:-12,
+                background:`radial-gradient(circle, ${neonHex}18 0%, transparent 70%)`,
+                animation:"avl-pulse-ring-out 1.8s ease-out infinite",
+                animationPlayState: (thinking || voiceThinking) ? "running" : "paused",
+                opacity: (thinking || voiceThinking) ? 1 : 0,
+                transition:"opacity 0.3s ease",
+                willChange:"transform,opacity",
+              }}/>
+
+            {/* Speaking: outward energy waves */}
+            {[0,1,2].map(i => (
+              <div key={i} className="absolute rounded-full pointer-events-none"
+                style={{
+                  width:48+i*36, height:48+i*36,
+                  left:-(i*18+4), top:-(i*18+4),
+                  border:`1px solid ${neonHex}${["55","33","18"][i]}`,
+                  animation:`avl-pulse-ring-out ${1.4+i*0.5}s ease-out ${i*0.4}s infinite`,
+                  animationPlayState: voice.status === "speaking" ? "running" : "paused",
+                  opacity: voice.status === "speaking" ? 1 : 0,
+                  transition:"opacity 0.3s ease",
+                  willChange:"transform,opacity",
+                }}/>
+            ))}
+
+            {/* Voice active ping */}
+            <div className="absolute inset-0 rounded-full"
+              style={{
+                border:`1px solid ${neonHex}`,
+                animation:"ping 1s cubic-bezier(0,0,0.2,1) infinite",
+                animationPlayState: isVoiceActive ? "running" : "paused",
+                opacity: isVoiceActive ? 0.2 : 0,
+                transition:"opacity 0.3s ease",
+                willChange:"transform,opacity",
+              }}/>
+
+            {/* Ring 3 */}
+            <div className="absolute w-24 h-24 rounded-full transition-all duration-500"
+              style={{border:`1px solid ${isVoiceActive ? neonHex+'35' : '#1a2a35'}`,
+                      boxShadow: isVoiceActive ? `0 0 18px ${neonHex}18` : 'none'}}/>
+
+            {/* Ring 2 + cardinal dots */}
+            <div className="absolute w-[70px] h-[70px] rounded-full transition-all duration-500"
+              style={{border:`1px solid ${isVoiceActive ? neonHex+'55' : '#1e303d'}`,
+                      boxShadow: isVoiceActive ? `0 0 14px ${neonHex}28` : 'none'}}>
+              {[
+                'absolute top-0    left-1/2 -translate-x-1/2 -translate-y-1/2',
+                'absolute bottom-0 left-1/2 -translate-x-1/2  translate-y-1/2',
+                'absolute right-0  top-1/2   translate-x-1/2 -translate-y-1/2',
+                'absolute left-0   top-1/2  -translate-x-1/2 -translate-y-1/2',
+              ].map((cls,i) => (
+                <div key={i} className={`${cls} w-1.5 h-1.5 rounded-full transition-all duration-500`}
+                  style={{backgroundColor: isVoiceActive ? neonHex : '#1e3a4a',
+                          boxShadow:       isVoiceActive ? `0 0 6px ${neonHex}` : 'none'}}/>
+              ))}
+            </div>
+
+            {/* Ring 1 */}
+            <div className="absolute w-[50px] h-[50px] rounded-full transition-all duration-500"
+              style={{border:`1px solid ${isVoiceActive ? neonHex+'75' : '#1e303d'}`,
+                      boxShadow: isVoiceActive ? `0 0 10px ${neonHex}38` : 'none'}}/>
+
+            {/* Button core */}
+            <button type="button" disabled={voice.status === "connecting"}
+              onClick={() => voice.status==="idle" ? voice.start(activeSymbol) : voice.stop()}
+              className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 disabled:opacity-30 disabled:cursor-not-allowed"
+              style={{
+                background: isVoiceActive
+                  ? `radial-gradient(circle, ${neonHex}30 0%, ${neonHex}08 70%)`
+                  : 'radial-gradient(circle, rgba(0,70,110,0.45) 0%, rgba(0,25,50,0.2) 70%)',
+                border: `2px solid ${isVoiceActive ? neonHex : neonHex+'30'}`,
+                boxShadow: isVoiceActive
+                  ? `0 0 22px ${neonHex}55, 0 0 44px ${neonHex}18, inset 0 0 14px ${neonHex}12`
+                  : `0 0 8px ${neonHex}18`,
+              }}>
+              <Mic size={17}
+                style={{color: isVoiceActive ? neonHex : `${neonHex}60`}}
+                className={isVoiceActive ? 'animate-pulse' : ''}/>
+            </button>
+          </div>
+
+          {/* Voice status + wave bars */}
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[8px] font-mono tracking-[0.35em] transition-all duration-300"
+              style={{color: isVoiceActive ? neonHex : '#2a3a4a',
+                      textShadow: isVoiceActive ? `0 0 8px ${neonHex}60` : 'none'}}>
+              {isVoiceActive ? aiStatusText : 'VOICE STANDBY'}
+            </span>
+            {isVoiceActive && (
+              <div className="flex items-end gap-0.5 h-3">
+                {[2,4,6,9,6,4,2,4,6,4,2].map((h,i) => (
+                  <div key={i} className="w-0.5 rounded-full"
+                    style={{height:h,backgroundColor:neonHex,opacity:0.75,
+                      animation:`avl-wave-bar 0.8s ease-in-out ${i*0.07}s infinite alternate`}}/>
+                ))}
+              </div>
+            )}
+            {isVoiceActive && voice.status !== 'idle' && (
+              <div className="flex items-center gap-3 mt-0.5">
+                {voice.muted && <span className="text-[7px] text-yellow-400 font-mono">MUTED</span>}
+                <button onClick={voice.interrupt}
+                  className="text-[7px] text-gray-600 hover:text-red-400 font-mono transition-colors tracking-wider">
+                  INTERRUPT
+                </button>
+              </div>
+            )}
+          </div>
+
+          <VoiceTelop text={voice.speakingText} status={voice.status} neonHex={neonHex} />
+        </div>
+      )}
+
+      {/* ░░ LAYER 40 — Order Proposal Modal ░░ */}
       {orderProposal && !showChat && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-50 backdrop-blur-sm">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-40 backdrop-blur-sm">
           <OrderCard p={orderProposal}
             onConfirm={()=>executeOrder(orderProposal)}
             onCancel={()=>{setOrderProposal(null);addLog("[ORDER] キャンセル","info");}}
