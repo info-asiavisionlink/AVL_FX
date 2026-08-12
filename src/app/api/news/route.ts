@@ -1,13 +1,13 @@
 // GET /api/news
-// ソース: FXStreet RSS — APIキー不要・完全無料
+// ソース: Yahoo Finance FX RSS — APIキー不要・完全無料
+//   Vercel含むサーバーサイドで動作確認済み（FXStreetはVPS/Vercelをブロックするため不使用）
 // キャッシュ: インメモリ15分
 // クエリ: ?currency=USD|EUR|JPY|GBP|AUD|CAD|XAU|ALL
 
 import { NextRequest, NextResponse } from "next/server";
-import { parseStringPromise }        from "xml2js";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const runtime    = "nodejs";
+export const revalidate = 900; // 15分キャッシュ（Vercel Data Cache + CDN）
 
 // ── 型 ──────────────────────────────────────────────────────────────
 
@@ -18,20 +18,28 @@ export interface NewsItem {
   excerpt:  string;
   source:   string;
   datetime: number;   // Unix秒
-  tags:     string[]; // 関連通貨キーワード
+  tags:     string[]; // 関連通貨
 }
+
+// ── Yahoo Finance FX RSS エンドポイント ──────────────────────────────
+// EURUSD=X, USDJPY=X, GBPUSD=X, AUDUSD=X, XAUUSD=X をまとめて取得
+
+const YF_FX_URL =
+  "https://feeds.finance.yahoo.com/rss/2.0/headline" +
+  "?s=EURUSD%3DX%2CUSDJPY%3DX%2CGBPUSD%3DX%2CAUDUSD%3DX%2CXAUUSD%3DX%2CCADUSD%3DX" +
+  "&region=US&lang=en-US";
 
 // ── インメモリキャッシュ ─────────────────────────────────────────────
 
 let _cache: { items: NewsItem[]; ts: number } | null = null;
-const CACHE_TTL = 15 * 60 * 1000; // 15分
+const CACHE_TTL = 15 * 60 * 1000;
 
 // ── 通貨キーワードマップ ─────────────────────────────────────────────
 
 const CCY_KEYWORDS: Record<string, string[]> = {
-  USD: ["usd", "dollar", "fed ", "federal reserve", "fomc", "us economy"],
-  EUR: ["eur", "euro", "ecb", "european central bank", "eurozone"],
-  JPY: ["jpy", "yen", "boj", "bank of japan", "日本"],
+  USD: ["usd", "dollar", "fed ", "federal reserve", "fomc", "dxy", "greenback"],
+  EUR: ["eur", "euro", "ecb", "eurozone", "european central bank"],
+  JPY: ["jpy", "yen", "boj", "bank of japan", "nikkei"],
   GBP: ["gbp", "sterling", "pound", "boe", "bank of england"],
   AUD: ["aud", "aussie", "rba", "reserve bank of australia"],
   CAD: ["cad", "loonie", "bank of canada"],
@@ -47,38 +55,66 @@ function detectTags(text: string): string[] {
     .map(([ccy]) => ccy);
 }
 
-// ── RSS取得・パース ──────────────────────────────────────────────────
+// ── XML パーサー（xml2js なしで軽量実装） ────────────────────────────
 
-async function fetchFXStreet(): Promise<NewsItem[]> {
+function extractItems(xml: string): Array<Record<string, string>> {
+  const items: Array<Record<string, string>> = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = itemRegex.exec(xml)) !== null) {
+    const block = m[1];
+    const get = (tag: string) => {
+      const r = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([^<]*)<\\/${tag}>`, "i");
+      const found = r.exec(block);
+      return (found?.[1] ?? found?.[2] ?? "").trim();
+    };
+    items.push({
+      title:       get("title"),
+      link:        get("link"),
+      guid:        get("guid"),
+      pubDate:     get("pubDate"),
+      description: get("description"),
+    });
+  }
+  return items;
+}
+
+// ── RSS 取得 ──────────────────────────────────────────────────────────
+
+async function fetchNews(): Promise<NewsItem[]> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL) return _cache.items;
 
-  const res = await fetch("https://www.fxstreet.com/rss/news", {
-    cache: "no-store",
+  const res = await fetch(YF_FX_URL, {
+    next: { revalidate: 900 }, // Next.js Data Cache — Vercel serverless で有効
     headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; AVL-FX/1.0)",
-      "Accept": "application/rss+xml, application/xml, text/xml",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     },
   });
 
-  if (!res.ok) throw new Error(`FXStreet RSS HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`Yahoo Finance RSS HTTP ${res.status}`);
 
-  const xml  = await res.text();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const feed = await parseStringPromise(xml, { explicitArray: false }) as any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawItems: any[] = Array.isArray(feed?.rss?.channel?.item)
-    ? feed.rss.channel.item
-    : [feed?.rss?.channel?.item].filter(Boolean);
+  const xml   = await res.text();
+  const raws  = extractItems(xml);
 
-  const items: NewsItem[] = rawItems.map((item, i) => {
-    const title   = String(item.title   ?? "").trim();
-    const url     = String(item.link    ?? "").trim();
-    const excerpt = String(item.description ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200);
-    const guid    = String(item.guid?._  ?? item.guid ?? `fxs_${i}`);
-    const pubDate = item.pubDate ? new Date(item.pubDate).getTime() / 1000 : Date.now() / 1000;
+  const items: NewsItem[] = raws.map((r, i) => {
+    const title   = r.title;
+    const url     = r.link || r.guid;
+    const excerpt = r.description.replace(/<[^>]+>/g, "").slice(0, 200);
+    const id      = r.guid || `yf_${i}`;
+    const pubMs   = r.pubDate ? new Date(r.pubDate).getTime() : Date.now();
     const tags    = detectTags(title + " " + excerpt);
 
-    return { id: guid, title, url, excerpt, source: "FXStreet", datetime: Math.floor(pubDate), tags };
+    return {
+      id,
+      title,
+      url,
+      excerpt,
+      source:   "Yahoo Finance",
+      datetime: Math.floor(pubMs / 1000),
+      tags,
+    };
   });
 
   _cache = { items, ts: Date.now() };
@@ -91,18 +127,21 @@ export async function GET(req: NextRequest) {
   const currency = req.nextUrl.searchParams.get("currency") ?? "ALL";
 
   try {
-    const all     = await fetchFXStreet();
+    const all      = await fetchNews();
     const filtered = currency === "ALL"
       ? all
       : all.filter(item => item.tags.includes(currency));
 
     return NextResponse.json(
-      { items: filtered, source: "fxstreet", fetchedAt: new Date().toISOString() },
+      { items: filtered, source: "yahoo_finance", fetchedAt: new Date().toISOString() },
       { headers: { "Cache-Control": "public, max-age=900" } }
     );
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error("[news]", error);
-    return NextResponse.json({ items: [], source: "none", error }, { status: 200 });
+    return NextResponse.json(
+      { items: [], source: "none", error },
+      { status: 200 }
+    );
   }
 }

@@ -157,7 +157,7 @@ export function NewsView() {
       {/* ── ステータスバー ── */}
       <div className="shrink-0 px-4 py-1 border-b border-[#0d1520] bg-[#03050b] flex items-center gap-2">
         <span className="text-[8px] font-mono text-gray-700">
-          📡 FXStreet RSS
+          📡 Yahoo Finance RSS
         </span>
         {fetchedAt && !error && (
           <span className="text-[8px] font-mono text-gray-800">
