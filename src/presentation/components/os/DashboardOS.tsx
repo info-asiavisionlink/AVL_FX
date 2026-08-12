@@ -1614,9 +1614,7 @@ export function DashboardOS() {
       {/* ░░ LAYER 20 — TOP STATUS BAR (Glass HUD) ░░ */}
       <div className="absolute top-0 left-0 right-0 z-20 h-11 flex items-center px-5 gap-5"
         style={{
-          background:"rgba(2,5,10,0.18)",
-          backdropFilter:"blur(8px)",
-          borderBottom:"1px solid rgba(0,255,136,0.08)",
+          background:"transparent",
         }}>
         <div className="flex items-center gap-2.5 shrink-0">
           <div className="flex gap-0.5">
@@ -1664,9 +1662,7 @@ export function DashboardOS() {
       {/* ░░ LAYER 20 — AI OPERATIONS CENTER (Glass HUD) ░░ */}
       <div className="absolute top-11 left-0 right-0 z-20"
         style={{
-          background:"rgba(2,5,10,0.15)",
-          backdropFilter:"blur(6px)",
-          borderBottom:"1px solid rgba(0,255,136,0.06)",
+          background:"transparent",
         }}>
         <div className="px-4 py-2.5">
           <div className="flex items-center justify-between mb-2">
