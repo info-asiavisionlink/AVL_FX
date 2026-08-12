@@ -1,85 +1,108 @@
-// =================================================================
-// GET /api/news?symbol=EURUSD&key=xxx
-// Twelve Data /news プロキシ
-// =================================================================
+// GET /api/news
+// ソース: FXStreet RSS — APIキー不要・完全無料
+// キャッシュ: インメモリ15分
+// クエリ: ?currency=USD|EUR|JPY|GBP|AUD|CAD|XAU|ALL
 
 import { NextRequest, NextResponse } from "next/server";
-import { upsertNews } from "@/infrastructure/supabase/repository";
+import { parseStringPromise }        from "xml2js";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-interface TDNewsItem {
-  id?:        string;
-  title:      string;
-  url?:       string;
-  text?:      string;
-  source?:    string;
-  datetime?:  string;
-  symbols?:   string[];
+// ── 型 ──────────────────────────────────────────────────────────────
+
+export interface NewsItem {
+  id:       string;
+  title:    string;
+  url:      string;
+  excerpt:  string;
+  source:   string;
+  datetime: number;   // Unix秒
+  tags:     string[]; // 関連通貨キーワード
 }
 
-interface TDNewsResponse {
-  data?: TDNewsItem[];
+// ── インメモリキャッシュ ─────────────────────────────────────────────
+
+let _cache: { items: NewsItem[]; ts: number } | null = null;
+const CACHE_TTL = 15 * 60 * 1000; // 15分
+
+// ── 通貨キーワードマップ ─────────────────────────────────────────────
+
+const CCY_KEYWORDS: Record<string, string[]> = {
+  USD: ["usd", "dollar", "fed ", "federal reserve", "fomc", "us economy"],
+  EUR: ["eur", "euro", "ecb", "european central bank", "eurozone"],
+  JPY: ["jpy", "yen", "boj", "bank of japan", "日本"],
+  GBP: ["gbp", "sterling", "pound", "boe", "bank of england"],
+  AUD: ["aud", "aussie", "rba", "reserve bank of australia"],
+  CAD: ["cad", "loonie", "bank of canada"],
+  CHF: ["chf", "swiss franc", "snb"],
+  NZD: ["nzd", "kiwi", "rbnz"],
+  XAU: ["gold", "xau", "silver", "xag"],
+};
+
+function detectTags(text: string): string[] {
+  const lower = text.toLowerCase();
+  return Object.entries(CCY_KEYWORDS)
+    .filter(([, kws]) => kws.some(kw => lower.includes(kw)))
+    .map(([ccy]) => ccy);
 }
 
-const FX_SYMBOLS = ["EUR/USD", "USD/JPY", "GBP/USD", "AUD/USD", "XAU/USD"];
+// ── RSS取得・パース ──────────────────────────────────────────────────
+
+async function fetchFXStreet(): Promise<NewsItem[]> {
+  if (_cache && Date.now() - _cache.ts < CACHE_TTL) return _cache.items;
+
+  const res = await fetch("https://www.fxstreet.com/rss/news", {
+    cache: "no-store",
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; AVL-FX/1.0)",
+      "Accept": "application/rss+xml, application/xml, text/xml",
+    },
+  });
+
+  if (!res.ok) throw new Error(`FXStreet RSS HTTP ${res.status}`);
+
+  const xml  = await res.text();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const feed = await parseStringPromise(xml, { explicitArray: false }) as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawItems: any[] = Array.isArray(feed?.rss?.channel?.item)
+    ? feed.rss.channel.item
+    : [feed?.rss?.channel?.item].filter(Boolean);
+
+  const items: NewsItem[] = rawItems.map((item, i) => {
+    const title   = String(item.title   ?? "").trim();
+    const url     = String(item.link    ?? "").trim();
+    const excerpt = String(item.description ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200);
+    const guid    = String(item.guid?._  ?? item.guid ?? `fxs_${i}`);
+    const pubDate = item.pubDate ? new Date(item.pubDate).getTime() / 1000 : Date.now() / 1000;
+    const tags    = detectTags(title + " " + excerpt);
+
+    return { id: guid, title, url, excerpt, source: "FXStreet", datetime: Math.floor(pubDate), tags };
+  });
+
+  _cache = { items, ts: Date.now() };
+  return items;
+}
+
+// ── ハンドラー ──────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const sp     = req.nextUrl.searchParams;
-  const key    = sp.get("key") ?? process.env.TWELVE_DATA_API_KEY ?? "";
-  const symbol = sp.get("symbol") ?? "EUR/USD";
-  const limit  = sp.get("limit")  ?? "20";
-
-  if (!key) {
-    return NextResponse.json(demoNews());
-  }
+  const currency = req.nextUrl.searchParams.get("currency") ?? "ALL";
 
   try {
-    const url = `https://api.twelvedata.com/news?symbol=${encodeURIComponent(symbol)}&apikey=${key}&outputsize=${limit}&source=seekingalpha,reuters,bloomberg,forexlive`;
-    const res  = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) throw new Error(`Twelve Data ${res.status}`);
+    const all     = await fetchFXStreet();
+    const filtered = currency === "ALL"
+      ? all
+      : all.filter(item => item.tags.includes(currency));
 
-    const raw   = await res.json() as TDNewsResponse;
-    const items = (raw.data ?? []).map((item, i) => ({
-      id:       item.id ?? `news_${i}`,
-      title:    item.title,
-      url:      item.url ?? "",
-      excerpt:  item.text ? item.text.slice(0, 180) : "",
-      source:   item.source ?? "—",
-      datetime: item.datetime
-        ? Math.floor(new Date(item.datetime).getTime() / 1000)
-        : Math.floor(Date.now() / 1000),
-      symbols:  item.symbols ?? [],
-    }));
-
-    // Supabase に保存（非同期・エラーは無視）
-    void upsertNews(items.map(item => ({
-      news_id:      item.id,
-      title:        item.title,
-      url:          item.url,
-      excerpt:      item.excerpt,
-      source:       item.source,
-      published_at: new Date(item.datetime * 1000).toISOString(),
-      symbols:      item.symbols,
-    })));
-
-    return NextResponse.json(items, {
-      headers: { "Cache-Control": "public, max-age=120" },
-    });
+    return NextResponse.json(
+      { items: filtered, source: "fxstreet", fetchedAt: new Date().toISOString() },
+      { headers: { "Cache-Control": "public, max-age=900" } }
+    );
   } catch (err) {
-    console.error("[news]", err);
-    return NextResponse.json(demoNews());
+    const error = err instanceof Error ? err.message : String(err);
+    console.error("[news]", error);
+    return NextResponse.json({ items: [], source: "none", error }, { status: 200 });
   }
-}
-
-function demoNews() {
-  const now = Math.floor(Date.now() / 1000);
-  return [
-    { id:"n1", title:"EUR/USD holds steady ahead of ECB minutes",          url:"#", excerpt:"The euro held near 1.0850 against the dollar as traders awaited the release of the ECB meeting minutes.", source:"Reuters",    datetime: now - 1800,  symbols:["EUR/USD"] },
-    { id:"n2", title:"USD/JPY retreats as BoJ signals potential hike",     url:"#", excerpt:"The Japanese yen strengthened after Bank of Japan officials signaled the possibility of another rate increase.", source:"Bloomberg", datetime: now - 3600,  symbols:["USD/JPY"] },
-    { id:"n3", title:"Gold surges on risk-off sentiment",                  url:"#", excerpt:"XAU/USD climbed above $2,350 as investors sought safe-haven assets amid rising geopolitical tensions.", source:"ForexLive", datetime: now - 5400,  symbols:["XAU/USD"] },
-    { id:"n4", title:"GBP/USD sees mild gains on UK retail data",          url:"#", excerpt:"Sterling edged higher following better-than-expected UK retail sales data, supporting the case for delayed BoE cuts.", source:"Reuters",    datetime: now - 7200,  symbols:["GBP/USD"] },
-    { id:"n5", title:"Fed officials stress data dependency for rate cuts", url:"#", excerpt:"Multiple Federal Reserve officials reiterated that future rate cuts will depend on incoming economic data.", source:"Bloomberg", datetime: now - 10800, symbols:["USD"] },
-    { id:"n6", title:"AUD/USD pressured by mixed Chinese data",            url:"#", excerpt:"The Australian dollar slipped as disappointing Chinese industrial output data weighed on risk sentiment.", source:"ForexLive", datetime: now - 14400, symbols:["AUD/USD"] },
-  ];
 }
