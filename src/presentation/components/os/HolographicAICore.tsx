@@ -209,12 +209,17 @@ const THINKING_CFG: VoiceCfg = {
   bloom:0.75, energy:0.95, speed:3.5, hex:0xffffff, hex2:0xff1010, morphType:0, morphTarget:0,
 };
 
-const N_TOTAL = 100_000;
+const N_TOTAL = 18_000;
 const LF      = 0.028;
 
-// ── Random orbital plane vectors ──────────────────────────────────
+// ── Low-inclination orbital plane — particles stay near screen center ──
 function randomOrbit(): { u: [number,number,number], v: [number,number,number] } {
-  let nx=(Math.random()-.5)*2, ny=(Math.random()-.5)*2, nz=(Math.random()-.5)*2;
+  // tilt: pow bias → most orbits nearly face-on (small tilt), few edge-on
+  const tilt = Math.pow(Math.random(), 2.5) * 0.7; // 0〜0.7 rad (max ~40°)
+  const az   = Math.random() * Math.PI * 2;
+  let nx = Math.sin(tilt) * Math.cos(az);
+  let ny = Math.sin(tilt) * Math.sin(az);
+  let nz = Math.cos(tilt);
   const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)||1; nx/=nl; ny/=nl; nz/=nl;
   let ux: number, uy: number, uz: number;
   if(Math.abs(nx)<0.9){ux=0;uy=-nz;uz=ny;}else{ux=-nz;uy=0;uz=nx;}
@@ -279,10 +284,8 @@ export const HolographicAICore = memo(function HolographicAICore({ mode, isThink
       { r0:0.00, r1:0.35, s0:0.1, s1:0.6,  sz0:0.024, sz1:0.046, a0:0.06, a1:0.14, nm:0.03, cols:[P.white, P.red] },
       // mid inner — red dominant
       { r0:0.32, r1:0.72, s0:0.2, s1:1.0,  sz0:0.022, sz1:0.042, a0:0.04, a1:0.10, nm:0.06, cols:[P.red, P.redmid, P.white, P.red] },
-      // mid — red + warm red
-      { r0:0.66, r1:1.15, s0:0.2, s1:1.0,  sz0:0.021, sz1:0.038, a0:0.025,a1:0.065,nm:0.08, cols:[P.red, P.redmid, P.reddark, P.redwarm] },
     ];
-    const groupWeights = [4,41,55];
+    const groupWeights = [10, 90];
     const groupSizes   = groupWeights.map(w => Math.floor(N_TOTAL*w/100));
     groupSizes[1] += N_TOTAL - groupSizes.reduce((a,b)=>a+b,0);
 
