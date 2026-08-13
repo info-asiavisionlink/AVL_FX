@@ -32,14 +32,11 @@ attribute float aAlpha;
 varying float vAlpha;
 
 void main() {
-  // Subtle shimmer — latitude breathing (coastlines gently pulse)
-  float shimmer = 0.85 + 0.15 * sin(uTime * 0.4 + aPhase * 4.19);
+  float shimmer = 0.75 + 0.25 * sin(uTime * 0.5 + aPhase * 4.19);
+  float voiceA  = 1.00 + uVoice * 1.20;
+  vAlpha = clamp(aAlpha * shimmer * voiceA, 0.0, 1.0);
 
-  float energyA = 0.25 + uEnergy * 0.75;
-  float voiceA  = 1.00 + uVoice  * 0.80;
-  vAlpha = clamp(aAlpha * shimmer * energyA * voiceA, 0.0, 0.95);
-
-  gl_PointSize = clamp(aSize * (1.0 + uEnergy * 0.25 + uVoice * 0.40), 0.5, 4.5);
+  gl_PointSize = clamp(aSize * (1.0 + uEnergy * 0.60 + uVoice * 0.80), 1.0, 12.0);
   gl_Position  = projectionMatrix * modelViewMatrix * vec4(aPos.x, aPos.y, 0.0, 1.0);
 }
 `;
@@ -71,12 +68,12 @@ void main() {
 // AI state → energy
 // ─────────────────────────────────────────────────────────────────
 const STATE_ENERGY: Record<string, number> = {
-  standby:   0.25,
-  scanning:  0.55,
-  analyzing: 0.90,
-  reasoning: 0.75,
-  listening: 0.38,
-  speaking:  0.62,
+  standby:   0.85,
+  scanning:  1.00,
+  analyzing: 1.00,
+  reasoning: 1.00,
+  listening: 0.90,
+  speaking:  1.00,
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -134,10 +131,8 @@ interface Props {
   voiceStatus: string;
 }
 
-const TARGET_N = 15000;
+const TARGET_N = 20000;
 const CAM_H    = 1.0;   // orthographic half-height in world units
-const MAP_HH   = 0.95;  // map half-height (slightly inset)
-const MAP_HW   = 1.75;  // map half-width (for 16:9 ≈ 1.8)
 
 export const WorldMapParticles = memo(function WorldMapParticles({ brainState, voiceStatus }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -225,8 +220,10 @@ export const WorldMapParticles = memo(function WorldMapParticles({ brainState, v
           topo.objects['countries'] as GeometryCollection,
         ) as unknown as GeoJSON;
 
-        const mapHW = MAP_HW * aspect; // adjust for current aspect
-        const points = extractPoints(worldGeo, mapHW, MAP_HH, TARGET_N);
+        // カメラのfrustumに合わせた座標範囲（これが以前のバグの原因）
+        const mapHW = CAM_H * aspect;  // カメラ右端 = world単位での画面幅
+        const mapHH = CAM_H * 0.98;   // カメラ上端 (ほぼ全体)
+        const points = extractPoints(worldGeo, mapHW, mapHH, TARGET_N);
         const N = points.length;
 
         const aPos   = new Float32Array(N * 2);
@@ -240,11 +237,11 @@ export const WorldMapParticles = memo(function WorldMapParticles({ brainState, v
           aPhase[i]   = Math.random() * Math.PI * 6.28;
 
           const roll = Math.random();
-          aSize[i]   = roll < 0.04 ? 2.8 + Math.random() * 1.6   // bright node (4%)
-                     : roll < 0.20 ? 1.4 + Math.random() * 1.0   // medium (16%)
-                     :               0.6 + Math.random() * 0.8;   // tiny (80%)
+          aSize[i]   = roll < 0.05 ? 6.0 + Math.random() * 4.0   // 輝点 (5%)
+                     : roll < 0.25 ? 3.0 + Math.random() * 2.5   // 中 (20%)
+                     :               1.5 + Math.random() * 1.5;   // 小 (75%)
 
-          aAlpha[i] = 0.12 + Math.random() * 0.28;
+          aAlpha[i] = 0.65 + Math.random() * 0.35;  // 0.65〜1.0 (大幅増)
         }
 
         const geo = new THREE.BufferGeometry();
