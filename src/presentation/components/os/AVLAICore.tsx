@@ -79,7 +79,7 @@ const STATE_ENERGY: Record<string, number> = {
 // ─────────────────────────────────────────────────────────────────
 // Tick ring generator (JSX)
 // ─────────────────────────────────────────────────────────────────
-function TickMarks({ r, count, majorEvery = 6 }: { r: number; count: number; majorEvery?: number }) {
+function TickMarks({ r, count, majorEvery = 6, rm }: { r: number; count: number; majorEvery?: number; rm: string }) {
   return (
     <>
       {Array.from({ length: count }, (_, i) => {
@@ -91,7 +91,7 @@ function TickMarks({ r, count, majorEvery = 6 }: { r: number; count: number; maj
           <line key={i}
             x1={rOuter * Math.cos(angle)} y1={rOuter * Math.sin(angle)}
             x2={rInner * Math.cos(angle)} y2={rInner * Math.sin(angle)}
-            stroke={isMajor ? NW : MR}
+            stroke={isMajor ? NW : rm}
             strokeWidth={isMajor ? 1.5 : 0.6}
             opacity={isMajor ? 0.95 : 0.45}
           />
@@ -104,7 +104,7 @@ function TickMarks({ r, count, majorEvery = 6 }: { r: number; count: number; maj
 // ─────────────────────────────────────────────────────────────────
 // Segment burst ring (analyzing/reasoning state)
 // ─────────────────────────────────────────────────────────────────
-function SegmentBurst({ r1, r2, count }: { r1: number; r2: number; count: number }) {
+function SegmentBurst({ r1, r2, count, rc }: { r1: number; r2: number; count: number; rc: string }) {
   const segs = Array.from({ length: count }, (_, i) => {
     const span = 360 / count;
     const a0 = (i * span - 90) * (Math.PI / 180);
@@ -115,7 +115,7 @@ function SegmentBurst({ r1, r2, count }: { r1: number; r2: number; count: number
     return (
       <path key={i}
         d={`M ${r1*cos0} ${r1*sin0} L ${r2*cos0} ${r2*sin0} A ${r2} ${r2} 0 0 1 ${r2*cos1} ${r2*sin1} L ${r1*cos1} ${r1*sin1} A ${r1} ${r1} 0 0 0 ${r1*cos0} ${r1*sin0} Z`}
-        fill={isWhiteSeg ? NW : NR}
+        fill={isWhiteSeg ? NW : rc}
         opacity="0"
         data-seg-idx={i}
       />
@@ -127,13 +127,13 @@ function SegmentBurst({ r1, r2, count }: { r1: number; r2: number; count: number
 // ─────────────────────────────────────────────────────────────────
 // HUD data panels (4 cardinal positions)
 // ─────────────────────────────────────────────────────────────────
-function HUDPanel({ x, y, deg, bright }: { x: number; y: number; deg: number; bright: boolean }) {
+function HUDPanel({ x, y, deg, bright, rc, rdc }: { x: number; y: number; deg: number; bright: boolean; rc: string; rdc: string }) {
   return (
     <g transform={`translate(${x}, ${y}) rotate(${deg})`} opacity={bright ? 0.75 : 0.45}>
-      <rect x="-16" y="-5" width="32" height="10" fill="none" stroke={NR} strokeWidth="0.8"/>
-      <rect x="-12" y="-3" width="8"  height="6" fill={DR}  opacity="0.8"/>
+      <rect x="-16" y="-5" width="32" height="10" fill="none" stroke={rc}  strokeWidth="0.8"/>
+      <rect x="-12" y="-3" width="8"  height="6" fill={rdc} opacity="0.8"/>
       <rect x="-2"  y="-3" width="3"  height="6" fill={NW}  opacity="0.3"/>
-      <rect x="3"   y="-3" width="6"  height="6" fill={DR}  opacity="0.6"/>
+      <rect x="3"   y="-3" width="6"  height="6" fill={rdc} opacity="0.6"/>
     </g>
   );
 }
@@ -142,6 +142,12 @@ function HUDPanel({ x, y, deg, bright }: { x: number; y: number; deg: number; br
 // Main component
 // ─────────────────────────────────────────────────────────────────
 export function AVLAICore({ brainState, voiceStatus, isActive, isThinking, onVoiceToggle, isVoiceConnecting }: Props) {
+  // マイクON時: ネオンレッド → ネオンイエローに切り替え
+  const voiceOn = voiceStatus !== "idle" && voiceStatus !== "connecting";
+  const R  = voiceOn ? "#ffe600" : NR;   // neon red  → neon yellow
+  const Rd = voiceOn ? "#886600" : DR;   // dark red  → dark yellow
+  const Rm = voiceOn ? "#ccaa00" : MR;   // mid red   → mid yellow
+
   const svgRef    = useRef<SVGSVGElement>(null);
   const ringRefs  = useRef<(SVGGElement | null)[]>([]);
   const coreRef   = useRef<SVGGElement>(null);
@@ -374,8 +380,8 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking, onVoi
 
           {/* Ambient radial gradient — strong red */}
           <radialGradient id="avl-ambient" cx="50%" cy="50%" r="50%">
-            <stop offset="0%"   stopColor={NR} stopOpacity="0.30"/>
-            <stop offset="40%"  stopColor={NR} stopOpacity="0.12"/>
+            <stop offset="0%"   stopColor={R} stopOpacity="0.30"/>
+            <stop offset="40%"  stopColor={R} stopOpacity="0.12"/>
             <stop offset="100%" stopColor="#000" stopOpacity="0"/>
           </radialGradient>
 
@@ -402,9 +408,9 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking, onVoi
             filter={ring.white ? "url(#avl-wglow)" : "url(#avl-rglow)"}
           >
             {ring.da === "TICKS" ? (
-              <TickMarks r={ring.r} count={144} majorEvery={12}/>
+              <TickMarks r={ring.r} count={144} majorEvery={12} rm={Rm}/>
             ) : ring.da === "TICKS48" ? (
-              <TickMarks r={ring.r} count={96} majorEvery={8}/>
+              <TickMarks r={ring.r} count={96} majorEvery={8} rm={Rm}/>
             ) : (
               <circle
                 r={ring.r}
@@ -420,7 +426,7 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking, onVoi
 
         {/* ── HUD DATA PANELS ─────────────────────────────────── */}
         {hudPanels.map((p, i) => (
-          <HUDPanel key={i} {...p} />
+          <HUDPanel key={i} {...p} rc={R} rdc={Rd} />
         ))}
 
         {/* ── SECONDARY HUD: small cross-markers on outer ring ── */}
@@ -440,7 +446,7 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking, onVoi
 
         {/* ── SEGMENT BURST (analyzing/reasoning) ─────────────── */}
         <g ref={segsRef}>
-          <SegmentBurst r1={198} r2={216} count={16}/>
+          <SegmentBurst r1={198} r2={216} count={16} rc={R}/>
         </g>
 
         {/* ── CORE GROUP ─────────────────────────────────────── */}
@@ -448,20 +454,20 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking, onVoi
           {/* Core rings */}
           <circle r="54" fill="none" stroke={NW} strokeWidth="2.2"
             filter="url(#avl-wglow)" opacity="0.95"/>
-          <circle r="44" fill="none" stroke={NR} strokeWidth="1.4"
+          <circle r="44" fill="none" stroke={R} strokeWidth="1.4"
             strokeDasharray="18 9"
             filter="url(#avl-rglow)" opacity="0.90"/>
           <circle r="36" fill="none" stroke={NW} strokeWidth="0.9"
             opacity="0.75"/>
-          <circle r="28" fill="none" stroke={DR} strokeWidth="0.7"
+          <circle r="28" fill="none" stroke={Rd} strokeWidth="0.7"
             strokeDasharray="6 10" opacity="0.60"/>
 
           {/* Core fill */}
-          <circle r="24" fill={NR} fillOpacity="0.05"/>
+          <circle r="24" fill={R} fillOpacity="0.05"/>
           <circle r="16" fill={NW} fillOpacity="0.03"/>
 
           {/* Center dot cluster */}
-          <circle r="4.5" fill={NR} filter="url(#avl-rglow)" opacity="0.9"/>
+          <circle r="4.5" fill={R} filter="url(#avl-rglow)" opacity="0.9"/>
           <circle r="2.5" fill={NW} filter="url(#avl-wglow)" opacity="1.0"/>
           <circle r="1.2" fill={NW} opacity="1.0"/>
         </g>
@@ -471,7 +477,7 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking, onVoi
           const bx = sx * 310, by = sy * 310;
           const L = 18;
           return (
-            <g key={i} stroke={NR} strokeWidth="1.1" opacity="0.45"
+            <g key={i} stroke={R} strokeWidth="1.1" opacity="0.45"
               filter="url(#avl-rglow)">
               <line x1={bx} y1={by} x2={bx - sx*L} y2={by}/>
               <line x1={bx} y1={by} x2={bx} y2={by - sy*L}/>
@@ -488,7 +494,7 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking, onVoi
           fontSize="7.5"
           fontFamily="monospace"
           letterSpacing="3"
-          fill={NR}
+          fill={R}
           opacity="0.7"
           filter="url(#avl-rglow)"
         >
