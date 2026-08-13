@@ -183,13 +183,14 @@ const TFBar = memo(function TFBar({
   );
 });
 
-// ── Symbol Card (v5) ───────────────────────────────────────────────
+// ── Symbol Card (v6 — inline full detail, no click needed) ──────────
 const SymbolCard = memo(function SymbolCard({
-  ind, bid, ask, changePct, spread, isScanning, onClick, intelligence,
+  ind, bid, ask, changePct, spread, isScanning, onClick, intelligence, intelligenceLoading,
 }: {
   ind: IndicatorData; bid: number; ask: number; changePct: number; spread: number;
   isScanning: boolean; onClick: () => void;
   intelligence?: MarketIntelligence | null;
+  intelligenceLoading?: boolean;
 }) {
   // ── Tick flash: fires on any data update ──
   const [tickFlash, setTickFlash]   = useState(false);
@@ -422,35 +423,68 @@ const SymbolCard = memo(function SymbolCard({
           </div>
         </div>
 
-        {/* Row 5: Market Intelligence (compact) */}
-        {intelligence && (
-          <div className="shrink-0 border-t border-[#0d1520] pt-1.5 flex items-center justify-between gap-2">
-            <span className="text-[6px] font-mono text-gray-700 tracking-[0.2em] shrink-0">INTEL</span>
-            <div className="flex items-center gap-3 text-[7px] font-mono">
-              {/* COT */}
-              <div className="flex items-center gap-1">
-                <span className="text-gray-700">COT</span>
-                {intelligence.cot.status === 'NO_DATA' || intelligence.cot.status === 'SOURCE_UNAVAILABLE'
-                  ? <span className="text-gray-800">N/A</span>
-                  : <span className="font-bold tabular-nums"
-                      style={{ color: (intelligence.cot.netPct ?? 0) > 0 ? '#00ff88' : (intelligence.cot.netPct ?? 0) < 0 ? '#ff1a4e' : '#374151' }}>
-                      {(intelligence.cot.netPct ?? 0) > 0 ? '+' : ''}{intelligence.cot.netPct ?? 0}%
-                    </span>
-                }
-              </div>
-              {/* SENTIMENT */}
-              <div className="flex items-center gap-1">
-                <span className="text-gray-700">SENT</span>
-                {intelligence.sentiment.status === 'NO_DATA' || intelligence.sentiment.status === 'SOURCE_UNAVAILABLE'
-                  ? <span className="text-gray-800">N/A</span>
-                  : <span className="font-bold" style={{ color: '#00e5ff' }}>
-                      L{intelligence.sentiment.longPct}%
-                    </span>
-                }
-              </div>
-            </div>
+        {/* Row 5: Market Intelligence — inline full detail */}
+        <div className="shrink-0 border-t border-[#0d1520] pt-2 space-y-1.5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <ShieldAlert size={7} className="text-cyan-900"/>
+            <span className="text-[6px] font-mono text-gray-700 tracking-[0.2em]">MARKET INTELLIGENCE</span>
+            {intelligenceLoading && (
+              <span className="text-[5.5px] font-mono text-cyan-900 ml-auto"
+                style={{ animation: "avl-blink 1s ease-in-out infinite" }}>FETCHING</span>
+            )}
           </div>
-        )}
+
+          {/* COT */}
+          <div className="flex items-center justify-between text-[7px] font-mono">
+            <span className="text-gray-700 w-10 shrink-0">COT</span>
+            {!intelligence || intelligence.cot.status === 'NO_DATA' || intelligence.cot.status === 'SOURCE_UNAVAILABLE' ? (
+              <span className="text-gray-800">NO DATA</span>
+            ) : (
+              <div className="flex items-center gap-2 flex-1 justify-end">
+                <span className="text-green-400/80">L{intelligence.cot.longPct}%</span>
+                <span className="text-red-400/80">S{intelligence.cot.shortPct}%</span>
+                <span className="font-bold tabular-nums"
+                  style={{ color: (intelligence.cot.netPct ?? 0) > 0 ? '#00ff88' : (intelligence.cot.netPct ?? 0) < 0 ? '#ff1a4e' : '#374151' }}>
+                  NET {(intelligence.cot.netPct ?? 0) > 0 ? '+' : ''}{intelligence.cot.netPct}%
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* SENTIMENT */}
+          <div className="flex items-center justify-between text-[7px] font-mono">
+            <span className="text-gray-700 w-10 shrink-0">SENT</span>
+            {!intelligence || intelligence.sentiment.status === 'NO_DATA' || intelligence.sentiment.status === 'SOURCE_UNAVAILABLE' ? (
+              <span className="text-gray-800">NO DATA</span>
+            ) : (
+              <div className="flex items-center gap-2 flex-1 justify-end">
+                <span className="text-green-400/80">L{intelligence.sentiment.longPct}%</span>
+                <span className="text-red-400/80">S{intelligence.sentiment.shortPct}%</span>
+              </div>
+            )}
+          </div>
+
+          {/* PUBLIC */}
+          <div className="flex items-center justify-between text-[7px] font-mono">
+            <span className="text-gray-700 w-10 shrink-0">PUB</span>
+            {!intelligence || intelligence.publicPositioning.status === 'NO_DATA' || intelligence.publicPositioning.status === 'SOURCE_UNAVAILABLE' ? (
+              <span className="text-gray-800">NO DATA</span>
+            ) : (
+              <div className="flex items-center gap-2 flex-1 justify-end">
+                <span className="text-green-400/80">L{intelligence.publicPositioning.longPct}%</span>
+                <span className="text-red-400/80">S{intelligence.publicPositioning.shortPct}%</span>
+              </div>
+            )}
+          </div>
+
+          {/* COT disclaimer (小さく) */}
+          {intelligence && intelligence.cot.reportDate && (
+            <div className="flex items-center justify-between text-[5.5px] font-mono text-gray-800">
+              <span>CFTC FUTURES · {intelligence.cot.reportDate}</span>
+              <span className="text-yellow-900">≠ SPOT</span>
+            </div>
+          )}
+        </div>
 
         {/* Row 6: Data Quality bar */}
         <div className="shrink-0 pt-2 border-t border-[#0d1520]">
@@ -1139,29 +1173,44 @@ export function MarketsView() {
   // ── Selected card (detail modal) ──────────────────────────────
   const [selectedSym, setSelectedSym] = useState<string | null>(null);
 
-  // ── Market Intelligence (lazy: カード展開時にのみ取得) ─────────
+  // ── Market Intelligence — 全シンボル一括取得（5分ごとに更新） ──
   const [intelligenceMap, setIntelligenceMap] = useState<Record<string, MarketIntelligence>>({});
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+  const intelFetchingRef = useRef(false);
 
-  useEffect(() => {
-    if (!selectedSym) return;
-    // 既取得済みなら再取得しない（5分キャッシュはAPI側で管理）
-    if (intelligenceMap[selectedSym]) return;
-
-    let cancelled = false;
+  const fetchAllIntelligence = useCallback(async (symbols: string[]) => {
+    if (symbols.length === 0 || intelFetchingRef.current) return;
+    intelFetchingRef.current = true;
     setIntelligenceLoading(true);
+    try {
+      const results = await Promise.allSettled(
+        symbols.map(sym =>
+          fetch(`/api/market/intelligence?symbol=${sym}`, { cache: 'no-store' })
+            .then(r => r.json() as Promise<MarketIntelligence>)
+            .then(data => ({ sym, data }))
+        )
+      );
+      const newMap: Record<string, MarketIntelligence> = {};
+      for (const r of results) {
+        if (r.status === 'fulfilled') newMap[r.value.sym] = r.value.data;
+      }
+      setIntelligenceMap(prev => ({ ...prev, ...newMap }));
+    } catch (err) {
+      console.error('[MarketsView] intelligence fetch error', err);
+    } finally {
+      intelFetchingRef.current = false;
+      setIntelligenceLoading(false);
+    }
+  }, []);
 
-    fetch(`/api/market/intelligence?symbol=${selectedSym}`, { cache: 'no-store' })
-      .then(r => r.json())
-      .then((data: MarketIntelligence) => {
-        if (cancelled) return;
-        setIntelligenceMap(prev => ({ ...prev, [selectedSym]: data }));
-      })
-      .catch(err => console.error('[MarketsView] intelligence fetch error', err))
-      .finally(() => { if (!cancelled) setIntelligenceLoading(false); });
-
-    return () => { cancelled = true; };
-  }, [selectedSym]); // eslint-disable-line react-hooks/exhaustive-deps
+  // シンボルリスト確定後に一括取得、5分ごとに更新
+  useEffect(() => {
+    const syms = indList.map(i => i.symbol);
+    if (syms.length === 0) return;
+    void fetchAllIntelligence(syms);
+    const id = setInterval(() => void fetchAllIntelligence(syms), 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [indList.length, fetchAllIntelligence]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAnalyze = useCallback((sym: string) => {
     setActiveSymbol(sym as never);
@@ -1201,8 +1250,8 @@ export function MarketsView() {
         isConnected={isConnected}
       />
 
-      {/* ── CARDS GRID ── */}
-      <div className="flex-1 min-h-0 p-3 overflow-auto">
+      {/* ── CARDS GRID — 固定幅横並び・縦スクロール ── */}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3">
         {indList.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <Cpu size={28} className="text-gray-800"/>
@@ -1212,15 +1261,12 @@ export function MarketsView() {
             <p className="text-[8px] text-gray-800 font-mono">AVL_FX_Bridge.mq5 をチャートにアタッチしてください</p>
           </div>
         ) : (
-          <div
-            className={cn(
-              "h-full grid gap-3",
-              cols <= 1 ? "grid-cols-1" :
-              cols <= 2 ? "grid-cols-1 sm:grid-cols-2" :
-              cols <= 3 ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" :
-              "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
-            )}
-            style={{ gridAutoRows: "1fr" }}
+          // 固定幅カード: 最小260px、自動折り返し、縦スクロール
+          <div className="grid gap-3"
+            style={{
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+              alignItems: "start",
+            }}
           >
             {indList.map((ind) => {
               const p = priceMap[ind.symbol] ?? { bid: 0, ask: 0, changePct: 0, spread: 0 };
@@ -1235,6 +1281,7 @@ export function MarketsView() {
                   isScanning={ind.symbol === scanSym}
                   onClick={() => setSelectedSym(prev => prev === ind.symbol ? null : ind.symbol)}
                   intelligence={intelligenceMap[ind.symbol] ?? null}
+                  intelligenceLoading={intelligenceLoading && !intelligenceMap[ind.symbol]}
                 />
               );
             })}
@@ -1260,7 +1307,7 @@ export function MarketsView() {
           onClose={() => setSelectedSym(null)}
           onAnalyze={handleAnalyze}
           intelligence={intelligenceMap[selectedSym] ?? null}
-          intelligenceLoading={intelligenceLoading}
+          intelligenceLoading={intelligenceLoading && !intelligenceMap[selectedSym]}
         />
       )}
     </div>
