@@ -1201,11 +1201,11 @@ export function MarketsView() {
             <p className="text-[8px] text-gray-800 font-mono">AVL_FX_Bridge.mq5 をチャートにアタッチしてください</p>
           </div>
         ) : (
-          // 固定幅カード: 最小260px、自動折り返し、縦スクロール
-          <div className="grid gap-3"
+          // 固定幅カード: 最小260px、自動折り返し、縦いっぱいに伸張
+          <div className="grid gap-3 h-full"
             style={{
               gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-              alignItems: "start",
+              gridAutoRows: "1fr",
             }}
           >
             {indList.map((ind) => {
