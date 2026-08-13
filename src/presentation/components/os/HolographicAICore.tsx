@@ -239,7 +239,10 @@ export const HolographicAICore = memo(function HolographicAICore({ mode, isThink
     const mount = mountRef.current; if (!mount) return;
 
     // ── Renderer ─────────────────────────────────────────────────
-    const renderer = new THREE.WebGLRenderer({ antialias:false, alpha:true, powerPreference:'high-performance' });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias:false, alpha:true, powerPreference:'high-performance' });
+    } catch { return; }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
     renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
@@ -351,13 +354,19 @@ export const HolographicAICore = memo(function HolographicAICore({ mode, isThink
     mount.addEventListener('mousemove',onMove,{passive:true});
     mount.addEventListener('click',onClick);
 
-    // ── Smooth state ──────────────────────────────────────────────
-    let sBloom=0.45, sEnergy=0.78, sSpeed=0.9;
+    // ── Smooth state — initialize colors to current mode (skip blue lerp startup) ──
+    const _initCfg = MODE_CFG[modeRef.current] ?? MODE_CFG.analysis;
+    let sBloom=_initCfg.bloom, sEnergy=_initCfg.energy, sSpeed=_initCfg.speed;
     let sMorph=0, curMorphType=0;
-    const colC  = new THREE.Color(0x0066ff);
-    const colT  = new THREE.Color();
-    const colC2 = new THREE.Color(0x002266);
-    const colT2 = new THREE.Color();
+    const colC  = new THREE.Color(_initCfg.hex);
+    const colT  = new THREE.Color(_initCfg.hex);
+    const colC2 = new THREE.Color(_initCfg.hex2);
+    const colT2 = new THREE.Color(_initCfg.hex2);
+    // Sync uniforms immediately
+    uniforms.uColor.value  = new THREE.Color(_initCfg.hex);
+    uniforms.uColor2.value = new THREE.Color(_initCfg.hex2);
+    uniforms.uSpeed.value  = _initCfg.speed;
+    uniforms.uEnergy.value = _initCfg.energy;
 
     let rafId=0;
     const tick=()=>{

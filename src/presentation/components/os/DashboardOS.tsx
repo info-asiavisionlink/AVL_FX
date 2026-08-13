@@ -362,13 +362,15 @@ function ModeSelector({ mode, onChange }: { mode: AIMode; onChange: (m: AIMode) 
 
   return (
     <>
-      <div className="flex gap-1">
+      <div className="flex gap-0.5 sm:gap-1">
         {modes.map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => handleClick(id)}
-            className={cn("flex items-center gap-1 px-2 py-1 text-[8px] font-mono border transition-all",
+            className={cn("flex items-center gap-1 px-1.5 sm:px-2 py-1 text-[8px] font-mono border transition-all",
               mode === id ? colors[id] : "border-[#0d1520] text-gray-700 hover:text-gray-500 hover:border-[#1a2535]"
-            )}>
-            <Icon size={8} />{label}
+            )}
+            title={label}>
+            <Icon size={8} />
+            <span className="hidden sm:inline">{label}</span>
           </button>
         ))}
       </div>
@@ -1146,7 +1148,7 @@ const AGENT_ICONS: Record<string, typeof Brain> = {
 
 function AgentFlow({ agents }: { agents: AgentState[] }) {
   return (
-    <div className="flex items-center w-full gap-0">
+    <div className="flex items-center w-full gap-0 overflow-x-auto" style={{scrollbarWidth:"none"}}>
       {agents.map((agent, idx) => {
         const Icon     = AGENT_ICONS[agent.id] ?? Brain;
         const isThink  = agent.status === "thinking";
@@ -1633,30 +1635,40 @@ export function DashboardOS() {
       </div>
 
       {/* ░░ LAYER 20 — TOP STATUS BAR (Glass HUD) ░░ */}
-      <div className="absolute top-0 left-0 right-0 z-20 h-11 flex items-center px-5 gap-5"
-        style={{
-          background:"transparent",
-        }}>
-        <div className="flex items-center gap-2.5 shrink-0">
+      <div className="absolute top-0 left-0 right-0 z-20 h-11 flex items-center gap-3 md:gap-5"
+        style={{ background:"transparent" }}>
+
+        {/* モバイル: ハンバーガーの幅分スペーサー */}
+        <div className="md:hidden w-12 shrink-0"/>
+
+        {/* Brand */}
+        <div className="flex items-center gap-2.5 shrink-0 pl-2 md:pl-5">
           <div className="flex gap-0.5">
             <div className="w-0.5 h-5 bg-cyan-400" style={{boxShadow:"0 0 6px #00e5ff"}}/>
             <div className="w-0.5 h-5 bg-cyan-400/25"/>
           </div>
           <div>
             <p className="text-[11px] font-black font-mono tracking-[0.2em]" style={{color:"#00e5ff",textShadow:"0 0 12px #00e5ff88"}}>AVL AI</p>
-            <p className="text-[6.5px] font-mono tracking-[0.15em] text-gray-600 -mt-0.5">COMMAND CENTER</p>
+            <p className="hidden sm:block text-[6.5px] font-mono tracking-[0.15em] text-gray-600 -mt-0.5">COMMAND CENTER</p>
           </div>
         </div>
-        <div className="w-px h-4 bg-gray-800/60"/>
+
+        <div className="w-px h-4 bg-gray-800/60 hidden sm:block"/>
+
+        {/* Status dots — モバイルでは最小表示 */}
         {[
           {dot:isConnected?"bg-green-400":"bg-gray-700",glow:isConnected?"0 0 6px #22c55e":"none",label:"MT5 LIVE",active:isConnected},
           {dot:"bg-green-400",glow:"0 0 6px #22c55e",label:"GATEWAY",active:isConnected},
           {dot:isActive?"bg-cyan-400 animate-pulse":"bg-gray-600",glow:isActive?"0 0 6px #00e5ff":"none",label:"AI ONLINE",active:true},
           {dot:isVoiceActive?"bg-purple-400 animate-pulse":"bg-gray-700",glow:isVoiceActive?"0 0 6px #a855f7":"none",label:"VOICE",active:isVoiceActive},
-        ].map(({dot,glow,label,active})=>(
-          <div key={label} className="flex items-center gap-1.5">
+        ].map(({dot,glow,label,active},i)=>(
+          <div key={label} className={cn(
+            "flex items-center gap-1",
+            // モバイルではMT5 LIVEとAI ONLINEのみ、ラベルは非表示
+            i===1||i===3 ? "hidden sm:flex" : "flex"
+          )}>
             <div className={cn("w-1.5 h-1.5 rounded-full",dot)} style={{boxShadow:glow}}/>
-            <span className={cn("text-[8px] font-mono tracking-wider",active?"text-gray-300":"text-gray-700")}>{label}</span>
+            <span className={cn("hidden sm:block text-[8px] font-mono tracking-wider",active?"text-gray-300":"text-gray-700")}>{label}</span>
           </div>
         ))}
         <div className="flex-1"/>
@@ -1682,24 +1694,23 @@ export function DashboardOS() {
 
       {/* ░░ LAYER 20 — AI OPERATIONS CENTER (Glass HUD) ░░ */}
       <div className="absolute top-11 left-0 right-0 z-20"
-        style={{
-          background:"transparent",
-        }}>
-        <div className="px-4 py-2.5">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2.5">
-              <div className="flex gap-0.5">
+        style={{ background:"transparent" }}>
+        <div className="px-3 md:px-4 py-2">
+          <div className="flex items-center justify-between mb-1.5 md:mb-2 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex gap-0.5 shrink-0">
                 <div className="w-0.5 h-4" style={{background:"#00ff88",boxShadow:"0 0 4px #00ff88"}}/>
                 <div className="w-0.5 h-4" style={{background:"rgba(0,255,136,0.18)"}}/>
               </div>
-              <span className="text-[9px] font-mono tracking-[0.2em] font-semibold" style={{color:"rgba(0,255,136,0.80)"}}>
-                AI OPERATIONS CENTER
+              <span className="text-[8px] md:text-[9px] font-mono tracking-[0.12em] md:tracking-[0.2em] font-semibold truncate" style={{color:"rgba(0,255,136,0.80)"}}>
+                <span className="hidden sm:inline">AI OPERATIONS CENTER</span>
+                <span className="sm:hidden">AI OPS</span>
               </span>
-              <span className={cn("text-[7px] font-mono border px-1.5 py-0.5 tracking-wider",
+              <span className={cn("text-[7px] font-mono border px-1 py-0.5 tracking-wider shrink-0",
                 isConnected?"border-green-600/25 text-green-400/65 bg-green-950/10":"border-red-800/25 text-red-500/50"
               )}>● {isConnected?"ONLINE":"OFFLINE"}</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
               <ModeSelector mode={mode} onChange={setMode}/>
               <button onClick={()=>pipeline.run()} disabled={pipeline.running||!isConnected}
                 className={cn("px-3 py-1 text-[7px] font-mono border flex items-center gap-1.5 tracking-wider transition-all",
@@ -1797,7 +1808,7 @@ export function DashboardOS() {
 
       {/* ░░ LAYER 30 — holographic mic floating at bottom ░░ */}
       {mode !== "analysis" && (
-        <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center pb-5 gap-2">
+        <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center pb-3 sm:pb-5 gap-1.5 sm:gap-2">
 
           {/* Concentric ring mic button */}
           <div className="relative flex items-center justify-center" style={{width:96,height:96,contain:'layout style'}}>

@@ -79,23 +79,23 @@ export function Header() {
                                 "bg-gray-700";
 
   return (
-    <header className="flex items-center h-10 px-3 bg-[#111520] border-b border-[#1a1d2e] gap-3 shrink-0">
+    <header className="flex items-center h-10 pl-14 pr-3 md:px-3 bg-[#111520] border-b border-[#1a1d2e] gap-2 md:gap-3 shrink-0">
       {/* Symbol name */}
-      <span className="text-white font-black text-[13px] font-mono tracking-wider min-w-[70px]">
+      <span className="text-white font-black text-[13px] font-mono tracking-wider shrink-0">
         {activeSymbol}
       </span>
 
       {/* Separator */}
-      <div className="w-px h-5 bg-[#2a2d3a]"/>
+      <div className="w-px h-5 bg-[#2a2d3a] hidden sm:block"/>
 
       {/* Timeframe selector */}
-      <div className="flex gap-0.5">
+      <div className="flex gap-0.5 overflow-x-auto" style={{scrollbarWidth:"none"}}>
         {TIMEFRAMES.map(({ label, value }) => (
           <button
             key={value}
             onClick={() => setActiveTimeframe(value)}
             className={cn(
-              "px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors",
+              "px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors shrink-0",
               activeTimeframe === value
                 ? "bg-cyan-600/30 text-cyan-300 border border-cyan-700/50"
                 : "text-gray-600 hover:text-gray-300 hover:bg-[#1a1d2e]"
@@ -108,10 +108,10 @@ export function Header() {
 
       <div className="flex-1"/>
 
-      {/* Real-time BID / ASK / SPREAD */}
+      {/* Real-time BID / ASK */}
       {bid > 0 && (
         <>
-          <div className="flex items-center gap-3 text-[9px] font-mono">
+          <div className="hidden sm:flex items-center gap-3 text-[9px] font-mono">
             <div className="flex items-center gap-1">
               <span className="text-gray-700">BID</span>
               <span className={cn("tabular-nums font-bold transition-all duration-300",
@@ -131,27 +131,16 @@ export function Header() {
             )}
           </div>
 
-          <div className="w-px h-5 bg-[#2a2d3a]"/>
+          <div className="w-px h-5 bg-[#2a2d3a] hidden sm:block"/>
         </>
       )}
-
-      {/* Data status */}
-      <div className="flex items-center gap-1.5 shrink-0">
-        <div className={cn("w-1.5 h-1.5 rounded-full", dotColor)}
-          style={dataStatus === "live" ? { animation: flash ? "avl-blink 0.3s ease-in-out 3" : "none" } : undefined}/>
-        <span className={cn("text-[8.5px] font-mono font-bold tracking-wider", statusColor)}>
-          {statusLabel}
-        </span>
-      </div>
-
-      <div className="w-px h-5 bg-[#2a2d3a]"/>
 
       {/* Connection badge */}
       <div className="flex items-center gap-1.5 shrink-0">
         <div className={cn("w-1.5 h-1.5 rounded-full",
           isConnected ? "bg-green-400" : "bg-gray-700")}
           style={isConnected ? { boxShadow: "0 0 4px rgba(0,255,136,0.5)" } : undefined}/>
-        <span className={cn("text-[8.5px] font-mono",
+        <span className={cn("hidden sm:block text-[8.5px] font-mono",
           isConnected ? "text-green-400/70" : "text-gray-600")}>
           {isConnected ? "MT5 LIVE" : "OFFLINE"}
         </span>

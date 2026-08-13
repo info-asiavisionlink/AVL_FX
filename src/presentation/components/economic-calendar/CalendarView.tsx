@@ -329,7 +329,7 @@ export function CalendarView() {
     <div className="flex flex-col h-full bg-[#050810] text-gray-100">
 
       {/* ── ヘッダー ── */}
-      <div className="shrink-0 border-b border-[#1a2535] bg-[#03050d] px-4 py-3">
+      <div className="shrink-0 border-b border-[#1a2535] bg-[#03050d] pl-14 pr-4 md:px-4 py-3">
         <div className="flex items-center gap-3 mb-3">
           <Calendar size={14} className="text-cyan-500/70"/>
           <div>

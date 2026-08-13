@@ -138,7 +138,7 @@ export function HistoryView() {
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden p-4 bg-[#04060d]">
+    <div className="flex flex-col flex-1 overflow-hidden p-4 pt-12 md:pt-4 bg-[#04060d]">
       {/* ヘッダー */}
       <div className="flex items-center gap-3 mb-3 shrink-0 flex-wrap">
         <div className="flex items-center gap-2">

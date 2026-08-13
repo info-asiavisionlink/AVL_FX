@@ -639,7 +639,7 @@ function CommandCenterHeader({
           }}/>
       )}
 
-      <div className="px-5 py-2.5 flex items-center gap-5">
+      <div className="pl-14 pr-4 md:px-5 py-2.5 flex items-center gap-3 md:gap-5">
         {/* Title */}
         <div className="shrink-0 flex items-center gap-2.5">
           <div className="flex gap-0.5">

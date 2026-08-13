@@ -159,7 +159,7 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col flex-1 overflow-hidden bg-[#04060d]">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-[#0d1520] shrink-0">
+      <div className="flex items-center justify-between pl-14 pr-4 md:px-6 py-3 border-b border-[#0d1520] shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-0.5 h-4 bg-cyan-500/60" />
           <span className="text-[9px] text-cyan-500/70 font-mono tracking-widest">AVL AI OS — SETTINGS</span>
@@ -173,8 +173,8 @@ export function SettingsPage() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-2xl mx-auto space-y-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6">
+        <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6">
 
           {/* === ACCOUNT STATUS === */}
           <div className="border border-cyan-700/30 bg-[#060a12] p-4">

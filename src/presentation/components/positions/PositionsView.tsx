@@ -25,7 +25,7 @@ export function PositionsView() {
   const totalPL = positions.reduce((s, p) => s + p.profit, 0);
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden p-4 bg-[#04060d]">
+    <div className="flex flex-col flex-1 overflow-hidden p-4 pt-12 md:pt-4 bg-[#04060d]">
       <div className="flex items-center gap-2 mb-4 shrink-0">
         <div className="w-0.5 h-4 bg-cyan-500/60" />
         <span className="text-[9px] text-cyan-500/70 font-mono tracking-widest">POSITIONS</span>

@@ -259,7 +259,7 @@ export function AIBrainPanel({ state, onRun, onReset, symbol }: AIBrainPanelProp
                   <Minus size={10} className="text-gray-500"/>;
 
   return (
-    <div className="flex flex-col gap-2 h-full overflow-y-auto avl-scroll p-3 space-y-2">
+    <div className="flex flex-col gap-2 h-full overflow-y-auto avl-scroll p-3 pt-12 md:pt-3 space-y-2">
 
       {/* ヘッダー */}
       <div className="flex items-center justify-between">

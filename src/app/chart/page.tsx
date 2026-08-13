@@ -7,7 +7,7 @@ import { AVLChart } from "@/presentation/components/chart/AVLChart";
 export default function ChartPage() {
   return (
     <DashboardShell>
-      <div className="flex flex-col w-64 shrink-0 border-r border-[#2a2d3a] bg-[#1a1d29] overflow-hidden">
+      <div className="hidden md:flex flex-col w-64 shrink-0 border-r border-[#2a2d3a] bg-[#1a1d29] overflow-hidden">
         <div className="flex-1 overflow-hidden border-b border-[#2a2d3a]">
           <WatchlistPanel />
         </div>

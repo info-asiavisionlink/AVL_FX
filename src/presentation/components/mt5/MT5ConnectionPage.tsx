@@ -122,11 +122,11 @@ export function MT5ConnectionPage() {
   const isConnecting  = status === "connecting" || loading;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#0f1117] p-6">
+    <div className="flex-1 overflow-y-auto bg-[#0f1117] p-3 sm:p-6">
       <div className="max-w-2xl mx-auto space-y-4">
 
         {/* ページタイトル */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-6 pt-10 md:pt-0">
           <div className="w-9 h-9 rounded-lg bg-blue-600/20 border border-blue-600/30 flex items-center justify-center">
             <Cable size={18} className="text-blue-400" />
           </div>
