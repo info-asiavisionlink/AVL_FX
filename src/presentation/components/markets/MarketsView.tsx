@@ -426,25 +426,24 @@ const SymbolCard = memo(function SymbolCard({
         {/* Row 5: Market Intelligence — inline full detail */}
         <div className="shrink-0 border-t border-[#0d1520] pt-2 space-y-1.5">
           <div className="flex items-center gap-1.5 mb-1">
-            <ShieldAlert size={7} className="text-cyan-900"/>
-            <span className="text-[6px] font-mono text-gray-700 tracking-[0.2em]">MARKET INTELLIGENCE</span>
+            <ShieldAlert size={7} style={{ color: "#00e5ff80" }}/>
+            <span className="text-[6px] font-mono tracking-[0.2em]" style={{ color: "#00e5ff70" }}>MARKET INTELLIGENCE</span>
             {intelligenceLoading && (
-              <span className="text-[5.5px] font-mono text-cyan-900 ml-auto"
-                style={{ animation: "avl-blink 1s ease-in-out infinite" }}>FETCHING</span>
+              <span className="text-[5.5px] font-mono ml-auto" style={{ color: "#00e5ff60", animation: "avl-blink 1s ease-in-out infinite" }}>FETCHING</span>
             )}
           </div>
 
           {/* COT */}
-          <div className="flex items-center justify-between text-[7px] font-mono">
-            <span className="text-gray-700 w-10 shrink-0">COT</span>
+          <div className="flex items-center justify-between text-[7.5px] font-mono">
+            <span className="w-10 shrink-0 font-bold" style={{ color: "#6b7280" }}>COT</span>
             {!intelligence || intelligence.cot.status === 'NO_DATA' || intelligence.cot.status === 'SOURCE_UNAVAILABLE' ? (
-              <span className="text-gray-800">NO DATA</span>
+              <span style={{ color: "#4b5563" }}>NO DATA</span>
             ) : (
               <div className="flex items-center gap-2 flex-1 justify-end">
-                <span className="text-green-400/80">L{intelligence.cot.longPct}%</span>
-                <span className="text-red-400/80">S{intelligence.cot.shortPct}%</span>
+                <span className="text-green-400">L{intelligence.cot.longPct}%</span>
+                <span className="text-red-400">S{intelligence.cot.shortPct}%</span>
                 <span className="font-bold tabular-nums"
-                  style={{ color: (intelligence.cot.netPct ?? 0) > 0 ? '#00ff88' : (intelligence.cot.netPct ?? 0) < 0 ? '#ff1a4e' : '#374151' }}>
+                  style={{ color: (intelligence.cot.netPct ?? 0) > 0 ? '#00ff88' : (intelligence.cot.netPct ?? 0) < 0 ? '#ff1a4e' : '#6b7280' }}>
                   NET {(intelligence.cot.netPct ?? 0) > 0 ? '+' : ''}{intelligence.cot.netPct}%
                 </span>
               </div>
@@ -452,36 +451,36 @@ const SymbolCard = memo(function SymbolCard({
           </div>
 
           {/* SENTIMENT */}
-          <div className="flex items-center justify-between text-[7px] font-mono">
-            <span className="text-gray-700 w-10 shrink-0">SENT</span>
+          <div className="flex items-center justify-between text-[7.5px] font-mono">
+            <span className="w-10 shrink-0 font-bold" style={{ color: "#6b7280" }}>SENT</span>
             {!intelligence || intelligence.sentiment.status === 'NO_DATA' || intelligence.sentiment.status === 'SOURCE_UNAVAILABLE' ? (
-              <span className="text-gray-800">NO DATA</span>
+              <span style={{ color: "#4b5563" }}>NO DATA</span>
             ) : (
               <div className="flex items-center gap-2 flex-1 justify-end">
-                <span className="text-green-400/80">L{intelligence.sentiment.longPct}%</span>
-                <span className="text-red-400/80">S{intelligence.sentiment.shortPct}%</span>
+                <span className="text-green-400">L{intelligence.sentiment.longPct}%</span>
+                <span className="text-red-400">S{intelligence.sentiment.shortPct}%</span>
               </div>
             )}
           </div>
 
           {/* PUBLIC */}
-          <div className="flex items-center justify-between text-[7px] font-mono">
-            <span className="text-gray-700 w-10 shrink-0">PUB</span>
+          <div className="flex items-center justify-between text-[7.5px] font-mono">
+            <span className="w-10 shrink-0 font-bold" style={{ color: "#6b7280" }}>PUB</span>
             {!intelligence || intelligence.publicPositioning.status === 'NO_DATA' || intelligence.publicPositioning.status === 'SOURCE_UNAVAILABLE' ? (
-              <span className="text-gray-800">NO DATA</span>
+              <span style={{ color: "#4b5563" }}>NO DATA</span>
             ) : (
               <div className="flex items-center gap-2 flex-1 justify-end">
-                <span className="text-green-400/80">L{intelligence.publicPositioning.longPct}%</span>
-                <span className="text-red-400/80">S{intelligence.publicPositioning.shortPct}%</span>
+                <span className="text-green-400">L{intelligence.publicPositioning.longPct}%</span>
+                <span className="text-red-400">S{intelligence.publicPositioning.shortPct}%</span>
               </div>
             )}
           </div>
 
-          {/* COT disclaimer (小さく) */}
+          {/* COT disclaimer */}
           {intelligence && intelligence.cot.reportDate && (
-            <div className="flex items-center justify-between text-[5.5px] font-mono text-gray-800">
+            <div className="flex items-center justify-between text-[5.5px] font-mono" style={{ color: "#374151" }}>
               <span>CFTC FUTURES · {intelligence.cot.reportDate}</span>
-              <span className="text-yellow-900">≠ SPOT</span>
+              <span className="text-yellow-800">≠ SPOT</span>
             </div>
           )}
         </div>
