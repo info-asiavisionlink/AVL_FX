@@ -40,7 +40,8 @@ interface RingDef {
 const RINGS: RingDef[] = [
   // outer → inner
   { r:292, white:true,  sw:1.8, da:"266 40 266 40 266 40 266 40 266 38 266 38", rpm:0.7,  cw:true,  opacity:0.85 }, // 0 white 6-arc outer
-  { r:252, white:true,  sw:3.0, da:"346 50 346 46 346 50 346 46", rpm:2.0,  cw:true,  opacity:0.92 }, // 1 white 4-arc MAJOR
+  { r:272, white:false, sw:1.0, da:"13 8",                 rpm:1.6,  cw:false, opacity:0.70 }, // 1 red ~81-seg
+  { r:252, white:true,  sw:3.0, da:"346 50 346 46 346 50 346 46", rpm:2.0,  cw:true,  opacity:0.92 }, // 2 white 4-arc MAJOR
   { r:234, white:false, sw:0.0, da:"TICKS",                rpm:2.8,  cw:false, opacity:0.75 }, // 3 tick ring (144本)
   { r:215, white:true,  sw:1.2, da:"22 17",                rpm:2.2,  cw:true,  opacity:0.80 }, // 4 white HUD-seg ~34-seg
   { r:196, white:false, sw:1.0, da:"14 8",                 rpm:3.5,  cw:false, opacity:0.68 }, // 5 red ~56-seg
