@@ -423,46 +423,40 @@ const SymbolCard = memo(function SymbolCard({
           </div>
         </div>
 
-        {/* Row 5: Market Intelligence — inline full detail */}
-        <div className="shrink-0 border-t border-[#0d1520] pt-2 space-y-1.5">
-          <div className="flex items-center gap-1.5 mb-1">
-            <ShieldAlert size={7} style={{ color: "#00e5ff80" }}/>
-            <span className="text-[6px] font-mono tracking-[0.2em]" style={{ color: "#00e5ff70" }}>MARKET INTELLIGENCE</span>
-            {intelligenceLoading && (
-              <span className="text-[5.5px] font-mono ml-auto" style={{ color: "#00e5ff60", animation: "avl-blink 1s ease-in-out infinite" }}>FETCHING</span>
-            )}
-          </div>
-
-          {/* COT */}
-          <div className="space-y-0.5">
-            <div className="flex items-center justify-between text-[7.5px] font-mono">
-              <span className="w-10 shrink-0 font-bold" style={{ color: "#6b7280" }}>COT</span>
-              {!intelligence || intelligence.cot.status === 'NO_DATA' || intelligence.cot.status === 'SOURCE_UNAVAILABLE' ? (
-                <span style={{ color: "#4b5563" }}>NO DATA</span>
-              ) : (
-                <div className="flex items-center gap-2 flex-1 justify-end">
-                  {intelligence.cot.status === 'STALE' && (
-                    <span className="text-[6px] font-mono font-bold" style={{ color: '#f59e0b' }}>STALE</span>
-                  )}
-                  <span className="text-green-400">L{intelligence.cot.longPct}%</span>
-                  <span className="text-red-400">S{intelligence.cot.shortPct}%</span>
-                  <span className="font-bold tabular-nums"
-                    style={{ color: (intelligence.cot.netPct ?? 0) > 0 ? '#00ff88' : (intelligence.cot.netPct ?? 0) < 0 ? '#ff1a4e' : '#6b7280' }}>
-                    NET {(intelligence.cot.netPct ?? 0) > 0 ? '+' : ''}{intelligence.cot.netPct}%
-                  </span>
-                </div>
+        {/* Row 5: COT */}
+        <div className="shrink-0 border-t border-[#0d1520] pt-2">
+          <div className="flex items-center justify-between text-[7.5px] font-mono">
+            <div className="flex items-center gap-1.5">
+              <ShieldAlert size={7} style={{ color: "#00e5ff80" }}/>
+              <span className="font-bold" style={{ color: "#6b7280" }}>COT</span>
+              {intelligenceLoading && (
+                <span className="text-[5.5px] font-mono" style={{ color: "#00e5ff60", animation: "avl-blink 1s ease-in-out infinite" }}>…</span>
               )}
             </div>
-            {intelligence?.cot.reportDate && (
-              <div className="flex items-center justify-between text-[5.5px] font-mono pl-10" style={{ color: "#374151" }}>
-                <span>REPORT {intelligence.cot.reportDate}</span>
-                {intelligence.cot.source.ageMs !== null && (
-                  <span>{fmtAgeMs(intelligence.cot.source.ageMs)} · CFTC</span>
+            {!intelligence || intelligence.cot.status === 'NO_DATA' || intelligence.cot.status === 'SOURCE_UNAVAILABLE' ? (
+              <span style={{ color: "#4b5563" }}>NO DATA</span>
+            ) : (
+              <div className="flex items-center gap-2">
+                {intelligence.cot.status === 'STALE' && (
+                  <span className="text-[6px] font-mono font-bold" style={{ color: '#f59e0b' }}>STALE</span>
                 )}
+                <span className="text-green-400">L{intelligence.cot.longPct}%</span>
+                <span className="text-red-400">S{intelligence.cot.shortPct}%</span>
+                <span className="font-bold tabular-nums"
+                  style={{ color: (intelligence.cot.netPct ?? 0) > 0 ? '#00ff88' : (intelligence.cot.netPct ?? 0) < 0 ? '#ff1a4e' : '#6b7280' }}>
+                  NET {(intelligence.cot.netPct ?? 0) > 0 ? '+' : ''}{intelligence.cot.netPct}%
+                </span>
               </div>
             )}
           </div>
-
+          {intelligence?.cot.reportDate && (
+            <div className="flex items-center justify-between text-[5.5px] font-mono mt-0.5 pl-5" style={{ color: "#374151" }}>
+              <span>REPORT {intelligence.cot.reportDate}</span>
+              {intelligence.cot.source.ageMs !== null && (
+                <span>{fmtAgeMs(intelligence.cot.source.ageMs)} · CFTC</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Row 6: Data Quality bar */}
