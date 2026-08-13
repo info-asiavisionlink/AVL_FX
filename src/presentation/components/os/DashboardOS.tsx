@@ -1607,10 +1607,7 @@ export function DashboardOS() {
   return (
     <div className="relative h-full w-full overflow-hidden" style={{background:"#020408"}}>
 
-      {/* ░░ LAYER 0 — HolographicAICore (Full-Screen AI Environment) ░░ */}
-      <div className="absolute inset-0 z-0">
-        <HolographicAICore mode={mode} isActive={isActive} isThinking={thinking || voiceThinking} voiceStatus={voice.status}/>
-      </div>
+      {/* HolographicAICore: disabled */}
 
       {/* ParticleTorus: disabled */}
 
