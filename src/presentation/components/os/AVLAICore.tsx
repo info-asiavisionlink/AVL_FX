@@ -415,7 +415,7 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking, onVoi
               <circle
                 r={ring.r}
                 fill="none"
-                stroke={ring.white ? NW : NR}
+                stroke={ring.white ? NW : R}
                 strokeWidth={ring.sw}
                 strokeDasharray={ring.da}
                 strokeLinecap="round"
