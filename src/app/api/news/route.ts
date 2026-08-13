@@ -1,14 +1,13 @@
 // GET /api/news
-// ソース: Yahoo Finance FX RSS — APIキー不要・完全無料
-//   Vercel含むサーバーサイドで動作確認済み
+// ソース: Yahoo Finance FX RSS + FXStreet RSS — APIキー不要・完全無料
 // 翻訳: Google Translate 無料エンドポイント（APIキー不要）
-// キャッシュ: インメモリ15分 + Vercel Data Cache 900秒
+// キャッシュ: インメモリ5分 + Vercel Data Cache 300秒
 // クエリ: ?currency=USD|EUR|JPY|GBP|AUD|CAD|XAU|ALL
 
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime    = "nodejs";
-export const revalidate = 900;
+export const revalidate = 300; // 5分に短縮
 
 // ── 型 ──────────────────────────────────────────────────────────────
 
@@ -30,7 +29,13 @@ const YF_FX_URL =
   "?s=EURUSD%3DX%2CUSDJPY%3DX%2CGBPUSD%3DX%2CAUDUSD%3DX%2CXAUUSD%3DX%2CCADUSD%3DX" +
   "&region=US&lang=en-US";
 
-const CACHE_TTL = 15 * 60 * 1000;
+// FXStreet — 頻繁に更新されるFX専門ニュース
+const FXSTREET_URL = "https://www.fxstreet.com/rss/news";
+
+// ForexLive — リアルタイムに近い速報
+const FOREXLIVE_URL = "https://www.forexlive.com/feed/news";
+
+const CACHE_TTL = 5 * 60 * 1000; // 5分に短縮
 
 let _cache: { items: NewsItem[]; ts: number } | null = null;
 
@@ -94,39 +99,64 @@ function extractItems(xml: string): Array<Record<string, string>> {
   return items;
 }
 
-// ── RSS 取得 + 翻訳 ──────────────────────────────────────────────────
+// ── 単一RSSフィード取得 ───────────────────────────────────────────────
+
+const HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+  "Accept": "application/rss+xml, application/xml, text/xml, */*",
+};
+
+async function fetchRSS(url: string, sourceName: string, prefix: string): Promise<NewsItem[]> {
+  try {
+    const res = await fetch(url, { next: { revalidate: 300 }, headers: HEADERS });
+    if (!res.ok) return [];
+    const raws = extractItems(await res.text());
+    return raws.map((r, i) => ({
+      id:       r.guid || `${prefix}_${i}`,
+      title:    r.title,
+      titleJa:  r.title, // 翻訳は後でまとめて
+      url:      r.link || r.guid,
+      excerpt:  r.description.replace(/<[^>]+>/g, "").slice(0, 300),
+      source:   sourceName,
+      datetime: r.pubDate ? Math.floor(new Date(r.pubDate).getTime() / 1000) : Math.floor(Date.now() / 1000),
+      tags:     detectTags(r.title + " " + r.description),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ── RSS 取得 + 翻訳（複数ソース） ────────────────────────────────────
 
 async function fetchNews(): Promise<NewsItem[]> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL) return _cache.items;
 
-  const res = await fetch(YF_FX_URL, {
-    next: { revalidate: 900 },
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    },
-  });
-  if (!res.ok) throw new Error(`Yahoo Finance RSS HTTP ${res.status}`);
+  // 3ソースを並列フェッチ
+  const [yfItems, fxsItems, flItems] = await Promise.all([
+    fetchRSS(YF_FX_URL,      "Yahoo Finance", "yf"),
+    fetchRSS(FXSTREET_URL,   "FXStreet",      "fxs"),
+    fetchRSS(FOREXLIVE_URL,  "ForexLive",     "fl"),
+  ]);
 
-  const raws = extractItems(await res.text());
+  // 統合・重複除去（タイトルが80%以上似ているものを除外）・日時降順ソート
+  const seen = new Set<string>();
+  const merged = [...yfItems, ...fxsItems, ...flItems]
+    .filter(item => {
+      if (!item.title) return false;
+      const key = item.title.toLowerCase().slice(0, 60);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => b.datetime - a.datetime)
+    .slice(0, 40); // 最大40件
 
-  // タイトルを並列翻訳（最大20件）
-  const titles    = raws.map(r => r.title);
-  const titlesJa  = await Promise.all(titles.map(t => translateToJa(t)));
+  // タイトルを並列翻訳（Google翻訳無料枠）
+  const titlesJa = await Promise.all(merged.map(item => translateToJa(item.title)));
+  merged.forEach((item, i) => { item.titleJa = titlesJa[i] || item.title; });
 
-  const items: NewsItem[] = raws.map((r, i) => ({
-    id:       r.guid || `yf_${i}`,
-    title:    r.title,
-    titleJa:  titlesJa[i] || r.title,
-    url:      r.link || r.guid,
-    excerpt:  r.description.replace(/<[^>]+>/g, "").slice(0, 300),
-    source:   "Yahoo Finance",
-    datetime: r.pubDate ? Math.floor(new Date(r.pubDate).getTime() / 1000) : Math.floor(Date.now() / 1000),
-    tags:     detectTags(r.title + " " + r.description),
-  }));
-
-  _cache = { items, ts: Date.now() };
-  return items;
+  _cache = { items: merged, ts: Date.now() };
+  return merged;
 }
 
 // ── ハンドラー ──────────────────────────────────────────────────────
@@ -137,8 +167,8 @@ export async function GET(req: NextRequest) {
     const all      = await fetchNews();
     const filtered = currency === "ALL" ? all : all.filter(i => i.tags.includes(currency));
     return NextResponse.json(
-      { items: filtered, source: "yahoo_finance", fetchedAt: new Date().toISOString() },
-      { headers: { "Cache-Control": "public, max-age=900" } }
+      { items: filtered, source: "multi", fetchedAt: new Date().toISOString() },
+      { headers: { "Cache-Control": "public, max-age=300" } }
     );
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
