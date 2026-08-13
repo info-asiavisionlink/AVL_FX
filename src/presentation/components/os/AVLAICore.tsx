@@ -39,18 +39,18 @@ interface RingDef {
 
 const RINGS: RingDef[] = [
   // outer → inner
-  { r:292, white:true,  sw:1.8, da:"560 68 560 68 560 56", rpm:0.7,  cw:true,  opacity:0.85 }, // 0 white 3-arc outer
-  { r:272, white:false, sw:1.0, da:"26 16",                rpm:1.6,  cw:false, opacity:0.70 }, // 1 red 36-seg
-  { r:252, white:true,  sw:3.0, da:"690 100 690 95",       rpm:2.0,  cw:true,  opacity:0.92 }, // 2 white 2-arc MAJOR
-  { r:234, white:false, sw:0.0, da:"TICKS",                rpm:2.8,  cw:false, opacity:0.75 }, // 3 tick ring
-  { r:215, white:true,  sw:1.2, da:"44 34",                rpm:2.2,  cw:true,  opacity:0.80 }, // 4 white HUD-seg
-  { r:196, white:false, sw:1.0, da:"28 16",                rpm:3.5,  cw:false, opacity:0.68 }, // 5 red 24-seg
-  { r:176, white:true,  sw:2.4, da:"210 48 210 48 210 48 210 48", rpm:4.2, cw:true, opacity:0.88 }, // 6 white 4-arc
-  { r:156, white:false, sw:0.8, da:"16 12",                rpm:5.2,  cw:false, opacity:0.65 }, // 7 red dense
-  { r:132, white:true,  sw:2.8, da:"330 82 330 76",        rpm:3.8,  cw:true,  opacity:0.90 }, // 8 white 2-arc MAJOR inner
-  { r:110, white:false, sw:0.0, da:"TICKS48",              rpm:6.5,  cw:false, opacity:0.72 }, // 9 inner tick ring
-  { r: 90, white:true,  sw:1.6, da:"488 76",               rpm:5.0,  cw:true,  opacity:0.85 }, // 10 white energy ring
-  { r: 70, white:false, sw:1.2, da:"22 14",                rpm:4.0,  cw:false, opacity:0.72 }, // 11 red inner core
+  { r:292, white:true,  sw:1.8, da:"266 40 266 40 266 40 266 40 266 38 266 38", rpm:0.7,  cw:true,  opacity:0.85 }, // 0 white 6-arc outer
+  { r:272, white:false, sw:1.0, da:"13 8",                 rpm:1.6,  cw:false, opacity:0.70 }, // 1 red ~81-seg
+  { r:252, white:true,  sw:3.0, da:"346 50 346 46 346 50 346 46", rpm:2.0,  cw:true,  opacity:0.92 }, // 2 white 4-arc MAJOR
+  { r:234, white:false, sw:0.0, da:"TICKS",                rpm:2.8,  cw:false, opacity:0.75 }, // 3 tick ring (144本)
+  { r:215, white:true,  sw:1.2, da:"22 17",                rpm:2.2,  cw:true,  opacity:0.80 }, // 4 white HUD-seg ~34-seg
+  { r:196, white:false, sw:1.0, da:"14 8",                 rpm:3.5,  cw:false, opacity:0.68 }, // 5 red ~56-seg
+  { r:176, white:true,  sw:2.4, da:"110 24 110 24 110 24 110 24 110 24 110 24 110 24 110 24", rpm:4.2, cw:true, opacity:0.88 }, // 6 white 8-arc
+  { r:156, white:false, sw:0.8, da:"8 6",                  rpm:5.2,  cw:false, opacity:0.65 }, // 7 red ~70-seg
+  { r:132, white:true,  sw:2.8, da:"169 38 169 38 169 38 169 38", rpm:3.8,  cw:true,  opacity:0.90 }, // 8 white 4-arc MAJOR inner
+  { r:110, white:false, sw:0.0, da:"TICKS48",              rpm:6.5,  cw:false, opacity:0.72 }, // 9 inner tick ring (96本)
+  { r: 90, white:true,  sw:1.6, da:"244 38 244 38",        rpm:5.0,  cw:true,  opacity:0.85 }, // 10 white 2-arc energy
+  { r: 70, white:false, sw:1.2, da:"11 7",                 rpm:4.0,  cw:false, opacity:0.72 }, // 11 red ~24-seg inner core
 ];
 
 // ─────────────────────────────────────────────────────────────────
