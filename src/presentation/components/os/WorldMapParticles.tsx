@@ -36,11 +36,11 @@ void main() {
   // Seamless horizontal wrap for globe-scroll
   float x = mod(aPos.x + uRotOffset + uMapHW, 2.0 * uMapHW) - uMapHW;
 
-  float shimmer = 0.80 + 0.20 * sin(uTime * 0.6 + aPhase * 3.71);
+  float shimmer = 0.90 + 0.10 * sin(uTime * 0.6 + aPhase * 3.71);
   float voiceA  = 1.0 + uVoice * 0.60;
   vAlpha = clamp(aAlpha * shimmer * voiceA, 0.0, 1.0);
 
-  gl_PointSize = 1.8;  // uniform: all small for sharp outline
+  gl_PointSize = 2.8;  // uniform: slightly larger for visibility
   gl_Position  = projectionMatrix * modelViewMatrix * vec4(x, aPos.y, 0.0, 1.0);
 }
 `;
@@ -55,9 +55,12 @@ varying float vAlpha;
 void main() {
   float d = length(gl_PointCoord - 0.5) * 2.0;
   if (d > 1.0) discard;
-  float a = (1.0 - smoothstep(0.0, 1.0, d)) * vAlpha;
-  // Neon blue #0088ff
-  gl_FragColor = vec4(0.0, 0.55, 1.0, a);
+  float core = 1.0 - smoothstep(0.0, 0.5, d);
+  float halo = 1.0 - smoothstep(0.0, 1.0, d);
+  float a = (core * 0.8 + halo * 0.2) * vAlpha;
+  // Neon blue bright
+  vec3 col = vec3(0.1, 0.65, 1.0) * (1.0 + core * 0.5);
+  gl_FragColor = vec4(col, a);
 }
 `;
 
@@ -352,8 +355,7 @@ export const WorldMapParticles = memo(function WorldMapParticles({ brainState, v
         for (let i = 0; i < N; i++) {
           aPos[i*2] = pts[i][0]; aPos[i*2+1] = pts[i][1];
           aPhase[i] = Math.random() * Math.PI * 6.28;
-          // Hologram-level alpha: 0.18-0.45 (subtle, not overwhelming)
-          aAlpha[i] = 0.18 + Math.random() * 0.27;
+          aAlpha[i] = 0.70 + Math.random() * 0.30; // 0.70〜1.0
         }
 
         mapUniforms.uMapHW.value = mapHW;
