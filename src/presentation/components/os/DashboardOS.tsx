@@ -21,6 +21,7 @@ import { useAgentPipeline }    from "@/presentation/hooks/useAgentPipeline";
 import { useSettingsStore }    from "@/application/stores/settingsStore";
 import { HolographicAICore }   from "@/presentation/components/os/HolographicAICore";
 import { ParticleTorus }       from "@/presentation/components/os/ParticleTorus";
+import { WorldMapParticles }   from "@/presentation/components/os/WorldMapParticles";
 import { AnalysisEngine }      from "@/presentation/components/os/AnalysisEngine";
 import dynamic from "next/dynamic";
 const AVLAICore = dynamic(
@@ -1612,6 +1613,11 @@ export function DashboardOS() {
       </div>
 
       {/* ParticleTorus: disabled */}
+
+      {/* ░░ LAYER 4 — World Map Particle Field ░░ */}
+      {mode !== "analysis" && (
+        <WorldMapParticles brainState={brainState} voiceStatus={voice.status}/>
+      )}
 
       {/* OrbitalParticleSystem: disabled */}
 
