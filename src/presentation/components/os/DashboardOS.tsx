@@ -1616,17 +1616,7 @@ export function DashboardOS() {
         <ParticleTorus voiceStatus={voice.status} isThinking={thinking || voiceThinking}/>
       </div>
 
-      {/* ░░ LAYER 8 — OrbitalParticleSystem (3D GPU orbits around AI CORE) ░░ */}
-      {mode !== "analysis" && (
-        <div className="absolute inset-0 z-[8] pointer-events-none">
-          <OrbitalParticleSystem
-            brainState={brainState}
-            voiceStatus={voice.status}
-            isActive={isActive}
-            isThinking={thinking || voiceThinking}
-          />
-        </div>
-      )}
+      {/* OrbitalParticleSystem: disabled */}
 
       {/* ░░ LAYER 3 — Ambient effects ░░ */}
       <div className="absolute inset-0 z-[3] pointer-events-none">
