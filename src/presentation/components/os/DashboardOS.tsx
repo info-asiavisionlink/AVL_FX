@@ -1611,10 +1611,7 @@ export function DashboardOS() {
         <HolographicAICore mode={mode} isActive={isActive} isThinking={thinking || voiceThinking} voiceStatus={voice.status}/>
       </div>
 
-      {/* ░░ LAYER 5 — ParticleTorus (orbital ring overlay) ░░ */}
-      <div className="absolute inset-0 z-[5] pointer-events-none">
-        <ParticleTorus voiceStatus={voice.status} isThinking={thinking || voiceThinking}/>
-      </div>
+      {/* ParticleTorus: disabled */}
 
       {/* OrbitalParticleSystem: disabled */}
 
