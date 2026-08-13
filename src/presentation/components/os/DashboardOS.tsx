@@ -1726,13 +1726,15 @@ export function DashboardOS() {
 
       {/* ░░ LAYER 12 — AVL AI CORE (SVG Ring HUD + Brand text) ░░ */}
       {mode !== "analysis" && (
-        <div className="absolute inset-0 z-[12]" style={{paddingTop:"88px",paddingBottom:"160px"}}>
+        <div className="absolute inset-0 z-[12]" style={{paddingTop:"88px",paddingBottom:"80px"}}>
           <AVLAICore
             brainState={brainState}
             voiceStatus={voice.status}
             isActive={isActive}
             isThinking={thinking || voiceThinking}
             neonHex={neonHex}
+            onVoiceToggle={() => voice.status === "idle" ? voice.start(activeSymbol) : voice.stop()}
+            isVoiceConnecting={voice.status === "connecting"}
           />
         </div>
       )}
@@ -1783,108 +1785,9 @@ export function DashboardOS() {
         </div>
       )}
 
-      {/* ░░ LAYER 30 — holographic mic floating at bottom ░░ */}
+      {/* ░░ LAYER 30 — voice telop only (mic button removed) ░░ */}
       {mode !== "analysis" && (
         <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center pb-3 sm:pb-5 gap-1.5 sm:gap-2">
-
-          {/* Concentric ring mic button */}
-          <div className="relative flex items-center justify-center" style={{width:96,height:96,contain:'layout style'}}>
-
-            {/* Listening: ambient pulse ring */}
-            <div className="absolute rounded-full pointer-events-none"
-              style={{
-                width:140, height:140, left:-22, top:-22,
-                border:`1px solid ${neonHex}55`,
-                boxShadow:`0 0 30px ${neonHex}22, 0 0 60px ${neonHex}11`,
-                animation:"avl-ping-outer 2s ease-out infinite",
-                animationPlayState: voice.status === "listening" ? "running" : "paused",
-                opacity: voice.status === "listening" ? 1 : 0,
-                transition:"opacity 0.3s ease",
-                willChange:"transform,opacity",
-              }}/>
-
-            {/* Thinking: inner convergence glow */}
-            <div className="absolute rounded-full pointer-events-none"
-              style={{
-                width:120, height:120, left:-12, top:-12,
-                background:`radial-gradient(circle, ${neonHex}18 0%, transparent 70%)`,
-                animation:"avl-pulse-ring-out 1.8s ease-out infinite",
-                animationPlayState: (thinking || voiceThinking) ? "running" : "paused",
-                opacity: (thinking || voiceThinking) ? 1 : 0,
-                transition:"opacity 0.3s ease",
-                willChange:"transform,opacity",
-              }}/>
-
-            {/* Speaking: outward energy waves */}
-            {[0,1,2].map(i => (
-              <div key={i} className="absolute rounded-full pointer-events-none"
-                style={{
-                  width:48+i*36, height:48+i*36,
-                  left:-(i*18+4), top:-(i*18+4),
-                  border:`1px solid ${neonHex}${["55","33","18"][i]}`,
-                  animation:`avl-pulse-ring-out ${1.4+i*0.5}s ease-out ${i*0.4}s infinite`,
-                  animationPlayState: voice.status === "speaking" ? "running" : "paused",
-                  opacity: voice.status === "speaking" ? 1 : 0,
-                  transition:"opacity 0.3s ease",
-                  willChange:"transform,opacity",
-                }}/>
-            ))}
-
-            {/* Voice active ping */}
-            <div className="absolute inset-0 rounded-full"
-              style={{
-                border:`1px solid ${neonHex}`,
-                animation:"ping 1s cubic-bezier(0,0,0.2,1) infinite",
-                animationPlayState: isVoiceActive ? "running" : "paused",
-                opacity: isVoiceActive ? 0.2 : 0,
-                transition:"opacity 0.3s ease",
-                willChange:"transform,opacity",
-              }}/>
-
-            {/* Ring 3 */}
-            <div className="absolute w-24 h-24 rounded-full transition-all duration-500"
-              style={{border:`1px solid ${isVoiceActive ? neonHex+'35' : '#1a2a35'}`,
-                      boxShadow: isVoiceActive ? `0 0 18px ${neonHex}18` : 'none'}}/>
-
-            {/* Ring 2 + cardinal dots */}
-            <div className="absolute w-[70px] h-[70px] rounded-full transition-all duration-500"
-              style={{border:`1px solid ${isVoiceActive ? neonHex+'55' : '#1e303d'}`,
-                      boxShadow: isVoiceActive ? `0 0 14px ${neonHex}28` : 'none'}}>
-              {[
-                'absolute top-0    left-1/2 -translate-x-1/2 -translate-y-1/2',
-                'absolute bottom-0 left-1/2 -translate-x-1/2  translate-y-1/2',
-                'absolute right-0  top-1/2   translate-x-1/2 -translate-y-1/2',
-                'absolute left-0   top-1/2  -translate-x-1/2 -translate-y-1/2',
-              ].map((cls,i) => (
-                <div key={i} className={`${cls} w-1.5 h-1.5 rounded-full transition-all duration-500`}
-                  style={{backgroundColor: isVoiceActive ? neonHex : '#1e3a4a',
-                          boxShadow:       isVoiceActive ? `0 0 6px ${neonHex}` : 'none'}}/>
-              ))}
-            </div>
-
-            {/* Ring 1 */}
-            <div className="absolute w-[50px] h-[50px] rounded-full transition-all duration-500"
-              style={{border:`1px solid ${isVoiceActive ? neonHex+'75' : '#1e303d'}`,
-                      boxShadow: isVoiceActive ? `0 0 10px ${neonHex}38` : 'none'}}/>
-
-            {/* Button core */}
-            <button type="button" disabled={voice.status === "connecting"}
-              onClick={() => voice.status==="idle" ? voice.start(activeSymbol) : voice.stop()}
-              className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 disabled:opacity-30 disabled:cursor-not-allowed"
-              style={{
-                background: isVoiceActive
-                  ? `radial-gradient(circle, ${neonHex}30 0%, ${neonHex}08 70%)`
-                  : 'radial-gradient(circle, rgba(0,70,110,0.45) 0%, rgba(0,25,50,0.2) 70%)',
-                border: `2px solid ${isVoiceActive ? neonHex : neonHex+'30'}`,
-                boxShadow: isVoiceActive
-                  ? `0 0 22px ${neonHex}55, 0 0 44px ${neonHex}18, inset 0 0 14px ${neonHex}12`
-                  : `0 0 8px ${neonHex}18`,
-              }}>
-              <Mic size={17}
-                style={{color: isVoiceActive ? neonHex : `${neonHex}60`}}
-                className={isVoiceActive ? 'animate-pulse' : ''}/>
-            </button>
-          </div>
 
           {/* Voice status + wave bars */}
           <div className="flex flex-col items-center gap-1">

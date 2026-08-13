@@ -15,6 +15,8 @@ interface Props {
   isActive: boolean;
   isThinking: boolean;
   neonHex: string;
+  onVoiceToggle?: () => void;
+  isVoiceConnecting?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -139,7 +141,7 @@ function HUDPanel({ x, y, deg, bright }: { x: number; y: number; deg: number; br
 // ─────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────
-export function AVLAICore({ brainState, voiceStatus, isActive, isThinking }: Props) {
+export function AVLAICore({ brainState, voiceStatus, isActive, isThinking, onVoiceToggle, isVoiceConnecting }: Props) {
   const svgRef    = useRef<SVGSVGElement>(null);
   const ringRefs  = useRef<(SVGGElement | null)[]>([]);
   const coreRef   = useRef<SVGGElement>(null);
@@ -311,10 +313,12 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking }: Pro
   // ─────────────────────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────────────────────
+  const isVoiceActive = voiceStatus !== "idle" && voiceStatus !== "connecting";
+
   return (
     <div
-      className="absolute inset-0 pointer-events-none select-none flex items-center justify-center"
-      style={{ zIndex: 12 }}
+      className="absolute inset-0 select-none flex items-center justify-center"
+      style={{ zIndex: 12, pointerEvents: "none" }}
     >
       <svg
         ref={svgRef}
@@ -531,6 +535,32 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking }: Pro
           AVL AI
         </p>
       </div>
+
+      {/* ── 中心クリックエリア（マイク起動）──────────────────── */}
+      {onVoiceToggle && (
+        <button
+          type="button"
+          disabled={isVoiceConnecting}
+          onClick={onVoiceToggle}
+          aria-label={isVoiceActive ? "マイク停止" : "マイク起動"}
+          style={{
+            position: "absolute",
+            width:  "min(18vh, 21vw)",
+            height: "min(18vh, 21vw)",
+            borderRadius: "50%",
+            background: "transparent",
+            border: "none",
+            cursor: isVoiceConnecting ? "wait" : "pointer",
+            pointerEvents: "auto",
+            zIndex: 20,
+            // アクティブ時に微妙な光輪
+            boxShadow: isVoiceActive
+              ? `0 0 40px rgba(255,255,255,0.08), 0 0 80px rgba(255,28,28,0.06)`
+              : undefined,
+            transition: "box-shadow 0.5s ease",
+          }}
+        />
+      )}
     </div>
   );
 }
