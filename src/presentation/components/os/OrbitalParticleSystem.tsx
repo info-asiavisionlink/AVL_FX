@@ -1,17 +1,14 @@
 'use client';
 
 // =================================================================
-// ScatteredParticleField v2 — Full-screen cyan star scatter
-// 5000 particles spread across the entire viewport like a nebula.
-// Cyan (#00e5ff) color, soft drift, AI-state reactive brightness.
+// ScatteredParticleField v3 — Full-screen uniform star nebula
+// Orthographic camera → guarantees edge-to-edge coverage.
+// 8000 cyan particles, two-layer density (dense inner + wide outer).
 // =================================================================
 
 import { memo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
-// ─────────────────────────────────────────────────────────────────
-// Vertex Shader
-// ─────────────────────────────────────────────────────────────────
 const VS = /* glsl */`
 precision highp float;
 
@@ -20,82 +17,63 @@ uniform float uEnergy;
 uniform float uVoice;
 uniform float uSpeed;
 
-attribute vec3  aBase;
-attribute vec3  aFreq;
+attribute vec2  aPos;     // base 2D position (ortho units)
+attribute float aZ;       // shallow z for layering
+attribute vec2  aFreq;    // drift frequencies x/y
 attribute float aPhase;
 attribute float aDrift;
 attribute float aSize;
 attribute float aAlpha;
 
 varying float vAlpha;
-varying float vDist;   // normalized distance from center 0..1
 
 void main() {
   float t = uTime * uSpeed;
 
-  // Very slow organic drift — like stars slowly shifting
-  float amp = aDrift * (1.0 + uEnergy * 0.40 + uVoice * 0.60);
-  vec3 drift = vec3(
-    sin(t * aFreq.x + aPhase * 3.71) * amp,
-    cos(t * aFreq.y + aPhase * 5.23) * amp,
-    sin(t * aFreq.z + aPhase * 2.17) * amp * 0.30
-  );
+  float amp = aDrift * (1.0 + uEnergy * 0.50 + uVoice * 0.80);
+  float dx = sin(t * aFreq.x + aPhase * 3.91) * amp;
+  float dy = cos(t * aFreq.y + aPhase * 5.37) * amp;
 
-  vec3 pos = aBase + drift;
+  vec3 pos = vec3(aPos.x + dx, aPos.y + dy, aZ);
 
-  vDist  = clamp(length(aBase.xy) / 3.5, 0.0, 1.0);
+  float energyA = 0.35 + uEnergy * 0.65;
+  float voiceA  = 1.00 + uVoice  * 0.70;
+  vAlpha = clamp(aAlpha * energyA * voiceA, 0.0, 0.95);
 
-  // Alpha — energy brightens, voice pulses, outer stars slightly dimmer
-  float outerFade = 0.60 + 0.40 * (1.0 - vDist * 0.5);
-  float energyA   = 0.30 + uEnergy * 0.70;
-  float voiceA    = 1.0  + uVoice  * 0.50;
-  vAlpha = clamp(aAlpha * outerFade * energyA * voiceA, 0.0, 0.92);
-
-  // Size — voice makes them twinkle bigger
-  gl_PointSize = clamp(aSize * (1.0 + uVoice * 0.45 + uEnergy * 0.25), 0.4, 10.0);
+  gl_PointSize = clamp(aSize * (1.0 + uVoice * 0.50 + uEnergy * 0.30), 0.5, 12.0);
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
 `;
 
-// ─────────────────────────────────────────────────────────────────
-// Fragment Shader — soft glow dot, cyan tinted
-// ─────────────────────────────────────────────────────────────────
 const FS = /* glsl */`
 precision mediump float;
 
 varying float vAlpha;
-varying float vDist;
 
-// Cyan base; outer particles slightly cooler
 void main() {
   float d = length(gl_PointCoord - 0.5) * 2.0;
   if (d > 1.0) discard;
 
-  float core = 1.0 - smoothstep(0.0, 0.30, d);
+  float core = 1.0 - smoothstep(0.0, 0.28, d);
   float halo = 1.0 - smoothstep(0.0, 1.00, d);
-  float alpha = (core * 0.75 + halo * 0.25) * vAlpha;
+  float alpha = (core * 0.80 + halo * 0.20) * vAlpha;
 
-  // Cyan (#00e5ff) with tiny warm/cool variation per depth
-  vec3 colInner = vec3(0.55, 1.00, 1.00);   // bright cyan-white
-  vec3 colOuter = vec3(0.00, 0.80, 0.90);   // deeper teal
-  vec3 col = mix(colInner, colOuter, vDist);
-  col *= 1.0 + core * 0.45;
+  // Cyan: #00e5ff  rgb(0, 0.898, 1.0)
+  vec3 col = vec3(0.10 + core * 0.55, 0.92 + core * 0.08, 1.00);
+  col *= 1.0 + core * 0.55;   // brighten core
 
   gl_FragColor = vec4(col, alpha);
 }
 `;
 
-// ─────────────────────────────────────────────────────────────────
-// State config — [speedMult, energy]
-// ─────────────────────────────────────────────────────────────────
 const STATE_CFG: Record<string, [number, number]> = {
-  standby:   [0.12, 0.28],
-  scanning:  [0.40, 0.55],
-  analyzing: [0.90, 0.90],
-  reasoning: [0.65, 0.75],
-  listening: [0.20, 0.38],
-  speaking:  [0.45, 0.62],
+  standby:   [0.10, 0.32],
+  scanning:  [0.42, 0.62],
+  analyzing: [0.95, 0.95],
+  reasoning: [0.68, 0.80],
+  listening: [0.18, 0.42],
+  speaking:  [0.48, 0.68],
 };
 
 interface Props {
@@ -105,8 +83,7 @@ interface Props {
   isThinking:  boolean;
 }
 
-// 5000 particles spread across a wide flat disc (+depth)
-const N = 5000;
+const N = 8000;
 
 export const OrbitalParticleSystem = memo(function OrbitalParticleSystem({
   brainState, voiceStatus,
@@ -126,88 +103,101 @@ export const OrbitalParticleSystem = memo(function OrbitalParticleSystem({
       });
     } catch { return; }
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setClearColor(0x000000, 0);
     renderer.domElement.style.cssText =
       'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
     mount.appendChild(renderer.domElement);
 
-    const scene  = new THREE.Scene();
-    // Wide FOV + pulled back camera → particles cover entire viewport
-    const camera = new THREE.PerspectiveCamera(70, 1, 0.01, 80);
-    camera.position.set(0, 0, 3.2);
-    camera.lookAt(0, 0, 0);
+    const scene = new THREE.Scene();
+
+    // Orthographic camera — 1 unit = half the viewport height
+    // Aspect ratio handled in resize
+    let aspect = 1;
+    const CAM_H = 1.0;  // half-height in world units
+    const camera = new THREE.OrthographicCamera(
+      -CAM_H * aspect, CAM_H * aspect,
+       CAM_H, -CAM_H, 0.01, 10,
+    );
+    camera.position.z = 2;
 
     const resize = () => {
-      const w = Math.max(mount.clientWidth, 1), h = Math.max(mount.clientHeight, 1);
+      const w = Math.max(mount.clientWidth, 1);
+      const h = Math.max(mount.clientHeight, 1);
       renderer.setSize(w, h);
-      camera.aspect = w / h;
+      aspect = w / h;
+      camera.left   = -CAM_H * aspect;
+      camera.right  =  CAM_H * aspect;
+      camera.top    =  CAM_H;
+      camera.bottom = -CAM_H;
       camera.updateProjectionMatrix();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
     resize();
 
-    // ── Particle attribute arrays ─────────────────────────────────
-    const aBase  = new Float32Array(N * 3);
-    const aFreq  = new Float32Array(N * 3);
+    // ── Build particle data ────────────────────────────────────────
+    const aPos   = new Float32Array(N * 2);
+    const aZ     = new Float32Array(N);
+    const aFreq  = new Float32Array(N * 2);
     const aPhase = new Float32Array(N);
     const aDrift = new Float32Array(N);
     const aSize  = new Float32Array(N);
     const aAlpha = new Float32Array(N);
 
-    for (let i = 0; i < N; i++) {
-      // Wide, roughly flat scatter — fill the full screen edge-to-edge.
-      // X/Y from -4 to +4 (more than viewport), Z shallow ±0.8
-      // Use two zones: dense inner cloud + sparse outer field
-      const zone = Math.random();
-      let x: number, y: number, z: number;
+    // World units: camera half-height = 1.0, aspect ~= 1.8
+    // So visible range is ±1.0 vertically, ±1.8 horizontally
+    // We'll scatter up to ±1.15 vertical, ±2.1 horizontal (slight bleed)
+    const HH = 1.15;   // half-height (just beyond viewport edge)
+    const HW = 2.10;   // half-width  (for ~1.82 aspect, with bleed)
 
-      if (zone < 0.45) {
-        // Inner cloud around center (radius 0.3 – 2.2), denser
-        const r     = 0.3 + Math.pow(Math.random(), 0.55) * 1.9;
+    for (let i = 0; i < N; i++) {
+      const zone = Math.random();
+
+      let x: number, y: number;
+      if (zone < 0.30) {
+        // Inner cluster — denser around center
+        const r     = 0.05 + Math.pow(Math.random(), 0.5) * 0.65;
         const theta = Math.random() * Math.PI * 2;
-        x = r * Math.cos(theta);
+        x = r * Math.cos(theta) * 1.3;
         y = r * Math.sin(theta);
-        z = (Math.random() - 0.5) * 1.2;
       } else {
-        // Outer scatter — fills corners and edges
-        x = (Math.random() * 2 - 1) * 4.2;
-        y = (Math.random() * 2 - 1) * 4.2;
-        z = (Math.random() - 0.5) * 0.8;
+        // Full-screen uniform scatter
+        x = (Math.random() * 2 - 1) * HW;
+        y = (Math.random() * 2 - 1) * HH;
       }
 
-      aBase[i*3]   = x;
-      aBase[i*3+1] = y;
-      aBase[i*3+2] = z;
+      aPos[i*2]   = x;
+      aPos[i*2+1] = y;
+      aZ[i]       = (Math.random() - 0.5) * 0.4;
 
-      // Very slow drift frequencies
-      aFreq[i*3]   = 0.04 + Math.random() * 0.14;
-      aFreq[i*3+1] = 0.03 + Math.random() * 0.12;
-      aFreq[i*3+2] = 0.05 + Math.random() * 0.10;
+      aFreq[i*2]   = 0.03 + Math.random() * 0.12;
+      aFreq[i*2+1] = 0.04 + Math.random() * 0.10;
+      aPhase[i]    = Math.random() * Math.PI * 6.28;
 
-      aPhase[i] = Math.random() * Math.PI * 6.28;
+      // Drift: tiny, star-like shimmer
+      aDrift[i] = 0.003 + Math.random() * 0.018;
 
-      // Drift amplitude — tiny, just gentle shimmer
-      const r2    = Math.sqrt(x*x + y*y);
-      aDrift[i]   = 0.02 + (r2 / 4.0) * 0.06 + Math.random() * 0.04;
+      // Size: heavily weighted toward small
+      const roll = Math.random();
+      aSize[i]   = roll < 0.025 ? 5.0 + Math.random() * 4.0   // bright sparks (2.5%)
+                 : roll < 0.12  ? 2.5 + Math.random() * 2.0   // medium (10%)
+                 : roll < 0.40  ? 1.4 + Math.random() * 1.2   // small-med (28%)
+                 :                0.7 + Math.random() * 0.8;   // tiny (60%)
 
-      // Size distribution: mostly tiny stars, few bright
-      const roll  = Math.random();
-      aSize[i]    = roll < 0.03 ? 4.0 + Math.random() * 3.0   // bright sparks (3%)
-                  : roll < 0.18 ? 1.8 + Math.random() * 1.6   // medium (15%)
-                  :               0.6 + Math.random() * 1.0;   // tiny (82%)
-
-      // Alpha — inner brighter, outer sparser
-      const distR = Math.sqrt(x*x + y*y);
-      const fade  = Math.max(0, 1.0 - distR / 5.0);
-      aAlpha[i]   = (0.15 + Math.random() * 0.55) * (0.4 + fade * 0.6);
+      // Alpha — inner area brighter, outer slightly sparser
+      const dist  = Math.sqrt(x*x + y*y) / Math.sqrt(HW*HW + HH*HH);
+      const fade  = 0.55 + (1.0 - dist) * 0.45;
+      aAlpha[i]   = (0.20 + Math.random() * 0.60) * fade;
     }
 
+    // geometry — position attr is dummy (we drive from aPos in shader)
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
-    geo.setAttribute('aBase',  new THREE.BufferAttribute(aBase,  3));
-    geo.setAttribute('aFreq',  new THREE.BufferAttribute(aFreq,  3));
+    const dummyPos = new Float32Array(N * 3); // kept at origin; shader uses aPos
+    geo.setAttribute('position', new THREE.BufferAttribute(dummyPos, 3));
+    geo.setAttribute('aPos',   new THREE.BufferAttribute(aPos,   2));
+    geo.setAttribute('aZ',     new THREE.BufferAttribute(aZ,     1));
+    geo.setAttribute('aFreq',  new THREE.BufferAttribute(aFreq,  2));
     geo.setAttribute('aPhase', new THREE.BufferAttribute(aPhase, 1));
     geo.setAttribute('aDrift', new THREE.BufferAttribute(aDrift, 1));
     geo.setAttribute('aSize',  new THREE.BufferAttribute(aSize,  1));
@@ -216,8 +206,8 @@ export const OrbitalParticleSystem = memo(function OrbitalParticleSystem({
 
     const uniforms: Record<string, THREE.IUniform> = {
       uTime:   { value: 0 },
-      uSpeed:  { value: 0.12 },
-      uEnergy: { value: 0.28 },
+      uSpeed:  { value: 0.10 },
+      uEnergy: { value: 0.32 },
       uVoice:  { value: 0 },
     };
 
@@ -230,8 +220,8 @@ export const OrbitalParticleSystem = memo(function OrbitalParticleSystem({
     pts.frustumCulled = false;
     scene.add(pts);
 
-    // ── Animation loop ─────────────────────────────────────────────
-    let sSpeed = 0.12, sEnergy = 0.28, sVoice = 0;
+    // ── Animation loop ──────────────────────────────────────────────
+    let sSpeed = 0.10, sEnergy = 0.32, sVoice = 0;
     let rafId = 0;
     const clock = new THREE.Clock();
 
@@ -241,13 +231,13 @@ export const OrbitalParticleSystem = memo(function OrbitalParticleSystem({
       const { brainState: bs, voiceStatus: vs } = stateRef.current;
 
       const [tSpeed, tEnergy] = STATE_CFG[bs] ?? STATE_CFG.standby;
-      const lf = 0.025;
+      const lf = 0.022;
       sSpeed  += (tSpeed  - sSpeed)  * lf;
       sEnergy += (tEnergy - sEnergy) * lf;
 
       const tVoice =
-        vs === 'speaking'  ? 0.35 + Math.sin(elapsed * 8.0) * 0.22 + Math.sin(elapsed * 13) * 0.12
-        : vs === 'listening' ? 0.08 + Math.sin(elapsed * 2.5) * 0.06
+        vs === 'speaking'  ? 0.40 + Math.sin(elapsed * 7.5) * 0.25 + Math.sin(elapsed * 13) * 0.15
+        : vs === 'listening' ? 0.10 + Math.sin(elapsed * 2.3) * 0.07
         : 0;
       sVoice += (tVoice - sVoice) * 0.09;
 
