@@ -1745,19 +1745,6 @@ export function DashboardOS() {
           style={{borderColor:`${neonHex}25`}}/>
       ))}
 
-      {/* ░░ LAYER 20 — Monitor signal ░░ */}
-      {monitor.signals.length > 0 && mode !== "analysis" && (
-        <div className="absolute left-0 right-0 z-20 flex justify-center" style={{bottom:"32%"}}>
-          <div className="flex items-center gap-2 px-4 py-2 border"
-            style={{background:"rgba(2,5,10,0.72)",backdropFilter:"blur(12px)",borderColor:`${neonHex}28`}}>
-            <Bell size={9} style={{color:neonHex}} className="animate-pulse"/>
-            <span className="text-[8px] font-mono tracking-wider" style={{color:neonHex}}>
-              {monitor.signals[monitor.signals.length-1]?.message}
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* ░░ LAYER 20 — Order proposal card ░░ */}
       {orderProposal && mode !== "analysis" && (
         <div className="absolute left-0 right-0 z-20 px-4" style={{bottom:"28%"}}>
