@@ -463,32 +463,6 @@ const SymbolCard = memo(function SymbolCard({
             )}
           </div>
 
-          {/* SENTIMENT */}
-          <div className="flex items-center justify-between text-[7.5px] font-mono">
-            <span className="w-10 shrink-0 font-bold" style={{ color: "#6b7280" }}>SENT</span>
-            {!intelligence || intelligence.sentiment.status === 'NO_DATA' || intelligence.sentiment.status === 'SOURCE_UNAVAILABLE' ? (
-              <span style={{ color: "#4b5563" }}>NO DATA</span>
-            ) : (
-              <div className="flex items-center gap-2 flex-1 justify-end">
-                <span className="text-green-400">L{intelligence.sentiment.longPct}%</span>
-                <span className="text-red-400">S{intelligence.sentiment.shortPct}%</span>
-              </div>
-            )}
-          </div>
-
-          {/* PUBLIC */}
-          <div className="flex items-center justify-between text-[7.5px] font-mono">
-            <span className="w-10 shrink-0 font-bold" style={{ color: "#6b7280" }}>PUB</span>
-            {!intelligence || intelligence.publicPositioning.status === 'NO_DATA' || intelligence.publicPositioning.status === 'SOURCE_UNAVAILABLE' ? (
-              <span style={{ color: "#4b5563" }}>NO DATA</span>
-            ) : (
-              <div className="flex items-center gap-2 flex-1 justify-end">
-                <span className="text-green-400">L{intelligence.publicPositioning.longPct}%</span>
-                <span className="text-red-400">S{intelligence.publicPositioning.shortPct}%</span>
-              </div>
-            )}
-          </div>
-
         </div>
 
         {/* Row 6: Data Quality bar */}
@@ -970,29 +944,6 @@ function ExpandedPanel({
 
             {intelligence ? (
               <div className="space-y-2">
-                {/* SENTIMENT */}
-                <div className="border border-[#0d1520] px-3 py-2">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[7px] font-mono text-gray-600 tracking-wider">BROKER SENTIMENT</span>
-                    <span className="text-[6px] font-mono" style={{ color: statusColor(intelligence.sentiment.status) }}>
-                      {statusLabel(intelligence.sentiment.status)}
-                    </span>
-                  </div>
-                  {intelligence.sentiment.longPct !== null ? (
-                    <div className="flex items-center gap-4 text-[7.5px] font-mono">
-                      <span className="text-green-400 font-bold">LONG {intelligence.sentiment.longPct}%</span>
-                      <span className="text-red-400 font-bold">SHORT {intelligence.sentiment.shortPct}%</span>
-                    </div>
-                  ) : (
-                    <span className="text-[7px] font-mono text-gray-800">NO DATA</span>
-                  )}
-                  <div className="mt-1 flex gap-3 text-[6px] font-mono text-gray-800">
-                    <span>SOURCE {intelligence.sentiment.source.name}</span>
-                    {intelligence.sentiment.source.ageMs !== null &&
-                      <span>UPDATED {fmtAgeMs(intelligence.sentiment.source.ageMs)}</span>}
-                  </div>
-                </div>
-
                 {/* COT */}
                 <div className="border border-[#0d1520] px-3 py-2">
                   <div className="flex items-center justify-between mb-1.5">
@@ -1036,24 +987,6 @@ function ExpandedPanel({
                     {intelligence.cot.source.ageMs !== null && <span>UPDATED {fmtAgeMs(intelligence.cot.source.ageMs)}</span>}
                     <span className="text-yellow-900">⚠ FUTURES, NOT SPOT</span>
                   </div>
-                </div>
-
-                {/* PUBLIC POSITIONING */}
-                <div className="border border-[#0d1520] px-3 py-2">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[7px] font-mono text-gray-600 tracking-wider">PUBLIC POSITIONING</span>
-                    <span className="text-[6px] font-mono" style={{ color: statusColor(intelligence.publicPositioning.status) }}>
-                      {statusLabel(intelligence.publicPositioning.status)}
-                    </span>
-                  </div>
-                  {intelligence.publicPositioning.longPct !== null ? (
-                    <div className="flex items-center gap-4 text-[7.5px] font-mono">
-                      <span className="text-green-400 font-bold">LONG {intelligence.publicPositioning.longPct}%</span>
-                      <span className="text-red-400 font-bold">SHORT {intelligence.publicPositioning.shortPct}%</span>
-                    </div>
-                  ) : (
-                    <span className="text-[7px] font-mono text-gray-800">NO DATA</span>
-                  )}
                 </div>
 
                 {/* DATA FRESHNESS */}
