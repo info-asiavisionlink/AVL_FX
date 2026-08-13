@@ -1,11 +1,11 @@
 'use client';
 
 // =================================================================
-// WorldMapParticles — GPU world coastline particle field
-// Fetches Natural Earth 110m topology from CDN,
-// samples ~15k points along coastlines, renders with Three.js
-// Orthographic camera so lat/lon maps exactly to screen.
-// Color: dim neon-green (#00ff88), AI-state reactive brightness.
+// WorldMapParticles v3 — Neon-blue holographic world map
+// • Uniform small dots along coastlines (sharp outline)
+// • Major FX city hotspots with pulse ring
+// • Slow globe rotation (horizontal scroll, seamless wrap)
+// • Holoram-level transparency
 // =================================================================
 
 import { memo, useEffect, useRef } from 'react';
@@ -15,52 +15,118 @@ import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { GeoJSON, Feature, Polygon, MultiPolygon, Position } from 'geojson';
 
 // ─────────────────────────────────────────────────────────────────
-// Vertex Shader
+// Map particle VS — uniform small dots + horizontal globe rotation
 // ─────────────────────────────────────────────────────────────────
-const VS = /* glsl */`
+const MAP_VS = /* glsl */`
 precision highp float;
 
 uniform float uTime;
 uniform float uEnergy;
 uniform float uVoice;
+uniform float uRotOffset;  // world-unit horizontal scroll
+uniform float uMapHW;      // half-width of map (for wrap)
 
 attribute vec2  aPos;
 attribute float aPhase;
-attribute float aSize;
 attribute float aAlpha;
 
 varying float vAlpha;
 
 void main() {
-  float shimmer = 0.75 + 0.25 * sin(uTime * 0.5 + aPhase * 4.19);
-  float voiceA  = 1.00 + uVoice * 1.20;
+  // Seamless horizontal wrap for globe-scroll
+  float x = mod(aPos.x + uRotOffset + uMapHW, 2.0 * uMapHW) - uMapHW;
+
+  float shimmer = 0.80 + 0.20 * sin(uTime * 0.6 + aPhase * 3.71);
+  float voiceA  = 1.0 + uVoice * 0.60;
   vAlpha = clamp(aAlpha * shimmer * voiceA, 0.0, 1.0);
 
-  gl_PointSize = clamp(aSize * (1.0 + uEnergy * 0.60 + uVoice * 0.80), 1.0, 12.0);
-  gl_Position  = projectionMatrix * modelViewMatrix * vec4(aPos.x, aPos.y, 0.0, 1.0);
+  gl_PointSize = 1.8;  // uniform: all small for sharp outline
+  gl_Position  = projectionMatrix * modelViewMatrix * vec4(x, aPos.y, 0.0, 1.0);
 }
 `;
 
 // ─────────────────────────────────────────────────────────────────
-// Fragment Shader — neon-green glow dot
+// Map particle FS — neon blue
 // ─────────────────────────────────────────────────────────────────
-const FS = /* glsl */`
+const MAP_FS = /* glsl */`
 precision mediump float;
 varying float vAlpha;
 
 void main() {
   float d = length(gl_PointCoord - 0.5) * 2.0;
   if (d > 1.0) discard;
+  float a = (1.0 - smoothstep(0.0, 1.0, d)) * vAlpha;
+  // Neon blue #0088ff
+  gl_FragColor = vec4(0.0, 0.55, 1.0, a);
+}
+`;
 
-  float core = 1.0 - smoothstep(0.0, 0.30, d);
-  float halo = 1.0 - smoothstep(0.0, 1.00, d);
-  float alpha = (core * 0.80 + halo * 0.20) * vAlpha;
+// ─────────────────────────────────────────────────────────────────
+// City VS — pulsing hotspot with glow ring
+// ─────────────────────────────────────────────────────────────────
+const CITY_VS = /* glsl */`
+precision highp float;
 
-  // Neon green #00ff88
-  vec3 col = vec3(0.00, 1.00, 0.53);
-  col *= 1.0 + core * 0.60;
+uniform float uTime;
+uniform float uEnergy;
+uniform float uRotOffset;
+uniform float uMapHW;
 
-  gl_FragColor = vec4(col, alpha);
+attribute vec2  aPos;
+attribute float aPhase;
+attribute float aLayerSize; // 0=core, 1=ring1, 2=ring2
+
+varying float vAlpha;
+varying float vLayer;
+
+void main() {
+  float x = mod(aPos.x + uRotOffset + uMapHW, 2.0 * uMapHW) - uMapHW;
+
+  float pulse = 0.5 + 0.5 * sin(uTime * 2.2 + aPhase);
+  vLayer = aLayerSize;
+
+  // Core: always bright; rings: pulse
+  float a = aLayerSize < 0.5
+    ? 0.90 + 0.10 * pulse
+    : aLayerSize < 1.5
+      ? pulse * 0.70
+      : pulse * 0.35;
+  vAlpha = clamp(a, 0.0, 1.0);
+
+  float sz = aLayerSize < 0.5 ? 5.0
+           : aLayerSize < 1.5 ? 10.0 + pulse * 6.0
+           :                    18.0 + pulse * 8.0;
+  gl_PointSize = sz;
+  gl_Position  = projectionMatrix * modelViewMatrix * vec4(x, aPos.y, 0.0, 1.0);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────
+// City FS — bright neon blue core + ring halo
+// ─────────────────────────────────────────────────────────────────
+const CITY_FS = /* glsl */`
+precision mediump float;
+varying float vAlpha;
+varying float vLayer;
+
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  if (d > 1.0) discard;
+
+  vec3 col;
+  float a;
+  if (vLayer < 0.5) {
+    // Core: white-blue bright dot
+    float c = 1.0 - smoothstep(0.0, 0.5, d);
+    col = vec3(0.6, 0.85, 1.0);
+    a   = c * vAlpha;
+  } else {
+    // Ring: thin edge
+    float ring = smoothstep(0.60, 0.75, d) * (1.0 - smoothstep(0.85, 1.0, d));
+    col = vec3(0.0, 0.60, 1.0);
+    a   = ring * vAlpha;
+  }
+  gl_FragColor = vec4(col, a);
 }
 `;
 
@@ -68,71 +134,74 @@ void main() {
 // AI state → energy
 // ─────────────────────────────────────────────────────────────────
 const STATE_ENERGY: Record<string, number> = {
-  standby:   0.85,
-  scanning:  1.00,
-  analyzing: 1.00,
-  reasoning: 1.00,
-  listening: 0.90,
-  speaking:  1.00,
+  standby:   0.75, scanning: 0.90, analyzing: 1.00,
+  reasoning: 0.95, listening: 0.80, speaking: 0.90,
 };
 
 // ─────────────────────────────────────────────────────────────────
-// Coordinate helpers
+// Major FX market cities [lon, lat, name]
 // ─────────────────────────────────────────────────────────────────
-function lonLatToWorld(lon: number, lat: number, hw: number, hh: number): [number, number] {
+const CITIES: [number, number, string][] = [
+  [ 139.69,  35.69, 'Tokyo'     ],
+  [ -74.01,  40.71, 'New York'  ],
+  [  -0.13,  51.51, 'London'    ],
+  [ 103.82,   1.35, 'Singapore' ],
+  [ 114.17,  22.32, 'Hong Kong' ],
+  [ 151.21, -33.87, 'Sydney'    ],
+  [   8.68,  50.11, 'Frankfurt' ],
+  [  55.27,  25.20, 'Dubai'     ],
+];
+
+// ─────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────
+function lonLatToWorld(lon: number, lat: number, hw: number, hh: number): [number,number] {
   return [(lon / 180) * hw, (lat / 90) * hh];
 }
 
 function sampleRing(ring: Position[], stepDeg: number, hw: number, hh: number): [number,number][] {
   const pts: [number,number][] = [];
   for (let i = 0; i < ring.length - 1; i++) {
-    const [x0, y0] = ring[i];
-    const [x1, y1] = ring[i + 1];
-    const len = Math.hypot(x1 - x0, y1 - y0);
-    const n = Math.max(1, Math.round(len / stepDeg));
+    const [x0, y0] = ring[i], [x1, y1] = ring[i + 1];
+    const len = Math.hypot(x1-x0, y1-y0);
+    const n   = Math.max(1, Math.round(len / stepDeg));
     for (let j = 0; j < n; j++) {
       const t = j / n;
-      pts.push(lonLatToWorld(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, hw, hh));
+      pts.push(lonLatToWorld(x0+(x1-x0)*t, y0+(y1-y0)*t, hw, hh));
     }
   }
   return pts;
 }
 
-function extractPoints(geojson: GeoJSON, hw: number, hh: number, targetN: number): [number,number][] {
+function extractPoints(geo: GeoJSON, hw: number, hh: number, targetN: number): [number,number][] {
   const raw: [number,number][] = [];
-  const stepDeg = 1.5; // sample every 1.5° along each edge
-
-  const processGeom = (geom: Polygon | MultiPolygon) => {
-    if (geom.type === 'Polygon') {
-      for (const ring of geom.coordinates) raw.push(...sampleRing(ring, stepDeg, hw, hh));
+  const step = 0.8; // denser sampling for sharper outline
+  const process = (g: Polygon | MultiPolygon) => {
+    if (g.type === 'Polygon') {
+      for (const r of g.coordinates) raw.push(...sampleRing(r, step, hw, hh));
     } else {
-      for (const poly of geom.coordinates)
-        for (const ring of poly) raw.push(...sampleRing(ring, stepDeg, hw, hh));
+      for (const poly of g.coordinates) for (const r of poly) raw.push(...sampleRing(r, step, hw, hh));
     }
   };
-
-  if (geojson.type === 'FeatureCollection') {
-    for (const f of geojson.features) {
+  if (geo.type === 'FeatureCollection') {
+    for (const f of geo.features) {
       const g = (f as Feature).geometry;
-      if (g && (g.type === 'Polygon' || g.type === 'MultiPolygon')) processGeom(g as Polygon | MultiPolygon);
+      if (g?.type === 'Polygon' || g?.type === 'MultiPolygon') process(g as Polygon|MultiPolygon);
     }
   }
-
   if (raw.length <= targetN) return raw;
-  const step = raw.length / targetN;
-  return Array.from({ length: targetN }, (_, i) => raw[Math.floor(i * step)]);
+  const skip = raw.length / targetN;
+  return Array.from({ length: targetN }, (_, i) => raw[Math.floor(i * skip)]);
 }
 
 // ─────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────
-interface Props {
-  brainState:  string;
-  voiceStatus: string;
-}
+interface Props { brainState: string; voiceStatus: string; }
 
-const TARGET_N = 20000;
-const CAM_H    = 1.0;   // orthographic half-height in world units
+const TARGET_N      = 25000;
+const CAM_H         = 1.0;
+const ROT_SPEED     = 0.006; // world-units per second (~3 min per full rotation)
 
 export const WorldMapParticles = memo(function WorldMapParticles({ brainState, voiceStatus }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -150,8 +219,7 @@ export const WorldMapParticles = memo(function WorldMapParticles({ brainState, v
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setClearColor(0x000000, 0);
-    renderer.domElement.style.cssText =
-      'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+    renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
     mount.appendChild(renderer.domElement);
 
     const scene  = new THREE.Scene();
@@ -160,122 +228,169 @@ export const WorldMapParticles = memo(function WorldMapParticles({ brainState, v
 
     let aspect = 1;
     const resize = () => {
-      const w = Math.max(mount.clientWidth, 1);
-      const h = Math.max(mount.clientHeight, 1);
+      const w = Math.max(mount.clientWidth,1), h = Math.max(mount.clientHeight,1);
       renderer.setSize(w, h);
       aspect = w / h;
-      camera.left   = -CAM_H * aspect;
-      camera.right  =  CAM_H * aspect;
+      camera.left = -CAM_H*aspect; camera.right = CAM_H*aspect;
       camera.updateProjectionMatrix();
     };
     const ro = new ResizeObserver(resize);
-    ro.observe(mount);
-    resize();
+    ro.observe(mount); resize();
 
-    // ── Animation state ─────────────────────────────────────────
-    let sEnergy = 0.25, sVoice = 0;
-    let rafId   = 0;
-    let pts: THREE.Points | null = null;
-    const clock = new THREE.Clock();
-    const uniforms: Record<string, THREE.IUniform> = {
-      uTime:   { value: 0 },
-      uEnergy: { value: 0.25 },
-      uVoice:  { value: 0 },
+    // ── Shared uniforms ─────────────────────────────────────────
+    const mapUniforms: Record<string, THREE.IUniform> = {
+      uTime:      { value: 0 },
+      uEnergy:    { value: 0.75 },
+      uVoice:     { value: 0 },
+      uRotOffset: { value: 0 },
+      uMapHW:     { value: CAM_H * aspect },
     };
+    const cityUniforms: Record<string, THREE.IUniform> = {
+      uTime:      { value: 0 },
+      uEnergy:    { value: 0.75 },
+      uRotOffset: { value: 0 },
+      uMapHW:     { value: CAM_H * aspect },
+    };
+
+    // ── Animation ───────────────────────────────────────────────
+    let sEnergy = 0.75, sVoice = 0;
+    let rafId   = 0;
+    let mapPts:  THREE.Points | null = null;
+    let cityPts: THREE.Points | null = null;
+    const clock = new THREE.Clock();
 
     const tick = () => {
       rafId = requestAnimationFrame(tick);
       const elapsed = clock.getElapsedTime();
       const { brainState: bs, voiceStatus: vs } = stateRef.current;
 
-      const tEnergy = STATE_ENERGY[bs] ?? 0.25;
+      const tEnergy = STATE_ENERGY[bs] ?? 0.75;
       sEnergy += (tEnergy - sEnergy) * 0.025;
 
-      const tVoice =
-        vs === 'speaking'  ? 0.35 + Math.sin(elapsed * 7.0) * 0.20
-        : vs === 'listening' ? 0.08 + Math.sin(elapsed * 2.0) * 0.05
-        : 0;
+      const tVoice = vs === 'speaking'  ? 0.30 + Math.sin(elapsed*7)*0.20
+                   : vs === 'listening' ? 0.08
+                   : 0;
       sVoice += (tVoice - sVoice) * 0.08;
 
-      uniforms.uTime.value   = elapsed;
-      uniforms.uEnergy.value = sEnergy;
-      uniforms.uVoice.value  = Math.max(0, sVoice);
+      const rotOffset = elapsed * ROT_SPEED;
+      const mapHW     = CAM_H * aspect;
+
+      mapUniforms.uTime.value      = elapsed;
+      mapUniforms.uEnergy.value    = sEnergy;
+      mapUniforms.uVoice.value     = Math.max(0, sVoice);
+      mapUniforms.uRotOffset.value = rotOffset;
+      mapUniforms.uMapHW.value     = mapHW;
+
+      cityUniforms.uTime.value      = elapsed;
+      cityUniforms.uEnergy.value    = sEnergy;
+      cityUniforms.uRotOffset.value = rotOffset;
+      cityUniforms.uMapHW.value     = mapHW;
 
       renderer.render(scene, camera);
     };
     tick();
 
-    // ── Fetch & build particle geometry (async) ──────────────────
-    const controller = new AbortController();
+    // ── Build city geometry (immediate — no fetch needed) ────────
+    const buildCities = (mapHW: number, mapHH: number) => {
+      // 3 layers per city: core(0), ring1(1), ring2(2)
+      const LAYERS = 3;
+      const NC = CITIES.length * LAYERS;
+      const aPos       = new Float32Array(NC * 2);
+      const aPhase     = new Float32Array(NC);
+      const aLayerSize = new Float32Array(NC);
+      const dummyPos   = new Float32Array(NC * 3);
 
-    fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json', {
-      signal: controller.signal,
-    })
+      CITIES.forEach(([lon, lat, ], ci) => {
+        const [wx, wy] = lonLatToWorld(lon, lat, mapHW, mapHH);
+        for (let l = 0; l < LAYERS; l++) {
+          const idx = ci * LAYERS + l;
+          aPos[idx*2] = wx; aPos[idx*2+1] = wy;
+          aPhase[idx]     = ci * 1.37 + l * 0.93;
+          aLayerSize[idx] = l;
+        }
+      });
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position',   new THREE.BufferAttribute(dummyPos,   3));
+      geo.setAttribute('aPos',       new THREE.BufferAttribute(aPos,       2));
+      geo.setAttribute('aPhase',     new THREE.BufferAttribute(aPhase,     1));
+      geo.setAttribute('aLayerSize', new THREE.BufferAttribute(aLayerSize, 1));
+      geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 10);
+
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: CITY_VS, fragmentShader: CITY_FS, uniforms: cityUniforms,
+        blending: THREE.AdditiveBlending, depthWrite: false, transparent: true,
+      });
+      cityPts = new THREE.Points(geo, mat);
+      cityPts.frustumCulled = false;
+      scene.add(cityPts);
+    };
+
+    // ── Fetch world topology ─────────────────────────────────────
+    const ctrl = new AbortController();
+
+    fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json', { signal: ctrl.signal })
       .then(r => r.json())
       .then((topo: Topology) => {
-        if (controller.signal.aborted) return;
+        if (ctrl.signal.aborted) return;
 
-        const worldGeo = topojson.feature(
-          topo,
-          topo.objects['countries'] as GeometryCollection,
+        const mapHW  = CAM_H * aspect;
+        const mapHH  = CAM_H * 0.98;
+
+        const geo2d = topojson.feature(
+          topo, topo.objects['countries'] as GeometryCollection,
         ) as unknown as GeoJSON;
 
-        // カメラのfrustumに合わせた座標範囲（これが以前のバグの原因）
-        const mapHW = CAM_H * aspect;  // カメラ右端 = world単位での画面幅
-        const mapHH = CAM_H * 0.98;   // カメラ上端 (ほぼ全体)
-        const points = extractPoints(worldGeo, mapHW, mapHH, TARGET_N);
-        const N = points.length;
+        const pts = extractPoints(geo2d, mapHW, mapHH, TARGET_N);
+        const N   = pts.length;
 
         const aPos   = new Float32Array(N * 2);
         const aPhase = new Float32Array(N);
-        const aSize  = new Float32Array(N);
         const aAlpha = new Float32Array(N);
+        const dummy  = new Float32Array(N * 3);
 
         for (let i = 0; i < N; i++) {
-          aPos[i*2]   = points[i][0];
-          aPos[i*2+1] = points[i][1];
-          aPhase[i]   = Math.random() * Math.PI * 6.28;
-
-          const roll = Math.random();
-          aSize[i]   = roll < 0.05 ? 6.0 + Math.random() * 4.0   // 輝点 (5%)
-                     : roll < 0.25 ? 3.0 + Math.random() * 2.5   // 中 (20%)
-                     :               1.5 + Math.random() * 1.5;   // 小 (75%)
-
-          aAlpha[i] = 0.65 + Math.random() * 0.35;  // 0.65〜1.0 (大幅増)
+          aPos[i*2] = pts[i][0]; aPos[i*2+1] = pts[i][1];
+          aPhase[i] = Math.random() * Math.PI * 6.28;
+          // Hologram-level alpha: 0.18-0.45 (subtle, not overwhelming)
+          aAlpha[i] = 0.18 + Math.random() * 0.27;
         }
 
+        mapUniforms.uMapHW.value = mapHW;
+
         const geo = new THREE.BufferGeometry();
-        const dummyPos = new Float32Array(N * 3); // zeros; shader uses aPos
-        geo.setAttribute('position', new THREE.BufferAttribute(dummyPos, 3));
-        geo.setAttribute('aPos',   new THREE.BufferAttribute(aPos,   2));
-        geo.setAttribute('aPhase', new THREE.BufferAttribute(aPhase, 1));
-        geo.setAttribute('aSize',  new THREE.BufferAttribute(aSize,  1));
-        geo.setAttribute('aAlpha', new THREE.BufferAttribute(aAlpha, 1));
+        geo.setAttribute('position', new THREE.BufferAttribute(dummy, 3));
+        geo.setAttribute('aPos',     new THREE.BufferAttribute(aPos,  2));
+        geo.setAttribute('aPhase',   new THREE.BufferAttribute(aPhase,1));
+        geo.setAttribute('aAlpha',   new THREE.BufferAttribute(aAlpha,1));
         geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 10);
 
         const mat = new THREE.ShaderMaterial({
-          vertexShader: VS, fragmentShader: FS, uniforms,
+          vertexShader: MAP_VS, fragmentShader: MAP_FS, uniforms: mapUniforms,
           blending: THREE.AdditiveBlending, depthWrite: false, transparent: true,
         });
+        mapPts = new THREE.Points(geo, mat);
+        mapPts.frustumCulled = false;
+        scene.add(mapPts);
 
-        pts = new THREE.Points(geo, mat);
-        pts.frustumCulled = false;
-        scene.add(pts);
+        buildCities(mapHW, mapHH);
       })
-      .catch(() => { /* fetch aborted or network error — silently ignore */ });
+      .catch(() => {});
 
     return () => {
-      controller.abort();
+      ctrl.abort();
       cancelAnimationFrame(rafId);
       ro.disconnect();
-      if (pts) { scene.remove(pts); (pts.geometry as THREE.BufferGeometry).dispose(); (pts.material as THREE.Material).dispose(); }
+      [mapPts, cityPts].forEach(p => {
+        if (!p) return;
+        scene.remove(p);
+        (p.geometry as THREE.BufferGeometry).dispose();
+        (p.material as THREE.Material).dispose();
+      });
       renderer.dispose();
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
     };
   }, []);
 
-  return (
-    <div ref={mountRef} className="absolute inset-0"
-      style={{ zIndex: 4, pointerEvents: 'none' }}/>
-  );
+  return <div ref={mountRef} className="absolute inset-0" style={{ zIndex: 4, pointerEvents: 'none' }}/>;
 });
