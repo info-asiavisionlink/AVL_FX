@@ -398,9 +398,9 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking }: Pro
             filter={ring.white ? "url(#avl-wglow)" : "url(#avl-rglow)"}
           >
             {ring.da === "TICKS" ? (
-              <TickMarks r={ring.r} count={72} majorEvery={6}/>
+              <TickMarks r={ring.r} count={144} majorEvery={12}/>
             ) : ring.da === "TICKS48" ? (
-              <TickMarks r={ring.r} count={48} majorEvery={4}/>
+              <TickMarks r={ring.r} count={96} majorEvery={8}/>
             ) : (
               <circle
                 r={ring.r}
