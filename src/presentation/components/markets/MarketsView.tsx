@@ -20,13 +20,14 @@ import { useIndicatorStore }   from "@/application/stores/indicatorStore";
 import { useMarketStore }      from "@/application/stores/marketStore";
 import { usePriceStore }       from "@/application/stores/priceStore";
 import { ConnectionManager }   from "@/infrastructure/connection/ConnectionManager";
-import { TrendingUp, TrendingDown, Minus, Zap, X, Cpu } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Zap, X, Cpu, ShieldAlert } from "lucide-react";
 import type { IndicatorData }  from "@/application/stores/indicatorStore";
+import type { MarketIntelligence, DataStatus } from "@/infrastructure/market-intelligence/types";
 
-// ── AI Reasoning Stages ────────────────────────────────────────────
-const STAGES = ["DATA", "STRUCTURE", "MULTI-TF", "TECHNICAL", "CORRELATION", "RISK", "DECISION"] as const;
+// ── AI Reasoning Stages (10段階) ───────────────────────────────────
+const STAGES = ["DATA", "STRUCTURE", "MULTI-TF", "TECHNICAL", "SENTIMENT", "COT", "PUBLIC", "CORRELATION", "RISK", "DECISION"] as const;
 type Stage = typeof STAGES[number];
-const STAGE_MS = Math.floor(3000 / STAGES.length); // ~428ms per stage
+const STAGE_MS = Math.floor(4000 / STAGES.length); // ~400ms per stage
 
 // ── Constants ──────────────────────────────────────────────────────
 const TFS = ["H4", "H1", "M15", "M5"] as const;
@@ -83,6 +84,34 @@ function formatAge(ts: number): string {
   if (ms < 1000)  return `${ms}ms`;
   if (ms < 60000) return `${Math.floor(ms / 1000)}s`;
   return `${Math.floor(ms / 60000)}m`;
+}
+
+function fmtAgeMs(ms: number | null): string {
+  if (ms === null) return '—';
+  if (ms < 60_000)       return `${Math.round(ms / 1000)}s ago`;
+  if (ms < 3600_000)     return `${Math.round(ms / 60_000)}m ago`;
+  if (ms < 86400_000)    return `${Math.round(ms / 3600_000)}h ago`;
+  return `${Math.round(ms / 86400_000)}d ago`;
+}
+
+function statusColor(s: DataStatus): string {
+  switch (s) {
+    case 'LIVE':               return '#00ff88';
+    case 'FRESH':              return '#00e5ff';
+    case 'STALE':              return '#f59e0b';
+    case 'NO_DATA':            return '#374151';
+    case 'SOURCE_UNAVAILABLE': return '#dc2626';
+  }
+}
+
+function statusLabel(s: DataStatus): string {
+  switch (s) {
+    case 'LIVE':               return 'LIVE';
+    case 'FRESH':              return 'FRESH';
+    case 'STALE':              return 'STALE';
+    case 'NO_DATA':            return 'NO DATA';
+    case 'SOURCE_UNAVAILABLE': return 'UNAVAILABLE';
+  }
 }
 
 // ── TF Direction Bar (enhanced) ─────────────────────────────────────
@@ -154,12 +183,13 @@ const TFBar = memo(function TFBar({
   );
 });
 
-// ── Symbol Card (v4) ───────────────────────────────────────────────
+// ── Symbol Card (v5) ───────────────────────────────────────────────
 const SymbolCard = memo(function SymbolCard({
-  ind, bid, ask, changePct, spread, isScanning, onClick,
+  ind, bid, ask, changePct, spread, isScanning, onClick, intelligence,
 }: {
   ind: IndicatorData; bid: number; ask: number; changePct: number; spread: number;
   isScanning: boolean; onClick: () => void;
+  intelligence?: MarketIntelligence | null;
 }) {
   // ── Tick flash: fires on any data update ──
   const [tickFlash, setTickFlash]   = useState(false);
@@ -392,7 +422,37 @@ const SymbolCard = memo(function SymbolCard({
           </div>
         </div>
 
-        {/* Row 5: Data Quality bar */}
+        {/* Row 5: Market Intelligence (compact) */}
+        {intelligence && (
+          <div className="shrink-0 border-t border-[#0d1520] pt-1.5 flex items-center justify-between gap-2">
+            <span className="text-[6px] font-mono text-gray-700 tracking-[0.2em] shrink-0">INTEL</span>
+            <div className="flex items-center gap-3 text-[7px] font-mono">
+              {/* COT */}
+              <div className="flex items-center gap-1">
+                <span className="text-gray-700">COT</span>
+                {intelligence.cot.status === 'NO_DATA' || intelligence.cot.status === 'SOURCE_UNAVAILABLE'
+                  ? <span className="text-gray-800">N/A</span>
+                  : <span className="font-bold tabular-nums"
+                      style={{ color: (intelligence.cot.netPct ?? 0) > 0 ? '#00ff88' : (intelligence.cot.netPct ?? 0) < 0 ? '#ff1a4e' : '#374151' }}>
+                      {(intelligence.cot.netPct ?? 0) > 0 ? '+' : ''}{intelligence.cot.netPct ?? 0}%
+                    </span>
+                }
+              </div>
+              {/* SENTIMENT */}
+              <div className="flex items-center gap-1">
+                <span className="text-gray-700">SENT</span>
+                {intelligence.sentiment.status === 'NO_DATA' || intelligence.sentiment.status === 'SOURCE_UNAVAILABLE'
+                  ? <span className="text-gray-800">N/A</span>
+                  : <span className="font-bold" style={{ color: '#00e5ff' }}>
+                      L{intelligence.sentiment.longPct}%
+                    </span>
+                }
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Row 6: Data Quality bar */}
         <div className="shrink-0 pt-2 border-t border-[#0d1520]">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
@@ -727,10 +787,12 @@ function CommandCenterHeader({
 
 // ── Expanded Detail Panel (modal) ──────────────────────────────────
 function ExpandedPanel({
-  ind, bid, ask, changePct, onClose, onAnalyze,
+  ind, bid, ask, changePct, onClose, onAnalyze, intelligence, intelligenceLoading,
 }: {
   ind: IndicatorData; bid: number; ask: number; changePct: number;
   onClose: () => void; onAnalyze: (sym: string) => void;
+  intelligence?: MarketIntelligence | null;
+  intelligenceLoading?: boolean;
 }) {
   const bias      = getAIBias(ind);
   const dq        = getDataQuality(ind);
@@ -854,15 +916,134 @@ function ExpandedPanel({
             </div>
           )}
 
+          {/* ── MARKET INTELLIGENCE ── */}
+          <div className="border border-cyan-900/30 bg-[#020810] p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldAlert size={9} className="text-cyan-400/60"/>
+                <span className="text-[7px] font-mono text-cyan-400/60 tracking-[0.2em]">MARKET INTELLIGENCE</span>
+              </div>
+              {intelligenceLoading && (
+                <span className="text-[6px] font-mono text-cyan-700 tracking-wider"
+                  style={{ animation: "avl-blink 1s ease-in-out infinite" }}>FETCHING...</span>
+              )}
+            </div>
+
+            {intelligence ? (
+              <div className="space-y-2">
+                {/* SENTIMENT */}
+                <div className="border border-[#0d1520] px-3 py-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[7px] font-mono text-gray-600 tracking-wider">BROKER SENTIMENT</span>
+                    <span className="text-[6px] font-mono" style={{ color: statusColor(intelligence.sentiment.status) }}>
+                      {statusLabel(intelligence.sentiment.status)}
+                    </span>
+                  </div>
+                  {intelligence.sentiment.longPct !== null ? (
+                    <div className="flex items-center gap-4 text-[7.5px] font-mono">
+                      <span className="text-green-400 font-bold">LONG {intelligence.sentiment.longPct}%</span>
+                      <span className="text-red-400 font-bold">SHORT {intelligence.sentiment.shortPct}%</span>
+                    </div>
+                  ) : (
+                    <span className="text-[7px] font-mono text-gray-800">NO DATA</span>
+                  )}
+                  <div className="mt-1 flex gap-3 text-[6px] font-mono text-gray-800">
+                    <span>SOURCE {intelligence.sentiment.source.name}</span>
+                    {intelligence.sentiment.source.ageMs !== null &&
+                      <span>UPDATED {fmtAgeMs(intelligence.sentiment.source.ageMs)}</span>}
+                  </div>
+                </div>
+
+                {/* COT */}
+                <div className="border border-[#0d1520] px-3 py-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div>
+                      <span className="text-[7px] font-mono text-gray-600 tracking-wider">COT</span>
+                      <span className="text-[6px] font-mono text-gray-800 ml-2">NON-COMMERCIAL FUTURES</span>
+                    </div>
+                    <span className="text-[6px] font-mono" style={{ color: statusColor(intelligence.cot.status) }}>
+                      {statusLabel(intelligence.cot.status)}
+                    </span>
+                  </div>
+                  {intelligence.cot.longPct !== null ? (
+                    <>
+                      <div className="flex items-center gap-4 text-[7.5px] font-mono mb-1">
+                        <span className="text-green-400 font-bold">LONG {intelligence.cot.longPct}%</span>
+                        <span className="text-red-400 font-bold">SHORT {intelligence.cot.shortPct}%</span>
+                        <span className="font-bold tabular-nums"
+                          style={{ color: (intelligence.cot.netPct ?? 0) > 0 ? '#00ff88' : (intelligence.cot.netPct ?? 0) < 0 ? '#ff1a4e' : '#374151' }}>
+                          NET {(intelligence.cot.netPct ?? 0) > 0 ? '+' : ''}{intelligence.cot.netPct ?? 0}%
+                        </span>
+                      </div>
+                      <div className="h-1 bg-[#0a1018] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full"
+                          style={{ width: `${intelligence.cot.longPct}%`, background: 'linear-gradient(90deg,rgba(0,255,136,0.3),#00ff88)' }}/>
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-[7px] font-mono text-gray-800">NO DATA</span>
+                  )}
+                  <div className="mt-1 flex gap-3 text-[6px] font-mono text-gray-800 flex-wrap">
+                    <span>SOURCE {intelligence.cot.source.name}</span>
+                    {intelligence.cot.reportDate && <span>WEEK {intelligence.cot.reportDate}</span>}
+                    {intelligence.cot.source.ageMs !== null && <span>UPDATED {fmtAgeMs(intelligence.cot.source.ageMs)}</span>}
+                    <span className="text-yellow-900">⚠ FUTURES DATA, NOT SPOT</span>
+                  </div>
+                </div>
+
+                {/* PUBLIC POSITIONING */}
+                <div className="border border-[#0d1520] px-3 py-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[7px] font-mono text-gray-600 tracking-wider">PUBLIC POSITIONING</span>
+                    <span className="text-[6px] font-mono" style={{ color: statusColor(intelligence.publicPositioning.status) }}>
+                      {statusLabel(intelligence.publicPositioning.status)}
+                    </span>
+                  </div>
+                  {intelligence.publicPositioning.longPct !== null ? (
+                    <div className="flex items-center gap-4 text-[7.5px] font-mono">
+                      <span className="text-green-400 font-bold">LONG {intelligence.publicPositioning.longPct}%</span>
+                      <span className="text-red-400 font-bold">SHORT {intelligence.publicPositioning.shortPct}%</span>
+                    </div>
+                  ) : (
+                    <span className="text-[7px] font-mono text-gray-800">NO DATA</span>
+                  )}
+                </div>
+
+                {/* DATA FRESHNESS */}
+                <div className="border border-[#0d1520] px-3 py-2">
+                  <span className="text-[6.5px] font-mono text-gray-700 tracking-wider block mb-2">DATA SOURCES</span>
+                  <div className="space-y-1">
+                    {intelligence.sources.map((src, i) => (
+                      <div key={i} className="flex items-center justify-between text-[6.5px] font-mono">
+                        <span className="text-gray-700">{src.name}</span>
+                        <div className="flex items-center gap-2">
+                          {src.ageMs !== null && <span className="text-gray-800">{fmtAgeMs(src.ageMs)}</span>}
+                          <span className="font-bold" style={{ color: statusColor(src.status) }}>
+                            {statusLabel(src.status)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[7px] font-mono text-gray-800 text-center py-2">
+                {intelligenceLoading ? 'FETCHING INTELLIGENCE...' : 'NO INTELLIGENCE DATA'}
+              </div>
+            )}
+          </div>
+
+          {/* ── AVL AI ANALYSIS ── */}
           <div className="border border-purple-900/40 bg-purple-950/10 p-3">
             <div className="flex items-center gap-2 mb-2">
               <Zap size={9} className="text-purple-400"/>
-              <span className="text-[7px] font-mono text-purple-400/70 tracking-[0.2em]">AI BRAIN ANALYSIS</span>
+              <span className="text-[7px] font-mono text-purple-400/70 tracking-[0.2em]">AVL AI ANALYSIS</span>
             </div>
             <p className="text-[6.5px] font-mono text-gray-700 mb-2">MarketSnapshot → Decision Engine → Risk Engine → DRY RUN</p>
             <button onClick={() => onAnalyze(ind.symbol)}
               className="flex items-center gap-2 px-3 py-1.5 border border-purple-700/50 text-purple-300 bg-purple-950/20 hover:bg-purple-900/30 transition-all text-[8px] font-mono tracking-wider">
-              <Zap size={9}/> ANALYZE {ind.symbol} WITH AI BRAIN
+              <Zap size={9}/> ANALYZE {ind.symbol} WITH AVL AI
             </button>
           </div>
         </div>
@@ -958,6 +1139,30 @@ export function MarketsView() {
   // ── Selected card (detail modal) ──────────────────────────────
   const [selectedSym, setSelectedSym] = useState<string | null>(null);
 
+  // ── Market Intelligence (lazy: カード展開時にのみ取得) ─────────
+  const [intelligenceMap, setIntelligenceMap] = useState<Record<string, MarketIntelligence>>({});
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedSym) return;
+    // 既取得済みなら再取得しない（5分キャッシュはAPI側で管理）
+    if (intelligenceMap[selectedSym]) return;
+
+    let cancelled = false;
+    setIntelligenceLoading(true);
+
+    fetch(`/api/market/intelligence?symbol=${selectedSym}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then((data: MarketIntelligence) => {
+        if (cancelled) return;
+        setIntelligenceMap(prev => ({ ...prev, [selectedSym]: data }));
+      })
+      .catch(err => console.error('[MarketsView] intelligence fetch error', err))
+      .finally(() => { if (!cancelled) setIntelligenceLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [selectedSym]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleAnalyze = useCallback((sym: string) => {
     setActiveSymbol(sym as never);
     router.push("/");
@@ -1029,6 +1234,7 @@ export function MarketsView() {
                   spread={p.spread}
                   isScanning={ind.symbol === scanSym}
                   onClick={() => setSelectedSym(prev => prev === ind.symbol ? null : ind.symbol)}
+                  intelligence={intelligenceMap[ind.symbol] ?? null}
                 />
               );
             })}
@@ -1053,6 +1259,8 @@ export function MarketsView() {
           changePct={priceMap[selectedSym]?.changePct ?? 0}
           onClose={() => setSelectedSym(null)}
           onAnalyze={handleAnalyze}
+          intelligence={intelligenceMap[selectedSym] ?? null}
+          intelligenceLoading={intelligenceLoading}
         />
       )}
     </div>
