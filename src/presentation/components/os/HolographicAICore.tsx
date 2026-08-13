@@ -172,20 +172,19 @@ void main() {
 }
 `;
 
-// ── Neon palette — White + Red scheme ─────────────────────────────
+// ── Neon palette — Pure Red scheme ────────────────────────────────
 type RGB = [number,number,number];
 const P: Record<string,RGB> = {
-  white:  [1.00, 1.00, 1.00],   // pure neon white
-  wsoft:  [0.90, 0.88, 0.88],   // soft white
-  red:    [1.00, 0.10, 0.10],   // neon red (primary)
-  redmid: [0.85, 0.06, 0.06],   // mid red
-  reddark:[0.60, 0.02, 0.02],   // dark red
-  redwarm:[1.00, 0.25, 0.10],   // warm red-orange accent
-  wdim:   [0.55, 0.50, 0.50],   // dim white
-  wgray:  [0.35, 0.33, 0.33],   // gray white (far outer)
-  // keep for morph color variety
-  orange: [1.00, 0.35, 0.05],
-  pink:   [1.00, 0.15, 0.35],
+  white:  [1.00, 0.92, 0.92],   // warm white (tiny red tint)
+  wsoft:  [1.00, 0.80, 0.80],   // soft pinkish white
+  red:    [1.00, 0.08, 0.08],   // neon red (primary)
+  redmid: [0.90, 0.05, 0.05],   // mid red
+  reddark:[0.55, 0.02, 0.02],   // dark red
+  redwarm:[1.00, 0.22, 0.08],   // warm red-orange
+  wdim:   [0.80, 0.15, 0.15],   // dim red (replaces gray)
+  wgray:  [0.65, 0.08, 0.08],   // dark red (replaces gray)
+  orange: [1.00, 0.30, 0.05],
+  pink:   [1.00, 0.12, 0.25],
 };
 const PAL = Object.values(P);
 
@@ -209,13 +208,12 @@ const THINKING_CFG: VoiceCfg = {
   bloom:0.75, energy:0.95, speed:3.5, hex:0xffffff, hex2:0xff1010, morphType:0, morphTarget:0,
 };
 
-const N_TOTAL = 18_000;
+const N_TOTAL = 60_000;
 const LF      = 0.028;
 
-// ── Low-inclination orbital plane — particles stay near screen center ──
+// ── Mostly face-on orbits with some tilt for scatter feel ──
 function randomOrbit(): { u: [number,number,number], v: [number,number,number] } {
-  // tilt: pow bias → most orbits nearly face-on (small tilt), few edge-on
-  const tilt = Math.pow(Math.random(), 2.5) * 0.7; // 0〜0.7 rad (max ~40°)
+  const tilt = Math.pow(Math.random(), 1.8) * 1.0; // 0〜1.0 rad — some scatter
   const az   = Math.random() * Math.PI * 2;
   let nx = Math.sin(tilt) * Math.cos(az);
   let ny = Math.sin(tilt) * Math.sin(az);
@@ -280,12 +278,18 @@ export const HolographicAICore = memo(function HolographicAICore({ mode, isThink
 
     type Group = { r0:number; r1:number; s0:number; s1:number; sz0:number; sz1:number; a0:number; a1:number; nm:number; cols:RGB[] };
     const groups: Group[] = [
-      // inner core — bright white + red
-      { r0:0.00, r1:0.35, s0:0.1, s1:0.6,  sz0:0.024, sz1:0.046, a0:0.06, a1:0.14, nm:0.03, cols:[P.white, P.red] },
-      // mid inner — red dominant
-      { r0:0.32, r1:0.72, s0:0.2, s1:1.0,  sz0:0.022, sz1:0.042, a0:0.04, a1:0.10, nm:0.06, cols:[P.red, P.redmid, P.white, P.red] },
+      // inner core — bright red + warm white tint
+      { r0:0.00, r1:0.32, s0:0.1, s1:0.6,  sz0:0.026, sz1:0.050, a0:0.08, a1:0.18, nm:0.03, cols:[P.white, P.red, P.redwarm] },
+      // ring zone — dense red cloud at ring radius
+      { r0:0.28, r1:0.75, s0:0.2, s1:1.0,  sz0:0.022, sz1:0.044, a0:0.06, a1:0.14, nm:0.06, cols:[P.red, P.redmid, P.redwarm, P.red] },
+      // just outside ring — medium density
+      { r0:0.68, r1:1.20, s0:0.2, s1:0.9,  sz0:0.018, sz1:0.038, a0:0.05, a1:0.12, nm:0.08, cols:[P.red, P.reddark, P.redwarm, P.orange] },
+      // outer scatter — sparse crimson sparks
+      { r0:1.10, r1:2.00, s0:0.1, s1:0.5,  sz0:0.013, sz1:0.026, a0:0.06, a1:0.14, nm:0.05, cols:[P.reddark, P.redmid, P.orange] },
+      // far outer — very sparse dim sparks
+      { r0:1.80, r1:3.20, s0:0.02,s1:0.15, sz0:0.009, sz1:0.018, a0:0.07, a1:0.16, nm:0.02, cols:[P.reddark, P.wgray, P.wdim] },
     ];
-    const groupWeights = [10, 90];
+    const groupWeights = [5, 30, 35, 20, 10];
     const groupSizes   = groupWeights.map(w => Math.floor(N_TOTAL*w/100));
     groupSizes[1] += N_TOTAL - groupSizes.reduce((a,b)=>a+b,0);
 

@@ -321,19 +321,19 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking }: Pro
         viewBox="-320 -320 640 640"
         style={{
           position: "absolute",
-          width:  "min(64vh, 82vw)",
-          height: "min(64vh, 82vw)",
+          width:  "min(84vh, 98vw)",
+          height: "min(84vh, 98vw)",
           overflow: "visible",
           willChange: "transform, opacity",
         }}
         aria-hidden
       >
         <defs>
-          {/* White bloom glow */}
-          <filter id="avl-wglow" x="-80%" y="-80%" width="260%" height="260%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="3"  result="b1"/>
-            <feGaussianBlur in="SourceGraphic" stdDeviation="7"  result="b2"/>
-            <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="b3"/>
+          {/* White bloom glow — strong */}
+          <filter id="avl-wglow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4"  result="b1"/>
+            <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="b2"/>
+            <feGaussianBlur in="SourceGraphic" stdDeviation="22" result="b3"/>
             <feMerge>
               <feMergeNode in="b3"/>
               <feMergeNode in="b2"/>
@@ -342,20 +342,9 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking }: Pro
             </feMerge>
           </filter>
 
-          {/* Red glow */}
-          <filter id="avl-rglow" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b1"/>
-            <feGaussianBlur in="SourceGraphic" stdDeviation="6"   result="b2"/>
-            <feMerge>
-              <feMergeNode in="b2"/>
-              <feMergeNode in="b1"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-
-          {/* Core bloom (strong) */}
-          <filter id="avl-coreglow" x="-120%" y="-120%" width="340%" height="340%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="5"  result="b1"/>
+          {/* Red glow — strong */}
+          <filter id="avl-rglow" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4"  result="b1"/>
             <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="b2"/>
             <feGaussianBlur in="SourceGraphic" stdDeviation="20" result="b3"/>
             <feMerge>
@@ -366,23 +355,46 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking }: Pro
             </feMerge>
           </filter>
 
-          {/* Ambient radial gradient */}
+          {/* Core bloom — very strong */}
+          <filter id="avl-coreglow" x="-150%" y="-150%" width="400%" height="400%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="6"  result="b1"/>
+            <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="b2"/>
+            <feGaussianBlur in="SourceGraphic" stdDeviation="28" result="b3"/>
+            <feMerge>
+              <feMergeNode in="b3"/>
+              <feMergeNode in="b2"/>
+              <feMergeNode in="b1"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+
+          {/* Ambient radial gradient — strong red */}
           <radialGradient id="avl-ambient" cx="50%" cy="50%" r="50%">
-            <stop offset="0%"    stopColor={NR} stopOpacity="0.12"/>
-            <stop offset="45%"   stopColor={NR} stopOpacity="0.04"/>
-            <stop offset="100%"  stopColor="#000" stopOpacity="0"/>
+            <stop offset="0%"   stopColor={NR} stopOpacity="0.30"/>
+            <stop offset="40%"  stopColor={NR} stopOpacity="0.12"/>
+            <stop offset="100%" stopColor="#000" stopOpacity="0"/>
+          </radialGradient>
+
+          {/* Center void — black tunnel */}
+          <radialGradient id="avl-void" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stopColor="#000" stopOpacity="0.95"/>
+            <stop offset="60%"  stopColor="#1a0000" stopOpacity="0.60"/>
+            <stop offset="100%" stopColor="#000" stopOpacity="0"/>
           </radialGradient>
         </defs>
 
         {/* Ambient glow background */}
-        <circle r="300" fill="url(#avl-ambient)"/>
+        <circle r="310" fill="url(#avl-ambient)"/>
+
+        {/* Center black void — tunnel depth */}
+        <circle r="68" fill="url(#avl-void)"/>
 
         {/* ── ROTATING RINGS ─────────────────────────────────── */}
         {RINGS.map((ring, i) => (
           <g
             key={i}
             ref={el => { ringRefs.current[i] = el; }}
-            opacity={ring.opacity * 0.55}
+            opacity={ring.opacity * 0.92}
             filter={ring.white ? "url(#avl-wglow)" : "url(#avl-rglow)"}
           >
             {ring.da === "TICKS" ? (
@@ -437,7 +449,7 @@ export function AVLAICore({ brainState, voiceStatus, isActive, isThinking }: Pro
         </g>
 
         {/* ── CORE GROUP ─────────────────────────────────────── */}
-        <g ref={coreRef} opacity="0.42">
+        <g ref={coreRef} opacity="0.92">
           {/* Core rings */}
           <circle r="54" fill="none" stroke={NW} strokeWidth="2.2"
             filter="url(#avl-wglow)" opacity="0.95"/>
