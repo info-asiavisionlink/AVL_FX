@@ -434,18 +434,31 @@ const SymbolCard = memo(function SymbolCard({
           </div>
 
           {/* COT */}
-          <div className="flex items-center justify-between text-[7.5px] font-mono">
-            <span className="w-10 shrink-0 font-bold" style={{ color: "#6b7280" }}>COT</span>
-            {!intelligence || intelligence.cot.status === 'NO_DATA' || intelligence.cot.status === 'SOURCE_UNAVAILABLE' ? (
-              <span style={{ color: "#4b5563" }}>NO DATA</span>
-            ) : (
-              <div className="flex items-center gap-2 flex-1 justify-end">
-                <span className="text-green-400">L{intelligence.cot.longPct}%</span>
-                <span className="text-red-400">S{intelligence.cot.shortPct}%</span>
-                <span className="font-bold tabular-nums"
-                  style={{ color: (intelligence.cot.netPct ?? 0) > 0 ? '#00ff88' : (intelligence.cot.netPct ?? 0) < 0 ? '#ff1a4e' : '#6b7280' }}>
-                  NET {(intelligence.cot.netPct ?? 0) > 0 ? '+' : ''}{intelligence.cot.netPct}%
-                </span>
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between text-[7.5px] font-mono">
+              <span className="w-10 shrink-0 font-bold" style={{ color: "#6b7280" }}>COT</span>
+              {!intelligence || intelligence.cot.status === 'NO_DATA' || intelligence.cot.status === 'SOURCE_UNAVAILABLE' ? (
+                <span style={{ color: "#4b5563" }}>NO DATA</span>
+              ) : (
+                <div className="flex items-center gap-2 flex-1 justify-end">
+                  {intelligence.cot.status === 'STALE' && (
+                    <span className="text-[6px] font-mono font-bold" style={{ color: '#f59e0b' }}>STALE</span>
+                  )}
+                  <span className="text-green-400">L{intelligence.cot.longPct}%</span>
+                  <span className="text-red-400">S{intelligence.cot.shortPct}%</span>
+                  <span className="font-bold tabular-nums"
+                    style={{ color: (intelligence.cot.netPct ?? 0) > 0 ? '#00ff88' : (intelligence.cot.netPct ?? 0) < 0 ? '#ff1a4e' : '#6b7280' }}>
+                    NET {(intelligence.cot.netPct ?? 0) > 0 ? '+' : ''}{intelligence.cot.netPct}%
+                  </span>
+                </div>
+              )}
+            </div>
+            {intelligence?.cot.reportDate && (
+              <div className="flex items-center justify-between text-[5.5px] font-mono pl-10" style={{ color: "#374151" }}>
+                <span>REPORT {intelligence.cot.reportDate}</span>
+                {intelligence.cot.source.ageMs !== null && (
+                  <span>{fmtAgeMs(intelligence.cot.source.ageMs)} · CFTC</span>
+                )}
               </div>
             )}
           </div>
@@ -476,13 +489,6 @@ const SymbolCard = memo(function SymbolCard({
             )}
           </div>
 
-          {/* COT disclaimer */}
-          {intelligence && intelligence.cot.reportDate && (
-            <div className="flex items-center justify-between text-[5.5px] font-mono" style={{ color: "#374151" }}>
-              <span>CFTC FUTURES · {intelligence.cot.reportDate}</span>
-              <span className="text-yellow-800">≠ SPOT</span>
-            </div>
-          )}
         </div>
 
         {/* Row 6: Data Quality bar */}
@@ -1008,9 +1014,17 @@ function ExpandedPanel({
                           NET {(intelligence.cot.netPct ?? 0) > 0 ? '+' : ''}{intelligence.cot.netPct ?? 0}%
                         </span>
                       </div>
-                      <div className="h-1 bg-[#0a1018] rounded-full overflow-hidden">
+                      <div className="h-1 bg-[#0a1018] rounded-full overflow-hidden mb-1.5">
                         <div className="h-full rounded-full"
                           style={{ width: `${intelligence.cot.longPct}%`, background: 'linear-gradient(90deg,rgba(0,255,136,0.3),#00ff88)' }}/>
+                      </div>
+                      {/* 枚数詳細 */}
+                      <div className="flex gap-4 text-[7px] font-mono text-gray-600 mb-1">
+                        <span>LONG <span className="text-gray-400 tabular-nums">{intelligence.cot.nonCommLong?.toLocaleString()}</span></span>
+                        <span>SHORT <span className="text-gray-400 tabular-nums">{intelligence.cot.nonCommShort?.toLocaleString()}</span></span>
+                        <span>NET <span className="tabular-nums" style={{ color: (intelligence.cot.netContracts ?? 0) >= 0 ? '#00ff8880' : '#ff1a4e80' }}>
+                          {(intelligence.cot.netContracts ?? 0) >= 0 ? '+' : ''}{intelligence.cot.netContracts?.toLocaleString()}
+                        </span></span>
                       </div>
                     </>
                   ) : (
@@ -1018,9 +1032,9 @@ function ExpandedPanel({
                   )}
                   <div className="mt-1 flex gap-3 text-[6px] font-mono text-gray-800 flex-wrap">
                     <span>SOURCE {intelligence.cot.source.name}</span>
-                    {intelligence.cot.reportDate && <span>WEEK {intelligence.cot.reportDate}</span>}
+                    {intelligence.cot.reportDate && <span>REPORT {intelligence.cot.reportDate}</span>}
                     {intelligence.cot.source.ageMs !== null && <span>UPDATED {fmtAgeMs(intelligence.cot.source.ageMs)}</span>}
-                    <span className="text-yellow-900">⚠ FUTURES DATA, NOT SPOT</span>
+                    <span className="text-yellow-900">⚠ FUTURES, NOT SPOT</span>
                   </div>
                 </div>
 
