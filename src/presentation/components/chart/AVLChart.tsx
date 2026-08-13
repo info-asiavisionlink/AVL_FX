@@ -31,6 +31,7 @@ import {
 } from "lightweight-charts";
 import { usePriceStore }      from "@/application/stores/priceStore";
 import { useConnectionStore } from "@/application/stores/connectionStore";
+import { useMarketStore }     from "@/application/stores/marketStore";
 import { ConnectionManager }  from "@/infrastructure/connection/ConnectionManager";
 import type { Timeframe }     from "@/types";
 import { Loader2 }            from "lucide-react";
@@ -108,6 +109,8 @@ export function AVLChart() {
 
   const { activeSymbol, activeTimeframe } = usePriceStore();
   const { status }                        = useConnectionStore();
+  // SYMBOLSメッセージで更新される現在bid（TICKが来なくてもSYMBOLS経由で動く）
+  const currentBid = useMarketStore(s => s.symbols.get(activeSymbol.toUpperCase())?.bid ?? 0);
 
   // ---------------------------------------------------------------
   // チャート初期化 — ResizeObserver で確定サイズが取得できてから生成
@@ -306,6 +309,27 @@ export function AVLChart() {
       if (unsubTickRef.current) { unsubTickRef.current(); unsubTickRef.current = null; }
     };
   }, [loadChart]);
+
+  // ---------------------------------------------------------------
+  // marketStoreのbid変化で現在足をリアルタイム更新
+  // EAがTICKを個別送信しない場合もSYMBOLS一括更新で動く
+  // ---------------------------------------------------------------
+  useEffect(() => {
+    if (!currentBid || currentBid <= 0) return;
+    const s    = seriesRef.current;
+    const prev = lastBarRef.current;
+    if (!s || !prev || loadingRef.current) return;
+
+    const updated: CandlestickData = {
+      time:  prev.time,
+      open:  prev.open,
+      high:  Math.max(prev.high, currentBid),
+      low:   Math.min(prev.low,  currentBid),
+      close: currentBid,
+    };
+    s.update(updated);
+    lastBarRef.current = updated;
+  }, [currentBid]);
 
   // ---------------------------------------------------------------
   // レンダリング

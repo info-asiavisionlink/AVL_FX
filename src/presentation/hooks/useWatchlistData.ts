@@ -54,7 +54,20 @@ export function useWatchlistData() {
       if (syms.length > 0) setSymbols(syms);
     }).catch(() => {});
 
-    return () => { unsubInd(); unsubSyms(); };
+    // EAがTICKを個別送信しないケースに対応するため定期ポーリング（2秒ごと）
+    // WebSocket SYMBOLS は初回のみのため、REST で価格を継続更新する
+    const pollSymbols = () => {
+      client.getSymbols().then((syms) => {
+        if (syms.length > 0) setSymbols(syms);
+      }).catch(() => {});
+    };
+    const pollId = setInterval(pollSymbols, 2000);
+
+    return () => {
+      unsubInd();
+      unsubSyms();
+      clearInterval(pollId);
+    };
   }, [status, setIndicators, setIndicatorsBatch, setSymbols]);
 
   // ── Tick購読（EA稼働銘柄のみ、銘柄セット変化時に再購読）────────
