@@ -1167,7 +1167,7 @@ export function MarketsView() {
   const symbols = indList.map(i => i.symbol);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden min-w-0 relative"
+    <div className="flex flex-col flex-1 h-full overflow-hidden min-w-0 relative"
       style={{ background: "radial-gradient(ellipse at 50% 0%, #010c1e 0%, #020408 60%, #010305 100%)" }}>
 
       {/* Background grid */}

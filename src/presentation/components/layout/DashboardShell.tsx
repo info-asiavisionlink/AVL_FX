@@ -24,7 +24,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* ── Main content ────────────────────────────────────── */}
-      <div className="flex-1 overflow-hidden relative min-w-0">
+      <div className="flex flex-1 overflow-hidden relative min-w-0">
         <div className="absolute inset-0 pointer-events-none z-0"
           style={{background:"radial-gradient(ellipse 80% 60% at 50% 50%, transparent 30%, rgba(0,0,0,0.6) 100%)"}}/>
         {children}

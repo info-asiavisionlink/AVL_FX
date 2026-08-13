@@ -205,7 +205,7 @@ export function NewsView() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-[#04060d] overflow-hidden">
+    <div className="flex flex-col flex-1 h-full bg-[#04060d] overflow-hidden">
 
       {/* ── ヘッダー ── */}
       <div className="shrink-0 border-b border-[#0d1520] bg-[#03050b] px-4 py-3">

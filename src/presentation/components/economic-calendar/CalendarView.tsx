@@ -326,7 +326,7 @@ export function CalendarView() {
   const highAhead = events.filter(e => e.impact >= 3 && e.time * 1000 > now).length;
 
   return (
-    <div className="flex flex-col h-full bg-[#050810] text-gray-100">
+    <div className="flex flex-col flex-1 h-full bg-[#050810] text-gray-100">
 
       {/* ── ヘッダー ── */}
       <div className="shrink-0 border-b border-[#1a2535] bg-[#03050d] pl-14 pr-4 md:px-4 py-3">
