@@ -166,6 +166,8 @@ function sampleRing(ring: Position[], stepDeg: number, hw: number, hh: number): 
   const pts: [number,number][] = [];
   for (let i = 0; i < ring.length - 1; i++) {
     const [x0, y0] = ring[i], [x1, y1] = ring[i + 1];
+    // アンチメリジアン(±180°)をまたぐエッジをスキップ
+    if (Math.abs(x1 - x0) > 180) continue;
     const len = Math.hypot(x1-x0, y1-y0);
     const n   = Math.max(1, Math.round(len / stepDeg));
     for (let j = 0; j < n; j++) {
