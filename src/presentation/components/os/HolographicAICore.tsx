@@ -287,12 +287,8 @@ export const HolographicAICore = memo(function HolographicAICore({ mode, isThink
       { r0:1.50, r1:2.05, s0:0.3, s1:1.0,  sz0:0.018, sz1:0.034, a0:0.040,a1:0.100,nm:0.06, cols:[P.reddark, P.redmid, P.wdim] },
       // far outer — dark red + warm
       { r0:1.80, r1:2.40, s0:0.2, s1:0.8,  sz0:0.016, sz1:0.030, a0:0.035,a1:0.090,nm:0.05, cols:[P.reddark, P.redwarm, P.orange, P.pink] },
-      // ambient — dim red + gray
-      { r0:1.30, r1:3.50, s0:0.05,s1:0.3,  sz0:0.013, sz1:0.026, a0:0.050,a1:0.120,nm:0.08, cols:[P.reddark, P.wdim, P.wgray] },
-      // scattered sparks (very far) — tiny dim red
-      { r0:3.50, r1:18.0, s0:0.01,s1:0.1,  sz0:0.009, sz1:0.018, a0:0.070,a1:0.160,nm:0.02, cols:[P.reddark, P.wgray, P.redmid] },
     ];
-    const groupWeights = [2,15,35,20,10,8,6,4];
+    const groupWeights = [2,17,38,22,11,10];
     const groupSizes   = groupWeights.map(w => Math.floor(N_TOTAL*w/100));
     groupSizes[1] += N_TOTAL - groupSizes.reduce((a,b)=>a+b,0);
 
