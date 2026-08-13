@@ -94,7 +94,9 @@ export function AVLChart() {
   const chartRef      = useRef<IChartApi | null>(null);
   const seriesRef     = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lastTimeRef   = useRef<number>(0);
+  const lastBarRef    = useRef<CandlestickData | null>(null); // 現在足（Tick更新用）
   const unsubBarRef   = useRef<(() => void) | null>(null);
+  const unsubTickRef  = useRef<(() => void) | null>(null);
   const pendingRef    = useRef<CandlestickData[]>([]);
   const loadingRef    = useRef(false);
   // in-flight HTTP リクエストをキャンセルするためのAbortController
@@ -167,10 +169,12 @@ export function AVLChart() {
     if (!series || !chart) return;
 
     // ── 前回リクエストをキャンセル（シンボル切替時の競合防止）──
-    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
-    if (unsubBarRef.current) { unsubBarRef.current(); unsubBarRef.current = null; }
+    if (abortRef.current)   { abortRef.current.abort(); abortRef.current = null; }
+    if (unsubBarRef.current)  { unsubBarRef.current();  unsubBarRef.current  = null; }
+    if (unsubTickRef.current) { unsubTickRef.current(); unsubTickRef.current = null; }
 
     lastTimeRef.current = 0;
+    lastBarRef.current  = null;
     pendingRef.current  = [];
     loadingRef.current  = false;
     setNoData(false);
@@ -205,6 +209,7 @@ export function AVLChart() {
       if (lastTimeRef.current === 0) {
         s.setData([candle]);
         lastTimeRef.current = t;
+        lastBarRef.current  = candle;
         setNoData(false);
         chart.timeScale().fitContent();
         return;
@@ -213,6 +218,28 @@ export function AVLChart() {
       if (t < lastTimeRef.current) return;
       s.update(candle);
       lastTimeRef.current = Math.max(lastTimeRef.current, t);
+      lastBarRef.current  = candle;
+    });
+
+    // ── ①-b Tick購読 — 現在足のcloseをリアルタイム更新 ─────────
+    // onBar はバー確定時のみ来るため、Tickで現在足を毎秒更新する
+    unsubTickRef.current = client.onTick(activeSymbol, (tick) => {
+      const s    = seriesRef.current;
+      const prev = lastBarRef.current;
+      if (!s || !prev || loadingRef.current) return;
+
+      const bid = tick.bid;
+      if (!bid || bid <= 0) return;
+
+      const updated: CandlestickData = {
+        time:  prev.time,
+        open:  prev.open,
+        high:  Math.max(prev.high, bid),
+        low:   Math.min(prev.low,  bid),
+        close: bid,
+      };
+      s.update(updated);
+      lastBarRef.current = updated;
     });
 
     // ── ② 過去バーを REST で取得 ────────────────────────────────
@@ -249,6 +276,7 @@ export function AVLChart() {
 
       series.setData(lwBars);
       lastTimeRef.current = toSec(bars[bars.length - 1].time);
+      lastBarRef.current  = lwBars[lwBars.length - 1];
       chart.timeScale().fitContent();
       setNoData(false);
 
@@ -258,6 +286,7 @@ export function AVLChart() {
         if (t >= lastTimeRef.current) {
           series.update(candle);
           lastTimeRef.current = Math.max(lastTimeRef.current, t);
+          lastBarRef.current  = candle;
         }
       }
     } else {
@@ -272,8 +301,9 @@ export function AVLChart() {
     return () => {
       cancelAnimationFrame(raf);
       // in-flight HTTPリクエストをキャンセル（シンボル切替・アンマウント時）
-      if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
-      if (unsubBarRef.current) { unsubBarRef.current(); unsubBarRef.current = null; }
+      if (abortRef.current)   { abortRef.current.abort(); abortRef.current = null; }
+      if (unsubBarRef.current)  { unsubBarRef.current();  unsubBarRef.current  = null; }
+      if (unsubTickRef.current) { unsubTickRef.current(); unsubTickRef.current = null; }
     };
   }, [loadChart]);
 
