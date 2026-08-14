@@ -7,7 +7,7 @@ import { useConnectionStore } from "@/application/stores/connectionStore";
 import {
   LayoutDashboard, BarChart2, Globe, CalendarDays,
   Newspaper, Briefcase, History, Settings,
-  ScrollText, Cable, X,
+  ScrollText, Cable, X, Bot,
 } from "lucide-react";
 
 // NEON GREEN accent
@@ -16,6 +16,7 @@ const NG_rgba = "rgba(0,255,136,";
 
 export const NAV = [
   { href: "/",          icon: LayoutDashboard, label: "AI起動",    group: 1 },
+  { href: "/ea",        icon: Bot,             label: "EA起動",    group: 1 },
   { href: "/markets",   icon: Globe,           label: "MARKETS",   group: 1 },
   { href: "/chart",     icon: BarChart2,       label: "CHART",     group: 1 },
   { href: "/calendar",  icon: CalendarDays,    label: "CALENDAR",  group: 1 },

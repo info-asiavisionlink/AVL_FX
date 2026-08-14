@@ -1,0 +1,188 @@
+import { EAProfile } from "./types";
+
+export const MOCK_EA_PROFILES: EAProfile[] = [
+  {
+    id: "ea-001",
+    name: "RSI SCALPER",
+    status: "RUNNING",
+    strategyType: "SCALPING",
+    symbols: ["EURUSD"],
+    timeframes: ["M1", "M5"],
+    magicNumber: 10001,
+    aiRecommendation: {
+      recommendation: "RECOMMENDED",
+      marketCompatibility: 87,
+      reasons: [
+        "High volatility aligns with scalping strategy",
+        "RSI divergence signals are strong",
+        "Spread conditions are favorable",
+        "Low news risk in current session",
+      ],
+    },
+    performance: {
+      totalTrades: 342,
+      winRate: 61.4,
+      totalPips: 486.3,
+      profitFactor: 1.42,
+      avgPips: 1.4,
+      maxDrawdown: 8.2,
+    },
+    sessionPerformance: [
+      { session: "TOKYO",    winRate: 58.1, pips: 112.4 },
+      { session: "LONDON",   winRate: 64.3, pips: 214.6 },
+      { session: "NEW_YORK", winRate: 61.8, pips: 159.3 },
+    ],
+    lossPatterns: [
+      { name: "High Spread Reversal",  lossRate: 22, impact: "HIGH"   },
+      { name: "News Spike Whipsaw",    lossRate: 15, impact: "MEDIUM" },
+      { name: "Asian Session Drift",   lossRate: 9,  impact: "LOW"    },
+    ],
+  },
+  {
+    id: "ea-002",
+    name: "GOLD MOMENTUM",
+    status: "STOPPED",
+    strategyType: "SCALPING",
+    symbols: ["XAUUSD"],
+    timeframes: ["M5"],
+    magicNumber: 10002,
+    aiRecommendation: {
+      recommendation: "CAUTION",
+      marketCompatibility: 52,
+      reasons: [
+        "Gold volatility elevated — spread risk high",
+        "Momentum signals are conflicted",
+        "Current session overlaps with high-impact news",
+      ],
+    },
+    performance: {
+      totalTrades: 198,
+      winRate: 54.2,
+      totalPips: 214.8,
+      profitFactor: 1.18,
+      avgPips: 1.1,
+      maxDrawdown: 14.7,
+    },
+    sessionPerformance: [
+      { session: "TOKYO",    winRate: 49.0, pips:  32.1 },
+      { session: "LONDON",   winRate: 57.4, pips: 108.5 },
+      { session: "NEW_YORK", winRate: 55.8, pips:  74.2 },
+    ],
+    lossPatterns: [
+      { name: "Spread Spike Slippage", lossRate: 34, impact: "HIGH"   },
+      { name: "Counter-Trend Reversal",lossRate: 21, impact: "HIGH"   },
+      { name: "Low Volume Chop",       lossRate: 12, impact: "MEDIUM" },
+    ],
+  },
+  {
+    id: "ea-003",
+    name: "TREND FOLLOWER",
+    status: "RUNNING",
+    strategyType: "DAY_TRADE",
+    symbols: ["EURUSD"],
+    timeframes: ["H1", "H4"],
+    magicNumber: 10003,
+    aiRecommendation: {
+      recommendation: "RECOMMENDED",
+      marketCompatibility: 81,
+      reasons: [
+        "Strong directional trend detected on H4",
+        "Moving average confluence confirmed",
+        "Risk/reward ratio is optimal",
+        "Market structure supports continuation",
+      ],
+    },
+    performance: {
+      totalTrades: 87,
+      winRate: 58.9,
+      totalPips: 332.1,
+      profitFactor: 1.61,
+      avgPips: 3.8,
+      maxDrawdown: 10.5,
+    },
+    sessionPerformance: [
+      { session: "TOKYO",    winRate: 52.4, pips:  54.8 },
+      { session: "LONDON",   winRate: 62.1, pips: 163.7 },
+      { session: "NEW_YORK", winRate: 59.3, pips: 113.6 },
+    ],
+    lossPatterns: [
+      { name: "Trend Exhaustion",       lossRate: 18, impact: "MEDIUM" },
+      { name: "False Breakout",         lossRate: 14, impact: "MEDIUM" },
+      { name: "Overnight Gap Risk",     lossRate: 8,  impact: "LOW"    },
+    ],
+  },
+  {
+    id: "ea-004",
+    name: "RANGE EA",
+    status: "STOPPED",
+    strategyType: "SCALPING",
+    symbols: ["GBPUSD"],
+    timeframes: ["M15"],
+    magicNumber: 10004,
+    aiRecommendation: {
+      recommendation: "NOT_RECOMMENDED",
+      marketCompatibility: 24,
+      reasons: [
+        "Market is trending — range strategy ineffective",
+        "Win rate has declined significantly in trending conditions",
+        "High drawdown risk in current volatility regime",
+      ],
+    },
+    performance: {
+      totalTrades: 156,
+      winRate: 44.1,
+      totalPips: -89.3,
+      profitFactor: 0.84,
+      avgPips: -0.6,
+      maxDrawdown: 21.3,
+    },
+    sessionPerformance: [
+      { session: "TOKYO",    winRate: 48.2, pips:  12.4 },
+      { session: "LONDON",   winRate: 40.6, pips: -64.8 },
+      { session: "NEW_YORK", winRate: 43.7, pips: -36.9 },
+    ],
+    lossPatterns: [
+      { name: "Breakout Against Position", lossRate: 41, impact: "HIGH"   },
+      { name: "Trending Market Entry",     lossRate: 29, impact: "HIGH"   },
+      { name: "Tight Stop Hunting",        lossRate: 17, impact: "MEDIUM" },
+    ],
+  },
+  {
+    id: "ea-005",
+    name: "MOMENTUM SWING",
+    status: "STOPPED",
+    strategyType: "SWING",
+    symbols: ["USDJPY"],
+    timeframes: ["H4", "D1"],
+    magicNumber: 10005,
+    aiRecommendation: {
+      recommendation: "CAUTION",
+      marketCompatibility: 61,
+      reasons: [
+        "USD/JPY momentum building on D1",
+        "BOJ intervention risk is elevated",
+        "Swing setups require patience in current chop",
+      ],
+    },
+    performance: {
+      totalTrades: 43,
+      winRate: 63.2,
+      totalPips: 891.6,
+      profitFactor: 2.14,
+      avgPips: 20.7,
+      maxDrawdown: 12.1,
+    },
+    sessionPerformance: [
+      { session: "TOKYO",    winRate: 67.5, pips: 342.1 },
+      { session: "LONDON",   winRate: 58.3, pips: 289.4 },
+      { session: "NEW_YORK", winRate: 63.0, pips: 260.1 },
+    ],
+    lossPatterns: [
+      { name: "BOJ Intervention Spike",  lossRate: 26, impact: "HIGH"   },
+      { name: "Risk-Off Sudden Reversal",lossRate: 19, impact: "HIGH"   },
+      { name: "Weekend Gap",             lossRate: 11, impact: "MEDIUM" },
+    ],
+  },
+];
+
+export const MOCK_AI_SELECTOR_SYMBOL = "EURUSD";
