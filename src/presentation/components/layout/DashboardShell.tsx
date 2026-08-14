@@ -1,17 +1,33 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Sidebar } from "./Sidebar";
-import { Menu } from "lucide-react";
+import { Menu, Maximize2, Minimize2 } from "lucide-react";
 
 const NG      = "#00ff88";
 const NG_rgba = "rgba(0,255,136,";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileOpen,   setMobileOpen]   = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const openMobile  = useCallback(() => setMobileOpen(true),  []);
   const closeMobile = useCallback(() => setMobileOpen(false), []);
+
+  // 全画面状態の変化を検知
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{
@@ -19,8 +35,24 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     }}>
 
       {/* ── Desktop sidebar (md+) ───────────────────────────── */}
-      <div className="hidden md:flex">
+      <div className="hidden md:flex flex-col">
         <Sidebar />
+        {/* 全画面トグルボタン */}
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "全画面解除" : "全画面表示"}
+          className="shrink-0 flex flex-col items-center justify-center h-10 w-full transition-colors hover:bg-emerald-950/20"
+          style={{
+            background: "linear-gradient(180deg, #02040a 0%, #030508 100%)",
+            borderRight: `1px solid ${NG_rgba}0.12)`,
+            color: isFullscreen ? NG : "#374151",
+          }}
+        >
+          {isFullscreen
+            ? <Minimize2 size={14} style={{ color: NG, filter: `drop-shadow(0 0 4px ${NG})` }}/>
+            : <Maximize2 size={14} style={{ color: "#374151" }}/>
+          }
+        </button>
       </div>
 
       {/* ── Main content ────────────────────────────────────── */}
