@@ -473,7 +473,7 @@ export function EACommandCenter() {
         </div>
 
         {/* ── EA カードグリッド ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
           {MOCK_EA_PROFILES.map((profile) => (
             <EACard
               key={profile.id}
@@ -486,7 +486,7 @@ export function EACommandCenter() {
         </div>
 
         {/* ── 下部パネル ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(480px, 1fr))" }}>
 
           {/* AI EA セレクター */}
           <div className="rounded-lg overflow-hidden"
