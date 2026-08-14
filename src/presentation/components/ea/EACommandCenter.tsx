@@ -410,7 +410,7 @@ export function EACommandCenter() {
   ).sort((a, b) => b.lossRate - a.lossRate).slice(0, 8);
 
   return (
-    <div className="relative flex flex-col h-full overflow-hidden font-mono"
+    <div className="relative flex flex-col flex-1 h-full overflow-hidden font-mono"
       style={{ background: "#04060d" }}>
 
       <div className="absolute inset-0 avl-grid-bg opacity-[0.03] pointer-events-none" />
