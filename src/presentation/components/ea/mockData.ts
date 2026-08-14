@@ -13,10 +13,10 @@ export const MOCK_EA_PROFILES: EAProfile[] = [
       recommendation: "RECOMMENDED",
       marketCompatibility: 87,
       reasons: [
-        "High volatility aligns with scalping strategy",
-        "RSI divergence signals are strong",
-        "Spread conditions are favorable",
-        "Low news risk in current session",
+        "現在のボラティリティはスキャルピング戦略に適合",
+        "RSIダイバージェンスシグナルが明確",
+        "スプレッド条件が良好",
+        "現セッション中に重要ニュースリスクなし",
       ],
     },
     performance: {
@@ -33,9 +33,9 @@ export const MOCK_EA_PROFILES: EAProfile[] = [
       { session: "NEW_YORK", winRate: 61.8, pips: 159.3 },
     ],
     lossPatterns: [
-      { name: "High Spread Reversal",  lossRate: 22, impact: "HIGH"   },
-      { name: "News Spike Whipsaw",    lossRate: 15, impact: "MEDIUM" },
-      { name: "Asian Session Drift",   lossRate: 9,  impact: "LOW"    },
+      { name: "高スプレッド時の逆行",   lossRate: 22, impact: "HIGH"   },
+      { name: "ニュース時のヒゲ刺し",   lossRate: 15, impact: "MEDIUM" },
+      { name: "アジア時間のドリフト",   lossRate: 9,  impact: "LOW"    },
     ],
   },
   {
@@ -50,9 +50,9 @@ export const MOCK_EA_PROFILES: EAProfile[] = [
       recommendation: "CAUTION",
       marketCompatibility: 52,
       reasons: [
-        "Gold volatility elevated — spread risk high",
-        "Momentum signals are conflicted",
-        "Current session overlaps with high-impact news",
+        "金ボラティリティ高騰中 — スプレッドリスクが高い",
+        "モメンタムシグナルが相反している",
+        "現セッションに高インパクト指標と重複",
       ],
     },
     performance: {
@@ -69,9 +69,9 @@ export const MOCK_EA_PROFILES: EAProfile[] = [
       { session: "NEW_YORK", winRate: 55.8, pips:  74.2 },
     ],
     lossPatterns: [
-      { name: "Spread Spike Slippage", lossRate: 34, impact: "HIGH"   },
-      { name: "Counter-Trend Reversal",lossRate: 21, impact: "HIGH"   },
-      { name: "Low Volume Chop",       lossRate: 12, impact: "MEDIUM" },
+      { name: "スプレッドスパイク時スリッページ", lossRate: 34, impact: "HIGH"   },
+      { name: "逆張りエントリー後の反転",         lossRate: 21, impact: "HIGH"   },
+      { name: "低出来高時のチョッピー相場",       lossRate: 12, impact: "MEDIUM" },
     ],
   },
   {
@@ -86,10 +86,10 @@ export const MOCK_EA_PROFILES: EAProfile[] = [
       recommendation: "RECOMMENDED",
       marketCompatibility: 81,
       reasons: [
-        "Strong directional trend detected on H4",
-        "Moving average confluence confirmed",
-        "Risk/reward ratio is optimal",
-        "Market structure supports continuation",
+        "H4で明確な方向性トレンドを検出",
+        "移動平均線のコンフルエンスを確認",
+        "リスクリワード比が最適水準",
+        "マーケット構造がトレンド継続を支持",
       ],
     },
     performance: {
@@ -106,9 +106,9 @@ export const MOCK_EA_PROFILES: EAProfile[] = [
       { session: "NEW_YORK", winRate: 59.3, pips: 113.6 },
     ],
     lossPatterns: [
-      { name: "Trend Exhaustion",       lossRate: 18, impact: "MEDIUM" },
-      { name: "False Breakout",         lossRate: 14, impact: "MEDIUM" },
-      { name: "Overnight Gap Risk",     lossRate: 8,  impact: "LOW"    },
+      { name: "トレンド終焉時のダマシ",   lossRate: 18, impact: "MEDIUM" },
+      { name: "ブレイクアウト失敗",       lossRate: 14, impact: "MEDIUM" },
+      { name: "週またぎギャップリスク",   lossRate: 8,  impact: "LOW"    },
     ],
   },
   {
@@ -123,9 +123,9 @@ export const MOCK_EA_PROFILES: EAProfile[] = [
       recommendation: "NOT_RECOMMENDED",
       marketCompatibility: 24,
       reasons: [
-        "Market is trending — range strategy ineffective",
-        "Win rate has declined significantly in trending conditions",
-        "High drawdown risk in current volatility regime",
+        "現在トレンド相場 — レンジ戦略は不適合",
+        "トレンド環境での勝率が大幅に低下している",
+        "現在のボラティリティ局面でドローダウンリスクが高い",
       ],
     },
     performance: {
@@ -142,9 +142,9 @@ export const MOCK_EA_PROFILES: EAProfile[] = [
       { session: "NEW_YORK", winRate: 43.7, pips: -36.9 },
     ],
     lossPatterns: [
-      { name: "Breakout Against Position", lossRate: 41, impact: "HIGH"   },
-      { name: "Trending Market Entry",     lossRate: 29, impact: "HIGH"   },
-      { name: "Tight Stop Hunting",        lossRate: 17, impact: "MEDIUM" },
+      { name: "レンジブレイクによる損切り", lossRate: 41, impact: "HIGH"   },
+      { name: "トレンド相場へのエントリー", lossRate: 29, impact: "HIGH"   },
+      { name: "タイトストップ狩り",         lossRate: 17, impact: "MEDIUM" },
     ],
   },
   {
@@ -159,9 +159,9 @@ export const MOCK_EA_PROFILES: EAProfile[] = [
       recommendation: "CAUTION",
       marketCompatibility: 61,
       reasons: [
-        "USD/JPY momentum building on D1",
-        "BOJ intervention risk is elevated",
-        "Swing setups require patience in current chop",
+        "USD/JPYのD1モメンタムが形成中",
+        "日銀介入リスクが高まっている",
+        "現在のチョッピー相場ではスイング待機が必要",
       ],
     },
     performance: {
@@ -178,9 +178,9 @@ export const MOCK_EA_PROFILES: EAProfile[] = [
       { session: "NEW_YORK", winRate: 63.0, pips: 260.1 },
     ],
     lossPatterns: [
-      { name: "BOJ Intervention Spike",  lossRate: 26, impact: "HIGH"   },
-      { name: "Risk-Off Sudden Reversal",lossRate: 19, impact: "HIGH"   },
-      { name: "Weekend Gap",             lossRate: 11, impact: "MEDIUM" },
+      { name: "日銀介入スパイク",         lossRate: 26, impact: "HIGH"   },
+      { name: "リスクオフ急反転",         lossRate: 19, impact: "HIGH"   },
+      { name: "週末ギャップ",             lossRate: 11, impact: "MEDIUM" },
     ],
   },
 ];
