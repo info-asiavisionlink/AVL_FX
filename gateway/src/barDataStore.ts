@@ -14,6 +14,7 @@
 // =================================================================
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import ws from "ws";
 
 // ------------------------------------------------------------------
 // 設定
@@ -44,6 +45,8 @@ function getClient(): SupabaseClient | null {
 
   _client = createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    realtime: { transport: ws as any }, // Node.js 20 は native WebSocket 非対応のため ws を指定
   });
   _enabled = true;
   console.log("[barData] Supabase接続準備完了 → bar_data に永続化します");
