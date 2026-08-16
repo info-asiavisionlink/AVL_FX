@@ -160,8 +160,7 @@ export async function POST(req: NextRequest) {
         { role: "system", content: buildSystemPrompt() },
         { role: "user",   content: prompt },
       ],
-      temperature:            0.3,   // 低め: 構造化出力の安定性を優先
-      max_completion_tokens:  2048,
+      max_completion_tokens:  4096,
       response_format:        { type: "json_object" }, // JSON モード
     });
 
