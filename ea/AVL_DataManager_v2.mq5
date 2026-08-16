@@ -32,7 +32,7 @@ input int  InpTickThrottleMs = 100;
 
 sinput group "=== OHLC Stream ==="
 input bool InpOHLCEnabled    = true;
-input int  InpOHLCHistory    = 500;
+input int  InpOHLCHistory    = 5000; // Historical Data基盤: バックテスト用に増量（500→5000）
 
 sinput group "=== Market Watch Stream ==="
 input bool InpMWEnabled      = true;
@@ -95,13 +95,49 @@ int OnInit()
       return INIT_FAILED;
    }
 
+   // =================================================================
+   // Timezone 診断ログ（起動時に出力）
+   // MqlRates.time（bar.time）が UTC かブローカー時刻かを確認するため
+   // =================================================================
+   {
+      datetime brokerNow = TimeCurrent(); // ブローカーサーバー時刻
+      datetime utcNow    = TimeGMT();     // UTC時刻
+      int      offset    = (int)(brokerNow - utcNow); // 秒単位のオフセット（UTCとの差）
+
+      MqlRates rates[];
+      int copied = CopyRates(g_Symbol, PERIOD_H4, 0, 3, rates);
+
+      Print("=== [TZ診断] Timezone Verification ===");
+      Print("  TimeCurrent() = ", brokerNow, " (ブローカー時刻 Unix秒)");
+      Print("  TimeGMT()     = ", utcNow,    " (UTC時刻 Unix秒)");
+      Print("  Offset        = ", offset, " 秒 (= ", offset/3600, " 時間)");
+      Print("  ブローカー時刻: ", TimeToString(brokerNow, TIME_DATE|TIME_SECONDS));
+      Print("  UTC時刻:       ", TimeToString(utcNow, TIME_DATE|TIME_SECONDS));
+
+      if(copied > 0)
+      {
+         for(int i = 0; i < copied; i++)
+         {
+            bool alignedUTC    = (rates[i].time % 14400) == 0;
+            bool alignedUTC3   = ((rates[i].time - 10800) % 14400) == 0;
+            Print("  H4 bar[", i, "] time=", rates[i].time,
+                  " UTC=", TimeToString((datetime)rates[i].time, TIME_DATE|TIME_SECONDS),
+                  " UTC aligned=", alignedUTC,
+                  " UTC+3 aligned=", alignedUTC3);
+         }
+         Print("  → H4バーが UTC境界に整列していれば bar.time = UTC");
+         Print("  → UTC+3境界に整列していれば bar.time = Broker Time (UTC+3)");
+      }
+      Print("=== [TZ診断] 完了 ===");
+   }
+
    if(InpOHLCEnabled)       { OHLCStream_SendBulk(); g_LastBulkSent = TimeCurrent(); }
    if(InpIndicatorEnabled)  { IndicatorStream_Send(); g_LastIndicatorSent = TimeCurrent(); }
    if(InpHistoryEnabled)    { HistoryStream_Send();   g_LastHistorySent = TimeCurrent(); }
    if(InpMWEnabled)         { MarketWatch_Send();     g_LastMWSent = TimeCurrent(); }
 
    EventSetMillisecondTimer(InpTimerMs);
-   Print("AVL DataManager v4.0 起動 | Symbol=", g_Symbol);
+   Print("AVL DataManager v4.0 起動 | Symbol=", g_Symbol, " | OHLCHistory=", InpOHLCHistory, "本");
    return INIT_SUCCEEDED;
 }
 
@@ -241,7 +277,10 @@ void OHLCStream_SendBulk()
          g_Symbol, TF_ToString(tf), barsJson
       );
       HTTP_Post("/bars/bulk", body);
-      Print("OHLC Bulk: ", g_Symbol, ":", TF_ToString(tf), " ", n, "本");
+      // 要求本数 vs 実際取得本数をログに出力（TERMINAL_MAXBARSやブローカー制限の確認用）
+      Print("OHLC Bulk: ", g_Symbol, ":", TF_ToString(tf),
+            " 要求=", InpOHLCHistory, "本 実取得=", n, "本",
+            (n < InpOHLCHistory ? " ← ブローカー/端末制限で不足" : " OK"));
       Sleep(30);
    }
 }

@@ -39,6 +39,13 @@ import { WebSocketServer, WebSocket } from "ws";
 import cors from "cors";
 import fs   from "fs";
 import path from "path";
+import {
+  upsertBulkBars,
+  upsertSingleBar,
+  syncBarStoreToSupabase,
+  isEnabled as isSupabaseEnabled,
+  type BarRecord,
+} from "./barDataStore";
 
 // -----------------------------------------------------------------
 // 型定義 — EA から受け取った値をそのまま保持する
@@ -246,7 +253,7 @@ setInterval(persistSave, 30_000);
 // インメモリストア（加工なし）
 // -----------------------------------------------------------------
 
-const MAX_BARS = 2000;
+const MAX_BARS = 10_000; // Gatewayインメモリキャッシュ上限（長期保存はSupabase bar_dataが担う）
 
 /** "EURUSD:H1" → Bar[]  （時刻はブローカー秒、昇順） */
 const barStore      = new Map<string, Bar[]>();
@@ -401,13 +408,22 @@ app.post("/bars/bulk", auth, (req, res) => {
     }
   }
 
-  // 既存より本数が多い（新規 or EA 再起動）場合のみ上書き
+  // 既存より本数が多い（新規 or EA 再起動）場合のみ barStore を上書き
   if (!existing || bars.length >= existing.length) {
     const sorted = dedupAndSort(normalized);
     barStore.set(key, sorted.slice(-MAX_BARS));
     console.log(`[Bulk] ${key}: ${sorted.length}本`);
     persistSave(); // Bulk受信は重要データなので即座に保存
   }
+
+  // Supabase への永続化（barStore の結果とは独立して常にupsert）
+  // fire-and-forget: Gatewayレスポンスをブロックしない
+  if (normalized.length > 0) {
+    upsertBulkBars(symbol, timeframe, normalized as BarRecord[]).catch((err: unknown) => {
+      console.warn(`[barData] bulk upsert failed ${key}:`, err);
+    });
+  }
+
   res.json({ ok: true });
 });
 
@@ -700,7 +716,12 @@ function dedupAndSort(bars: Bar[]): Bar[] {
   return Array.from(map.values()).sort((a, b) => a.time - b.time);
 }
 
-/** barStore へバーをアップサート（同時刻は上書き、新時刻は追加） */
+/** barStore へバーをアップサート（同時刻は上書き、新時刻は追加）
+ *
+ * 確定バー検出ロジック:
+ *   - 同じ time のバーが来た場合 → 未確定バーの更新（in-memory のみ、Supabase保存なし）
+ *   - 新しい time のバーが来た場合 → 前のバーが確定した = Supabase に永続化
+ */
 function upsertBar(symbol: string, timeframe: string, rawBar: Bar & { symbol?: string; timeframe?: string }): void {
   const key  = storeKey(symbol, timeframe);
   const bars = barStore.get(key) ?? [];
@@ -708,13 +729,112 @@ function upsertBar(symbol: string, timeframe: string, rawBar: Bar & { symbol?: s
   const bar  = normalizeBar(rawBar);
 
   if (last && last.time === bar.time) {
+    // 同時刻 → 未確定バー更新（in-memory のみ）
     bars[bars.length - 1] = { time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume };
   } else {
+    // 新時刻 → 前バーが確定 → Supabase に永続化（fire-and-forget）
+    if (last) {
+      upsertSingleBar(symbol, timeframe, last as BarRecord).catch((err: unknown) => {
+        console.warn(`[barData] confirmed bar upsert failed ${symbol}:${timeframe}:`, err);
+      });
+    }
     bars.push({ time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume });
     if (bars.length > MAX_BARS) bars.shift();
   }
   barStore.set(key, bars);
 }
+
+// -----------------------------------------------------------------
+// Market Data ステータス（Backtest Engine / UI から参照）
+// GET /market-data/status
+// -----------------------------------------------------------------
+
+app.get("/market-data/status", (_req, res) => {
+  interface StatEntry {
+    count:           number;
+    from_utc:        string | null;
+    to_utc:          string | null;
+    span_days:       number | null;
+    last_updated_ms: number;
+  }
+  const result: Record<string, StatEntry> = {};
+
+  barStore.forEach((bars, key) => {
+    if (bars.length === 0) return;
+    const sorted = dedupAndSort(bars);
+    const first  = sorted[0];
+    const last   = sorted[sorted.length - 1];
+    const spanMs = last.time - first.time;
+    result[key] = {
+      count:           sorted.length,
+      from_utc:        first.time ? new Date(first.time).toISOString() : null,
+      to_utc:          last.time  ? new Date(last.time).toISOString()  : null,
+      span_days:       spanMs > 0 ? Math.round(spanMs / 86_400_000 * 10) / 10 : 0,
+      last_updated_ms: Date.now(),
+    };
+  });
+
+  res.json({
+    timestamp:            new Date().toISOString(),
+    total_symbol_tf:      Object.keys(result).length,
+    max_bars_per_tf:      MAX_BARS,
+    supabase_enabled:     isSupabaseEnabled(),
+    symbols:              result,
+  });
+});
+
+// -----------------------------------------------------------------
+// Timezone診断（開発・検証用）
+// GET /debug/bar-timestamps?symbol=EURUSD&timeframe=H4&count=5
+// -----------------------------------------------------------------
+
+app.get("/debug/bar-timestamps", (req, res) => {
+  const sym = String(req.query.symbol  ?? "EURUSD").toUpperCase();
+  const tf  = String(req.query.timeframe ?? "H4").toUpperCase();
+  const cnt = Math.min(Number(req.query.count ?? 10), 50);
+  const key = storeKey(sym, tf);
+
+  const bars = dedupAndSort(barStore.get(key) ?? []).slice(-cnt);
+  const tick = tickStore.get(sym);
+
+  const sample = bars.map(b => ({
+    bar_time_ms:  b.time,
+    bar_time_utc: new Date(b.time).toISOString(),
+    bar_time_sec: Math.round(b.time / 1000),
+    mod_300:      Math.round(b.time / 1000) % 300,   // M5 アライメント確認
+    mod_14400:    Math.round(b.time / 1000) % 14400,  // H4 アライメント確認
+    open:  b.open,
+    close: b.close,
+  }));
+
+  res.json({
+    info: "bar.time は UTC ミリ秒。mod_14400=0 なら H4 は UTC 境界に整列（実証済み）",
+    symbol:    sym,
+    timeframe: tf,
+    bar_count: bars.length,
+    tick_time_ms:  tick ? normalizeTime(tick.time) : null,
+    tick_time_utc: tick ? new Date(normalizeTime(tick.time)).toISOString() : null,
+    note: "tick.time は TimeCurrent()（ブローカー時刻）。bar.time は MqlRates.time（UTC）。両者は timezone 分だけずれる場合がある。",
+    bars: sample,
+  });
+});
+
+// -----------------------------------------------------------------
+// 起動時 barStore → Supabase 同期（POST /admin/sync-to-supabase）
+// 初回起動時・EA 再起動なしで既存データを同期する際に使用
+// -----------------------------------------------------------------
+
+app.post("/admin/sync-to-supabase", auth, (_req, res) => {
+  if (!isSupabaseEnabled()) {
+    res.status(503).json({ error: "Supabase 未設定" });
+    return;
+  }
+  // fire-and-forget
+  syncBarStoreToSupabase(barStore as unknown as Map<string, BarRecord[]>).catch((err: unknown) => {
+    console.warn("[barData] sync-to-supabase error:", err);
+  });
+  res.json({ ok: true, message: "同期をバックグラウンドで開始しました。ログを確認してください。" });
+});
 
 // -----------------------------------------------------------------
 // 起動
@@ -735,7 +855,19 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`  WebSocket : ws://0.0.0.0:${PORT}/ws`);
   console.log(`  Auth      : ${SECRET ? "✓ 有効" : "⚠ 未設定"}`);
   console.log(`  Data      : ${PERSIST_FILE}`);
+  console.log(`  Supabase  : ${isSupabaseEnabled() ? "✓ bar_data 永続化有効" : "⚠ 未設定（barStore のみ）"}`);
   console.log("==============================================");
+
+  // 起動時: barStore に既存データがあれば Supabase へ非同期同期
+  if (isSupabaseEnabled()) {
+    const totalBars = Array.from(barStore.values()).reduce((s, b) => s + b.length, 0);
+    if (totalBars > 0) {
+      console.log(`[barData] 起動時同期: barStore ${totalBars}本 → Supabase ...`);
+      syncBarStoreToSupabase(barStore as unknown as Map<string, BarRecord[]>).catch((err: unknown) => {
+        console.warn("[barData] startup sync error:", err);
+      });
+    }
+  }
 });
 
 // シャットダウン時に保存
