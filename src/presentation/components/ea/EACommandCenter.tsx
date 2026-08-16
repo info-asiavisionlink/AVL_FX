@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { EAProfile, EAStatus } from "./types";
 import { MOCK_EA_PROFILES, MOCK_AI_SELECTOR_SYMBOL } from "./mockData";
+import { AIEABuilder } from "./AIEABuilder";
+import { type StrategyRecord } from "@/lib/strategySchema";
 
 // ── Color constants ──────────────────────────────────────────────────────────
 const NG      = "#00ff88";
@@ -375,11 +377,113 @@ function strategyLabel(s: string): string {
   }
 }
 
+// ── Strategy Draft Card ────────────────────────────────────────────────────
+function StrategyDraftCard({ strategy, onDelete }: { strategy: StrategyRecord; onDelete: (id: string) => void }) {
+  const typeColor: Record<string, string> = {
+    SCALPING:  CYAN,
+    DAY_TRADE: AMBER,
+    SWING:     NG,
+  };
+  const col = typeColor[strategy.strategy_type] ?? "#64748b";
+
+  return (
+    <div
+      className="relative flex flex-col gap-3 p-4 rounded"
+      style={{
+        background: "rgba(8,14,26,0.9)",
+        border:     `1px solid ${col}25`,
+        boxShadow:  `0 0 20px ${col}08`,
+      }}
+    >
+      {/* DRAFT バッジ */}
+      <div className="absolute top-3 right-3 flex gap-1.5 items-center">
+        <span
+          className="text-[7px] font-black tracking-widest px-1.5 py-0.5 rounded"
+          style={{ background: `${AMBER}12`, border: `1px solid ${AMBER}30`, color: AMBER }}
+        >
+          DRAFT
+        </span>
+        <button
+          onClick={() => onDelete(strategy.id)}
+          className="text-[9px] leading-none opacity-30 hover:opacity-70 transition-opacity"
+          style={{ color: RED }}
+          title="削除"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* 名前 + タイプ */}
+      <div>
+        <p className="text-[11px] font-black tracking-wider pr-16" style={{ color: "#f0f9ff" }}>
+          {strategy.name}
+        </p>
+        <span
+          className="text-[8px] font-black tracking-widest px-1.5 py-0.5 rounded inline-block mt-1"
+          style={{ background: `${col}12`, border: `1px solid ${col}25`, color: col }}
+        >
+          {strategy.strategy_type}
+        </span>
+      </div>
+
+      {/* シンボル / TF */}
+      <div className="flex flex-col gap-0.5">
+        <p className="text-[8px] tracking-widest" style={{ color: "#334155" }}>SYMBOL / TF</p>
+        <p className="text-[10px]" style={{ color: "#64748b" }}>
+          {strategy.symbols.join(", ")} &nbsp;/&nbsp; {strategy.timeframes.join(", ")}
+        </p>
+      </div>
+
+      {/* バックテスト */}
+      <div className="flex flex-col gap-0.5">
+        <p className="text-[8px] tracking-widest" style={{ color: "#334155" }}>BACKTEST</p>
+        <p className="text-[9px] font-black tracking-widest" style={{ color: "#475569" }}>
+          NOT TESTED
+        </p>
+      </div>
+
+      {/* Magic Number */}
+      {strategy.magic_number && (
+        <div className="flex flex-col gap-0.5">
+          <p className="text-[8px] tracking-widest" style={{ color: "#334155" }}>MAGIC</p>
+          <p className="text-[9px]" style={{ color: "#475569" }}>
+            #{strategy.magic_number}
+          </p>
+        </div>
+      )}
+
+      {/* 詳細ボタン（Phase 2 で詳細画面へ） */}
+      <button
+        className="mt-auto text-[9px] font-black tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-70"
+        style={{ background: `${col}08`, border: `1px solid ${col}20`, color: col }}
+        onClick={() => toast.info("Strategy 詳細 — Phase 2 で実装予定")}
+      >
+        詳細
+      </button>
+    </div>
+  );
+}
+
 // ── Main EACommandCenter ─────────────────────────────────────────────────────
 export function EACommandCenter() {
   const [statuses, setStatuses] = useState<Record<string, EAStatus>>(
     () => Object.fromEntries(MOCK_EA_PROFILES.map((p) => [p.id, p.status]))
   );
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [strategies,  setStrategies]  = useState<StrategyRecord[]>([]);
+
+  // Strategy 一覧を取得
+  const fetchStrategies = useCallback(async () => {
+    try {
+      const res  = await fetch("/api/strategies");
+      const data = await res.json() as { strategies?: StrategyRecord[] };
+      if (data.strategies) setStrategies(data.strategies);
+    } catch {
+      // サイレント失敗（既存UIに影響なし）
+    }
+  }, []);
+
+  useEffect(() => { fetchStrategies(); }, [fetchStrategies]);
 
   function handleStart(id: string) {
     setStatuses((prev) => ({ ...prev, [id]: "STARTING" }));
@@ -392,9 +496,22 @@ export function EACommandCenter() {
   }
 
   function handleAddEA() {
-    toast.info("EA登録機能は次フェーズで実装予定", {
-      description: "現在UIモック段階です。次フェーズでEAファイル・MagicNumber・Symbol等の登録機能を実装します。",
-    });
+    setShowBuilder(true);
+  }
+
+  function handleStrategySaved(strategy: StrategyRecord) {
+    setStrategies(prev => [strategy, ...prev]);
+    setShowBuilder(false);
+  }
+
+  async function handleDeleteStrategy(id: string) {
+    try {
+      await fetch(`/api/strategies/${id}`, { method: "DELETE" });
+      setStrategies(prev => prev.filter(s => s.id !== id));
+      toast.success("Strategy を削除しました");
+    } catch {
+      toast.error("削除に失敗しました");
+    }
   }
 
   const totalRunning     = Object.values(statuses).filter((s) => s === "RUNNING").length;
@@ -472,17 +589,50 @@ export function EACommandCenter() {
           ))}
         </div>
 
-        {/* ── EA カードグリッド ── */}
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
-          {MOCK_EA_PROFILES.map((profile) => (
-            <EACard
-              key={profile.id}
-              profile={profile}
-              statusOverride={statuses[profile.id] ?? profile.status}
-              onStart={() => handleStart(profile.id)}
-              onStop={() => handleStop(profile.id)}
-            />
-          ))}
+        {/* ── AI EA Builder で登録した Strategy（DRAFT）── */}
+        {strategies.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <p className="text-[9px] font-black tracking-[0.22em]" style={{ color: NG }}>
+                MY STRATEGIES
+              </p>
+              <span
+                className="text-[8px] px-1.5 py-0.5 rounded"
+                style={{ background: `${NG_rgba}0.08)`, border: `1px solid ${NG_rgba}0.20)`, color: NG }}
+              >
+                {strategies.length}
+              </span>
+            </div>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
+              {strategies.map(s => (
+                <StrategyDraftCard
+                  key={s.id}
+                  strategy={s}
+                  onDelete={handleDeleteStrategy}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── EA カードグリッド（モックサンプル）── */}
+        <div className="flex flex-col gap-2">
+          {strategies.length > 0 && (
+            <p className="text-[9px] font-black tracking-[0.22em]" style={{ color: "#334155" }}>
+              SAMPLE — デモデータ
+            </p>
+          )}
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
+            {MOCK_EA_PROFILES.map((profile) => (
+              <EACard
+                key={profile.id}
+                profile={profile}
+                statusOverride={statuses[profile.id] ?? profile.status}
+                onStart={() => handleStart(profile.id)}
+                onStop={() => handleStop(profile.id)}
+              />
+            ))}
+          </div>
         </div>
 
         {/* ── 下部パネル ── */}
@@ -636,6 +786,13 @@ export function EACommandCenter() {
 
         </div>
       </div>
+
+      {/* ── AI EA Builder モーダル ── */}
+      <AIEABuilder
+        open={showBuilder}
+        onClose={() => setShowBuilder(false)}
+        onSaved={handleStrategySaved}
+      />
     </div>
   );
 }
