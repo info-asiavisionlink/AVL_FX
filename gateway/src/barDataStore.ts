@@ -36,10 +36,11 @@ function getClient(): SupabaseClient | null {
   _initialized = true;
 
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
+  // env var 名のゆらぎに対応（SUPABASE_SERVICE_KEY / SUPABASE_SERVICE_ROLE_KEY どちらでも可）
+  const key = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !key) {
-    console.warn("[barData] SUPABASE_URL / SUPABASE_SERVICE_KEY 未設定 → bar_data保存スキップ");
+    console.warn("[barData] SUPABASE_URL / SUPABASE_SERVICE_KEY(またはSUPABASE_SERVICE_ROLE_KEY) 未設定 → bar_data保存スキップ");
     return null;
   }
 
