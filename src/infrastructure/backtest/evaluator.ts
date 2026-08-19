@@ -1,0 +1,451 @@
+// =================================================================
+// evaluator.ts — Strategy Condition Evaluator (Phase 2-B)
+//
+// Strategy Spec + Historical Bars + Precomputed Indicators
+//   → BUY / SELL / SKIP
+//
+// 設計原則:
+//   - Pure Function: Supabase/MT5/OpenAI 非依存
+//   - Look-ahead Bias 完全防止 (getLastConfirmedBarIndex 利用)
+//   - Multi-Timeframe: 各条件が独立した TF を指定可能
+//   - Direction: trend_filter.direction が最優先、次に条件から推論
+// =================================================================
+
+import type { Bar }                   from "@/infrastructure/analysis/types";
+import type { MACDResult, ADXResult, BollingerResult } from "./types";
+import type { PrecomputedIndicators } from "./indicators";
+import type { StrategySpec }          from "@/lib/strategySchema";
+import { getLastConfirmedBarIndex, isWithinSessions } from "./timeframe";
+
+// ------------------------------------------------------------------
+// Public types
+// ------------------------------------------------------------------
+
+export type SignalResult = "BUY" | "SELL" | "SKIP";
+
+export interface EvaluationContext {
+  spec:                  StrategySpec;
+  /** 評価基準時刻 (Unix ms) — 通常はメイン TF 確定バー終了時刻 */
+  evaluationTime:        number;
+  /** TF 文字列 → bars (time 昇順ソート済み) */
+  barsByTimeframe:       Record<string, Bar[]>;
+  /** TF 文字列 → precomputeIndicators() の結果 */
+  indicatorsByTimeframe: Record<string, PrecomputedIndicators>;
+  /** 現在スプレッド (pips) — 未指定時はスプレッドフィルター適用なし */
+  spreadPips?:           number;
+  debug?:                boolean;
+}
+
+// ------------------------------------------------------------------
+// Internal: direction type
+// ------------------------------------------------------------------
+
+type Direction = "BUY" | "SELL" | "AMBIGUOUS";
+
+// ------------------------------------------------------------------
+// Direction inference from entry conditions
+// ------------------------------------------------------------------
+
+function inferDirectionFromConditions(
+  conditions: StrategySpec["entry_conditions"]["conditions"],
+): Direction {
+  let buy = 0;
+  let sell = 0;
+
+  for (const c of conditions) {
+    const op  = c.operator;
+    const thr = c.threshold ?? 50;
+
+    switch (c.indicator) {
+      case "EMA":
+      case "SMA":
+        if (op === "PRICE_ABOVE" || op === "BULLISH_CROSS") buy++;
+        if (op === "PRICE_BELOW" || op === "BEARISH_CROSS") sell++;
+        break;
+      case "RSI":
+        if (op === "CROSS_UP")                               buy++;
+        if (op === "CROSS_DOWN")                             sell++;
+        if (op === "BELOW" && thr <= 50)                     buy++;   // oversold
+        if (op === "ABOVE" && thr >= 50)                     sell++;  // overbought
+        if (op === "REVERSAL") { thr <= 50 ? buy++ : sell++; }
+        break;
+      case "MACD":
+        if (op === "ABOVE_SIGNAL" || op === "HISTOGRAM_POSITIVE") buy++;
+        if (op === "BELOW_SIGNAL" || op === "HISTOGRAM_NEGATIVE") sell++;
+        break;
+      case "BOLLINGER_BANDS":
+        if (op === "PRICE_BELOW") buy++;   // price < lower band → oversold
+        if (op === "PRICE_ABOVE") sell++;  // price > upper band → overbought
+        break;
+      case "STOCHASTIC":
+        if (op === "CROSS_UP")                               buy++;
+        if (op === "CROSS_DOWN")                             sell++;
+        if (op === "BELOW" && thr <= 50)                     buy++;
+        if (op === "ABOVE" && thr >= 50)                     sell++;
+        break;
+      // ADX, PRICE_ACTION, MARKET_STRUCTURE 等は方向中立
+    }
+  }
+
+  if (buy > sell)  return "BUY";
+  if (sell > buy)  return "SELL";
+  return "AMBIGUOUS";
+}
+
+function determineDirection(spec: StrategySpec): Direction {
+  const trendDir = spec.filters?.trend_filter?.direction;
+  if (trendDir === "BULLISH") return "BUY";
+  if (trendDir === "BEARISH") return "SELL";
+  // NEUTRAL or no trend_filter → infer from entry conditions
+  return inferDirectionFromConditions(spec.entry_conditions.conditions);
+}
+
+// ------------------------------------------------------------------
+// EMA value lookup: period → ema1 or ema2
+// ------------------------------------------------------------------
+
+function getEMAValue(
+  inds:   PrecomputedIndicators,
+  idx:    number,
+  period: number | undefined,
+): number | undefined {
+  if (period === undefined)                     return inds.ema1[idx];
+  if (period === inds.params.ema1Period)        return inds.ema1[idx];
+  if (period === inds.params.ema2Period)        return inds.ema2[idx];
+  return undefined; // 該当する precomputed EMA なし
+}
+
+// ------------------------------------------------------------------
+// Trend filter evaluator
+// ------------------------------------------------------------------
+
+type TrendFilter = NonNullable<NonNullable<StrategySpec["filters"]>["trend_filter"]>;
+
+function evalTrendFilter(
+  tf:       TrendFilter,
+  evalTime: number,
+  barsByTf: Record<string, Bar[]>,
+  indsByTf: Record<string, PrecomputedIndicators>,
+): boolean {
+  if (tf.direction === "NEUTRAL") return true;
+
+  const bars = barsByTf[tf.timeframe];
+  const inds = indsByTf[tf.timeframe];
+  if (!bars || !inds || bars.length === 0) return false;
+
+  const idx = getLastConfirmedBarIndex(bars, tf.timeframe, evalTime);
+  if (idx < 0) return false;
+
+  const close = bars[idx].close;
+
+  if (tf.indicator === "EMA") {
+    const emaVal = getEMAValue(inds, idx, tf.period);
+    if (emaVal === undefined) return false;
+    if (tf.direction === "BULLISH") return close > emaVal;
+    if (tf.direction === "BEARISH") return close < emaVal;
+  }
+
+  if (tf.indicator === "SMA") {
+    const smaVal = inds.sma[idx];
+    if (smaVal === undefined) return false;
+    if (tf.direction === "BULLISH") return close > smaVal;
+    if (tf.direction === "BEARISH") return close < smaVal;
+  }
+
+  return true; // 他インジケーターは実装対象外 (Phase 2-B)
+}
+
+// ------------------------------------------------------------------
+// Individual operator evaluators
+// ------------------------------------------------------------------
+
+function evalRSI(
+  rsi:       (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+  direction: "BUY" | "SELL",
+): boolean {
+  const curr = rsi[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "BELOW":
+      return threshold !== undefined && curr < threshold;
+    case "ABOVE":
+      return threshold !== undefined && curr > threshold;
+
+    case "CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = rsi[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 50;
+      return prev < thr && curr >= thr;
+    }
+    case "CROSS_DOWN": {
+      if (idx < 1) return false;
+      const prev = rsi[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 50;
+      return prev > thr && curr <= thr;
+    }
+
+    // REVERSAL:
+    //   BUY  → RSI が threshold(default 30) 以下に到達後、上昇転換
+    //   SELL → RSI が threshold(default 70) 以上に到達後、下落転換
+    //
+    //   条件: prev <= thr AND curr > prev  (BUY)
+    //         prev >= thr AND curr < prev  (SELL)
+    case "REVERSAL": {
+      if (idx < 1) return false;
+      const prev = rsi[idx - 1];
+      if (prev === undefined) return false;
+      if (direction === "BUY") {
+        const thr = threshold ?? 30;
+        return prev <= thr && curr > prev;
+      } else {
+        const thr = threshold ?? 70;
+        return prev >= thr && curr < prev;
+      }
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalEMA(
+  bars:   Bar[],
+  inds:   PrecomputedIndicators,
+  idx:    number,
+  op:     string | undefined,
+  period: number | undefined,
+): boolean {
+  const close = bars[idx].close;
+
+  switch (op) {
+    case "PRICE_ABOVE": {
+      const v = getEMAValue(inds, idx, period);
+      return v !== undefined && close > v;
+    }
+    case "PRICE_BELOW": {
+      const v = getEMAValue(inds, idx, period);
+      return v !== undefined && close < v;
+    }
+
+    // EMA21 が EMA200 を下から上へ抜ける = BULLISH_CROSS
+    case "BULLISH_CROSS": {
+      if (idx < 1) return false;
+      const e1c = inds.ema1[idx],     e2c = inds.ema2[idx];
+      const e1p = inds.ema1[idx - 1], e2p = inds.ema2[idx - 1];
+      if (e1c === undefined || e2c === undefined || e1p === undefined || e2p === undefined) return false;
+      return e1p < e2p && e1c >= e2c;
+    }
+
+    // EMA21 が EMA200 を上から下へ抜ける = BEARISH_CROSS
+    case "BEARISH_CROSS": {
+      if (idx < 1) return false;
+      const e1c = inds.ema1[idx],     e2c = inds.ema2[idx];
+      const e1p = inds.ema1[idx - 1], e2p = inds.ema2[idx - 1];
+      if (e1c === undefined || e2c === undefined || e1p === undefined || e2p === undefined) return false;
+      return e1p > e2p && e1c <= e2c;
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalSMA(
+  bars: Bar[],
+  inds: PrecomputedIndicators,
+  idx:  number,
+  op:   string | undefined,
+): boolean {
+  const close  = bars[idx].close;
+  const smaVal = inds.sma[idx];
+  if (smaVal === undefined) return false;
+
+  switch (op) {
+    case "PRICE_ABOVE": return close > smaVal;
+    case "PRICE_BELOW": return close < smaVal;
+    default:            return false;
+  }
+}
+
+function evalMACD(
+  macd: MACDResult[],
+  idx:  number,
+  op:   string | undefined,
+): boolean {
+  const m = macd[idx];
+  if (!m || m.macd === undefined || m.signal === undefined || m.histogram === undefined) return false;
+
+  switch (op) {
+    case "ABOVE_SIGNAL":       return m.macd > m.signal;
+    case "BELOW_SIGNAL":       return m.macd < m.signal;
+    case "HISTOGRAM_POSITIVE": return m.histogram > 0;
+    case "HISTOGRAM_NEGATIVE": return m.histogram < 0;
+    default:                   return false;
+  }
+}
+
+function evalADX(
+  adx:       ADXResult[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const a = adx[idx];
+  if (!a || a.adx === undefined) return false;
+
+  switch (op) {
+    case "ABOVE": return threshold !== undefined && a.adx > threshold;
+    case "BELOW": return threshold !== undefined && a.adx < threshold;
+    default:      return false;
+  }
+}
+
+function evalBB(
+  bars: Bar[],
+  bb:   BollingerResult[],
+  idx:  number,
+  op:   string | undefined,
+): boolean {
+  const b     = bb[idx];
+  const close = bars[idx].close;
+  if (!b || b.upper === undefined || b.lower === undefined) return false;
+
+  switch (op) {
+    case "PRICE_ABOVE": return close > b.upper;
+    case "PRICE_BELOW": return close < b.lower;
+    default:            return false;
+  }
+}
+
+function evalStochastic(
+  stoch:     (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const curr = stoch[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE": return threshold !== undefined && curr > threshold;
+    case "BELOW": return threshold !== undefined && curr < threshold;
+
+    case "CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = stoch[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 20;
+      return prev < thr && curr >= thr;
+    }
+    case "CROSS_DOWN": {
+      if (idx < 1) return false;
+      const prev = stoch[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 80;
+      return prev > thr && curr <= thr;
+    }
+
+    default:
+      return false;
+  }
+}
+
+// ------------------------------------------------------------------
+// Single condition dispatcher
+// ------------------------------------------------------------------
+
+type Condition = StrategySpec["entry_conditions"]["conditions"][number];
+
+function evalCondition(
+  cond:     Condition,
+  dir:      "BUY" | "SELL",
+  evalTime: number,
+  barsByTf: Record<string, Bar[]>,
+  indsByTf: Record<string, PrecomputedIndicators>,
+): boolean {
+  const bars = barsByTf[cond.timeframe];
+  const inds = indsByTf[cond.timeframe];
+  if (!bars || !inds || bars.length === 0) return false;
+
+  const idx = getLastConfirmedBarIndex(bars, cond.timeframe, evalTime);
+  if (idx < 0) return false;
+
+  switch (cond.indicator) {
+    case "RSI":
+      return evalRSI(inds.rsi, idx, cond.operator, cond.threshold, dir);
+    case "EMA":
+      return evalEMA(bars, inds, idx, cond.operator, cond.period);
+    case "SMA":
+      return evalSMA(bars, inds, idx, cond.operator);
+    case "MACD":
+      return evalMACD(inds.macd, idx, cond.operator);
+    case "ADX":
+      return evalADX(inds.adx, idx, cond.operator, cond.threshold);
+    case "BOLLINGER_BANDS":
+      return evalBB(bars, inds.bb, idx, cond.operator);
+    case "STOCHASTIC":
+      return evalStochastic(inds.stoch, idx, cond.operator, cond.threshold);
+    default:
+      return false; // PRICE_ACTION, MARKET_STRUCTURE 等は Phase 2-B 対象外
+  }
+}
+
+// ------------------------------------------------------------------
+// Main evaluator
+// ------------------------------------------------------------------
+
+export function evaluateStrategy(ctx: EvaluationContext): SignalResult {
+  const { spec, evaluationTime, barsByTimeframe, indicatorsByTimeframe, spreadPips } = ctx;
+  const filters = spec.filters;
+
+  // 1. Spread filter
+  if (filters?.max_spread_pips !== undefined && spreadPips !== undefined) {
+    if (spreadPips > filters.max_spread_pips) return "SKIP";
+  }
+
+  // 2. Session filter
+  if (!isWithinSessions(filters?.sessions ?? [], evaluationTime)) return "SKIP";
+
+  // 3. Direction determination
+  const rawDir = determineDirection(spec);
+  if (rawDir === "AMBIGUOUS") return "SKIP";
+  const dir: "BUY" | "SELL" = rawDir;
+
+  // 4. Trend filter (Look-ahead Bias 防止: 確定済み TF バーを使用)
+  const trendFilter = filters?.trend_filter;
+  if (trendFilter && trendFilter.direction !== "NEUTRAL") {
+    if (!evalTrendFilter(trendFilter, evaluationTime, barsByTimeframe, indicatorsByTimeframe)) {
+      return "SKIP";
+    }
+  }
+
+  // 5. Global min_adx filter (メイン TF の ADX で判定)
+  if (filters?.min_adx !== undefined) {
+    const mainTf = spec.timeframes[0];
+    const bars   = barsByTimeframe[mainTf];
+    const inds   = indicatorsByTimeframe[mainTf];
+    if (!bars || !inds) return "SKIP";
+    const idx    = getLastConfirmedBarIndex(bars, mainTf, evaluationTime);
+    if (idx < 0) return "SKIP";
+    const adxVal = inds.adx[idx]?.adx;
+    if (adxVal === undefined || adxVal < filters.min_adx) return "SKIP";
+  }
+
+  // 6. Entry conditions
+  const { logic, conditions } = spec.entry_conditions;
+  const results = conditions.map(c =>
+    evalCondition(c, dir, evaluationTime, barsByTimeframe, indicatorsByTimeframe)
+  );
+
+  const passed = logic === "AND"
+    ? results.every(Boolean)
+    : results.some(Boolean);
+
+  return passed ? dir : "SKIP";
+}

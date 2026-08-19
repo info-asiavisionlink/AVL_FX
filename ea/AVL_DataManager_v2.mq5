@@ -57,6 +57,13 @@ input int  InpHistorySec       = 300;
 sinput group "=== タイマー間隔 ==="
 input int  InpTimerMs          = 500;
 
+sinput group "=== History Sync (過去OHLC一括取得) ==="
+input bool   InpHistorySyncEnabled   = false;   // true: 起動時に過去データを一括取得
+input int    InpHistorySyncMonths    = 12;       // 取得する月数 (1〜60)
+input int    InpHistorySyncChunkDays = 28;       // 1チャンクの日数
+input int    InpHistorySyncBatchSize = 2000;     // 1 HTTP requestあたりの最大bar数 (100〜5000)
+input string InpHistorySyncTFs       = "M5";    // 対象TF (カンマ区切り: M5,H1,H4 等)
+
 //--- 全対象時間足
 ENUM_TIMEFRAMES g_TfList[]    = { PERIOD_M1, PERIOD_M5, PERIOD_M15, PERIOD_M30,
                                    PERIOD_H1, PERIOD_H4, PERIOD_D1,  PERIOD_W1  };
@@ -72,8 +79,13 @@ datetime g_LastIndicatorSent  = 0;
 datetime g_LastOrderSent      = 0;
 datetime g_LastHistorySent    = 0;
 int      g_TimerCount         = 0;
+bool     g_HistorySyncPending   = false;
+bool     g_HistorySyncRunning   = false;
+bool     g_HistorySyncCompleted = false;
 
-#define BULK_RESEND_SEC 600
+#define BULK_RESEND_SEC              600
+#define HISTORY_SYNC_BATCH_SLEEP_MS  100   // バッチ間のSleep (ms)
+#define HISTORY_SYNC_RETRY_MAX       3     // Batch送信 最大リトライ回数
 
 //+------------------------------------------------------------------+
 //| 初期化                                                           |
@@ -131,13 +143,23 @@ int OnInit()
       Print("=== [TZ診断] 完了 ===");
    }
 
-   if(InpOHLCEnabled)       { OHLCStream_SendBulk(); g_LastBulkSent = TimeCurrent(); }
+   // History Sync有効時は初期Bulk送信をスキップ (HistorySync_Run()完了後に実行)
+   if(InpOHLCEnabled && !InpHistorySyncEnabled) { OHLCStream_SendBulk(); g_LastBulkSent = TimeCurrent(); }
+   else if(InpOHLCEnabled)                      { g_LastBulkSent = TimeCurrent(); }  // Sync後に実行
    if(InpIndicatorEnabled)  { IndicatorStream_Send(); g_LastIndicatorSent = TimeCurrent(); }
    if(InpHistoryEnabled)    { HistoryStream_Send();   g_LastHistorySent = TimeCurrent(); }
    if(InpMWEnabled)         { MarketWatch_Send();     g_LastMWSent = TimeCurrent(); }
 
    EventSetMillisecondTimer(InpTimerMs);
    Print("AVL DataManager v4.0 起動 | Symbol=", g_Symbol, " | OHLCHistory=", InpOHLCHistory, "本");
+
+   if(InpHistorySyncEnabled)
+   {
+      g_HistorySyncPending = true;
+      Print("[HistorySync] History Sync スケジュール済み → 次のOnTimerで実行します");
+      Print("[HistorySync] TFs=", InpHistorySyncTFs, " Months=", InpHistorySyncMonths,
+            " ChunkDays=", InpHistorySyncChunkDays, " BatchSize=", InpHistorySyncBatchSize);
+   }
    return INIT_SUCCEEDED;
 }
 
@@ -202,6 +224,20 @@ void OnTimer()
    if(InpHistoryEnabled && (g_LastHistorySent == 0 || (now - g_LastHistorySent) >= InpHistorySec)) {
       HistoryStream_Send();
       g_LastHistorySent = now;
+   }
+
+   // History Sync（起動時1回限り）
+   // 注意: HistorySync_Run()はブロッキング実行のため、実行中はOnTimerが再入しません。
+   //       Heartbeat / MarketWatch / Order 等のリアルタイム配信は History Sync完了後に自動復帰します。
+   if(g_HistorySyncPending && !g_HistorySyncRunning && !g_HistorySyncCompleted)
+   {
+      g_HistorySyncPending = false;
+      g_HistorySyncRunning = true;
+      HistorySync_Run();
+      g_HistorySyncRunning   = false;
+      g_HistorySyncCompleted = true;
+      // Sync完了後にOHLC Bulk送信を実行（通常運転の起点）
+      if(InpOHLCEnabled) { OHLCStream_SendBulk(); g_LastBulkSent = TimeCurrent(); }
    }
 }
 
@@ -798,6 +834,354 @@ int HTTP_Post(const string path, const string body)
       }
    }
    return code;
+}
+
+//=================================================================//
+//  Stream 9: History Sync — 過去OHLC一括取得                      //
+//                                                                 //
+//  InpHistorySyncEnabled=true 時に起動時1回だけ OnTimer から呼ばれる。//
+//  既存の OHLCStream_SendBulk / Realtime Stream と完全独立。      //
+//  /bars/bulk エンドポイントを再利用。JSON形式は既存と完全互換。  //
+//  Supabase ignoreDuplicates=true による冪等性で何度実行しても安全。//
+//=================================================================//
+
+// TF文字列 → ENUM_TIMEFRAMES (未知の場合は PERIOD_CURRENT=0 を返す)
+ENUM_TIMEFRAMES TF_FromString(const string name)
+{
+   if(name == "M1")  return PERIOD_M1;
+   if(name == "M5")  return PERIOD_M5;
+   if(name == "M15") return PERIOD_M15;
+   if(name == "M30") return PERIOD_M30;
+   if(name == "H1")  return PERIOD_H1;
+   if(name == "H4")  return PERIOD_H4;
+   if(name == "D1")  return PERIOD_D1;
+   if(name == "W1")  return PERIOD_W1;
+   return PERIOD_CURRENT;  // sentinel: 未知TF
+}
+
+// ENUM_TIMEFRAMES → 1bar の秒数
+int TF_ToSeconds(ENUM_TIMEFRAMES tf)
+{
+   switch(tf)
+   {
+      case PERIOD_M1:  return 60;
+      case PERIOD_M5:  return 300;
+      case PERIOD_M15: return 900;
+      case PERIOD_M30: return 1800;
+      case PERIOD_H1:  return 3600;
+      case PERIOD_H4:  return 14400;
+      case PERIOD_D1:  return 86400;
+      case PERIOD_W1:  return 604800;
+      default:         return 60;
+   }
+}
+
+// "M5,H1,H4" → ENUM_TIMEFRAMES配列・TF名配列へ解析
+// 戻り値: 有効TF数 (0 = 有効TFなし)
+int HistorySync_ParseTFs(
+    const string     tfStr,
+    ENUM_TIMEFRAMES &tfOut[],
+    string          &namesOut[]
+)
+{
+   string parts[];
+   int n = StringSplit(tfStr, StringGetCharacter(",", 0), parts);
+   ArrayResize(tfOut,    0);
+   ArrayResize(namesOut, 0);
+   int valid = 0;
+
+   for(int i = 0; i < n; i++)
+   {
+      string name = parts[i];
+      StringTrimLeft(name);
+      StringTrimRight(name);
+      StringToUpper(name);
+      if(StringLen(name) == 0) continue;
+
+      ENUM_TIMEFRAMES tf = TF_FromString(name);
+      if(tf == PERIOD_CURRENT)  // 未知TF
+      {
+         Print("[HistorySync] Unknown timeframe: ", name, " — skipped");
+         continue;
+      }
+
+      ArrayResize(tfOut,    valid + 1);
+      ArrayResize(namesOut, valid + 1);
+      tfOut[valid]    = tf;
+      namesOut[valid] = name;
+      valid++;
+   }
+   return valid;
+}
+
+// 1 batch (最大batchSize bars) を /bars/bulk へ送信
+// リトライ最大 HISTORY_SYNC_RETRY_MAX 回
+// 戻り値: true=成功, false=全リトライ失敗
+bool HistorySync_SendBatch(
+    const string    symbol,
+    const string    tfName,
+    MqlRates       &rates[],
+    const int       startIdx,
+    const int       count,
+    const int       batchNum,
+    const int       totalBatches
+)
+{
+   // JSON組み立て — 既存 OHLCStream_SendBulk() と完全同一形式
+   string barsJson = "";
+   for(int j = 0; j < count; j++)
+   {
+      int idx = startIdx + j;
+      if(j > 0) barsJson += ",";
+      barsJson += StringFormat(
+         "{\"time\":%I64d,\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"volume\":%d}",
+         (long)rates[idx].time,
+         rates[idx].open,  rates[idx].high,
+         rates[idx].low,   rates[idx].close,
+         (long)rates[idx].tick_volume
+      );
+   }
+   string body = StringFormat(
+      "{\"type\":\"BARS\",\"symbol\":\"%s\",\"timeframe\":\"%s\",\"bars\":[%s]}",
+      symbol, tfName, barsJson
+   );
+
+   // リトライループ (指数バックオフ: 500ms, 1000ms, 1500ms)
+   for(int attempt = 1; attempt <= HISTORY_SYNC_RETRY_MAX; attempt++)
+   {
+      int code = HTTP_Post("/bars/bulk", body);
+      if(code == 200 || code == 201)
+      {
+         Print("[HistorySync] ", symbol, ":", tfName,
+               " batch ", batchNum, "/", totalBatches,
+               " | ", count, " bars | OK");
+         return true;
+      }
+      // 失敗時のログ
+      if(attempt < HISTORY_SYNC_RETRY_MAX)
+      {
+         Print("[HistorySync] ", symbol, ":", tfName,
+               " batch ", batchNum, "/", totalBatches,
+               " | attempt ", attempt, "/", HISTORY_SYNC_RETRY_MAX,
+               " | FAILED (HTTP ", code, ") → retry");
+         Sleep(500 * attempt);
+      }
+      else
+      {
+         Print("[HistorySync] ", symbol, ":", tfName,
+               " batch ", batchNum, "/", totalBatches,
+               " | attempt ", attempt, "/", HISTORY_SYNC_RETRY_MAX,
+               " | FAILED (HTTP ", code, ") → giving up");
+      }
+   }
+   return false;
+}
+
+// 1 TF について targetFrom〜targetTo を chunkDays 単位で分割取得・送信
+// 参照パラメータで合計bar数・送信数・失敗batch数を返す
+bool HistorySync_Timeframe(
+    const string    symbol,
+    ENUM_TIMEFRAMES tf,
+    const string    tfName,
+    const datetime  targetFrom,
+    const datetime  targetTo,
+    const int       batchSize,
+    const int       chunkDays,
+    long           &outCopied,
+    long           &outSent,
+    int            &outFailed
+)
+{
+   outCopied = 0;
+   outSent   = 0;
+   outFailed = 0;
+
+   // confirmed barのみ送信。
+   // bar.time + tfSec <= TimeCurrent() を満たすbarが「確定済み」。
+   // したがって stop_time の上限は targetTo - tfSec (= confirmedTo)。
+   // これにより現在形成中の未確定barが /bars/bulk に混入するのを防ぐ。
+   // Supabase ignoreDuplicates=true は一度保存した行を上書きしないため、
+   // 未確定barを保存すると後から確定値で修正されない可能性がある。
+   int  tfSec      = TF_ToSeconds(tf);
+   long chunkSec   = (long)chunkDays * 86400L;
+   long confirmedToL = (long)targetTo - (long)tfSec;
+   if(confirmedToL <= (long)targetFrom)
+   {
+      Print("[HistorySync] ", symbol, ":", tfName,
+            " SKIP: confirmedTo <= targetFrom (TF=", tfSec, "s, not enough range)");
+      return true;
+   }
+   datetime confirmedTo = (datetime)confirmedToL;
+
+   Print("[HistorySync] ", symbol, ":", tfName, " START");
+   Print("[HistorySync] ", symbol, ":", tfName,
+         " confirmedTo=", TimeToString(confirmedTo, TIME_DATE|TIME_SECONDS),
+         " (forming bar excluded, -", tfSec, "s)");
+
+   datetime chunkFrom   = targetFrom;
+   datetime actualOldest = 0;
+   datetime actualNewest = 0;
+
+   while(chunkFrom < confirmedTo)
+   {
+      // チャンク終端を計算 (confirmedToを超えない)
+      long chunkToL = (long)chunkFrom + chunkSec;
+      if(chunkToL > (long)confirmedTo) chunkToL = (long)confirmedTo;
+      datetime chunkTo = (datetime)chunkToL;
+
+      // datetime範囲指定 CopyRates (MQL5第3オーバーロード)
+      // start_time <= bar.open_time <= stop_time (両端含む)
+      MqlRates rates[];
+      int n = CopyRates(symbol, tf, chunkFrom, chunkTo, rates);
+
+      if(n <= 0)
+      {
+         Print("[HistorySync] ", symbol, ":", tfName,
+               " chunk ", TimeToString(chunkFrom, TIME_DATE), " -> ",
+               TimeToString(chunkTo, TIME_DATE),
+               " | n=", n, " (no data — Broker history may not cover this range)");
+         // データなし → 次chunkへ (ギャップかBroker制限)
+         chunkFrom = (datetime)((long)chunkTo + 1L);
+         continue;
+      }
+
+      Print("[HistorySync] ", symbol, ":", tfName,
+            " chunk ", TimeToString(chunkFrom, TIME_DATE), " -> ",
+            TimeToString(chunkTo, TIME_DATE), " | ", n, " bars");
+
+      // actual range tracking (Broker history可用性確認用)
+      if(actualOldest == 0 || rates[0].time < actualOldest) actualOldest = rates[0].time;
+      if(rates[n - 1].time > actualNewest) actualNewest = rates[n - 1].time;
+      outCopied += n;
+
+      // バッチ分割送信 (最大batchSize本ずつ)
+      int totalBatches = (n + batchSize - 1) / batchSize;  // 切り上げ除算
+      for(int b = 0; b < totalBatches; b++)
+      {
+         int start = b * batchSize;
+         int count = (n - start < batchSize) ? (n - start) : batchSize;
+
+         bool ok = HistorySync_SendBatch(
+            symbol, tfName, rates, start, count, b + 1, totalBatches
+         );
+         if(ok)
+            outSent += count;
+         else
+            outFailed++;
+
+         // バッチ間のSleep (Gateway / Supabase 負荷軽減)
+         if(b + 1 < totalBatches)
+            Sleep(HISTORY_SYNC_BATCH_SLEEP_MS);
+      }
+
+      // 次chunkは chunkTo + 1秒から (境界barの重複を防ぐ。欠損なし保証)
+      chunkFrom = (datetime)((long)chunkTo + 1L);
+   }
+
+   // TF完了サマリー
+   Print("[HistorySync] ", symbol, ":", tfName, " COMPLETE");
+   Print("[HistorySync] copied=", outCopied,
+         " sent=", outSent, " failed_batches=", outFailed);
+
+   // Broker History 可用性チェック
+   Print("[HistorySync] ", symbol, ":", tfName,
+         " requested_from=", TimeToString(targetFrom, TIME_DATE|TIME_SECONDS));
+   if(actualOldest > 0)
+   {
+      Print("[HistorySync] ", symbol, ":", tfName,
+            " actual_oldest=",  TimeToString(actualOldest, TIME_DATE|TIME_SECONDS));
+      Print("[HistorySync] ", symbol, ":", tfName,
+            " actual_newest=",  TimeToString(actualNewest, TIME_DATE|TIME_SECONDS));
+      // 実際の最古barが要求startより1日以上後なら警告
+      if((long)actualOldest > (long)targetFrom + 86400L)
+      {
+         Print("[HistorySync] WARNING: Broker history does not cover full requested period.");
+         Print("[HistorySync]   Requested from: ", TimeToString(targetFrom,  TIME_DATE));
+         Print("[HistorySync]   Actual oldest:  ", TimeToString(actualOldest, TIME_DATE));
+         Print("[HistorySync]   This is a Broker/Terminal history limitation, not a code bug.");
+      }
+   }
+   else
+   {
+      Print("[HistorySync] WARNING: No bars received for ", symbol, ":", tfName,
+            " in the requested period.");
+      Print("[HistorySync]   Check: MT5 Tools > Options > Charts > Max bars in history");
+      Print("[HistorySync]   Check: Broker history availability for this symbol/TF");
+   }
+
+   return true;
+}
+
+// History Sync メイン関数 — OnTimer から起動時1回だけ呼ばれる
+void HistorySync_Run()
+{
+   datetime syncStart = TimeCurrent();
+
+   // パラメータ検証・クランプ
+   int months    = MathMax(1,   MathMin(60,   InpHistorySyncMonths));
+   int chunkDays = MathMax(1,   MathMin(365,  InpHistorySyncChunkDays));
+   int batchSize = MathMax(100, MathMin(5000, InpHistorySyncBatchSize));
+
+   // TF解析
+   ENUM_TIMEFRAMES tfList[];
+   string          tfNames[];
+   int tfCount = HistorySync_ParseTFs(InpHistorySyncTFs, tfList, tfNames);
+   if(tfCount == 0)
+   {
+      Print("[HistorySync] ERROR: No valid timeframes in InpHistorySyncTFs=\"",
+            InpHistorySyncTFs, "\". Aborting.");
+      return;
+   }
+
+   // 時刻範囲
+   // targetFrom: 現在時刻 - months × 30日
+   // targetTo:   現在時刻 (Supabase ignoreDuplicatesで未確定barも安全)
+   datetime now        = TimeCurrent();
+   datetime targetFrom = (datetime)((long)now - (long)months * 30L * 86400L);
+   datetime targetTo   = now;
+
+   // ヘッダーログ
+   Print("[HistorySync] ========================================");
+   Print("[HistorySync] START");
+   Print("[HistorySync] Symbol:     ", g_Symbol);
+   Print("[HistorySync] TFs:        ", InpHistorySyncTFs);
+   Print("[HistorySync] Months:     ", months);
+   Print("[HistorySync] From:       ", TimeToString(targetFrom, TIME_DATE|TIME_SECONDS));
+   Print("[HistorySync] To:         ", TimeToString(targetTo,   TIME_DATE|TIME_SECONDS));
+   Print("[HistorySync] Chunk days: ", chunkDays, " | Batch size: ", batchSize);
+   Print("[HistorySync] ========================================");
+
+   // 全TFを順次処理
+   long totalCopied        = 0;
+   long totalSent          = 0;
+   int  totalFailedBatches = 0;
+
+   for(int t = 0; t < tfCount; t++)
+   {
+      long copied = 0, sent = 0;
+      int  failedBatches = 0;
+      HistorySync_Timeframe(
+         g_Symbol, tfList[t], tfNames[t],
+         targetFrom, targetTo,
+         batchSize, chunkDays,
+         copied, sent, failedBatches
+      );
+      totalCopied        += copied;
+      totalSent          += sent;
+      totalFailedBatches += failedBatches;
+   }
+
+   datetime syncEnd   = TimeCurrent();
+   int      elapsedSec = (int)(syncEnd - syncStart);
+
+   // フッターログ
+   Print("[HistorySync] ========================================");
+   Print("[HistorySync] COMPLETE");
+   Print("[HistorySync] Total bars copied: ", totalCopied);
+   Print("[HistorySync] Total bars sent:   ", totalSent);
+   Print("[HistorySync] Failed batches:    ", totalFailedBatches);
+   Print("[HistorySync] Execution sec:     ", elapsedSec);
+   Print("[HistorySync] ========================================");
 }
 
 //=================================================================//

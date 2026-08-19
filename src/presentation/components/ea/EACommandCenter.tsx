@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { EAProfile, EAStatus } from "./types";
 import { MOCK_EA_PROFILES, MOCK_AI_SELECTOR_SYMBOL } from "./mockData";
 import { AIEABuilder } from "./AIEABuilder";
+import { StrategyDetailModal } from "./StrategyDetailModal";
 import { type StrategyRecord } from "@/lib/strategySchema";
 
 // ── Color constants ──────────────────────────────────────────────────────────
@@ -378,13 +379,57 @@ function strategyLabel(s: string): string {
 }
 
 // ── Strategy Draft Card ────────────────────────────────────────────────────
-function StrategyDraftCard({ strategy, onDelete }: { strategy: StrategyRecord; onDelete: (id: string) => void }) {
+function StrategyDraftCard({
+  strategy,
+  onDelete,
+  onDetail,
+}: {
+  strategy: StrategyRecord;
+  onDelete: (id: string) => void;
+  onDetail: (s: StrategyRecord) => void;
+}) {
   const typeColor: Record<string, string> = {
     SCALPING:  CYAN,
     DAY_TRADE: AMBER,
     SWING:     NG,
   };
   const col = typeColor[strategy.strategy_type] ?? "#64748b";
+
+  // Backtest status loaded from API
+  const [btData, setBtData] = useState<{
+    verdict?: "PASSED" | "CONDITIONAL" | "FAILED";
+    totalPips?: number;
+    winRate?: number;
+    profitFactor?: number | null;
+  } | null>(null);
+  const bts = strategy.backtest_status;
+
+  useEffect(() => {
+    if (bts === "NOT_TESTED") return;
+    fetch(`/api/strategies/${strategy.id}/backtest`)
+      .then(r => r.json())
+      .then((d: {
+        status: string;
+        result?: Record<string, unknown>;
+      }) => {
+        if (d.status === "HAS_RESULT" && d.result) {
+          setBtData({
+            verdict:      d.result.verdict as "PASSED" | "CONDITIONAL" | "FAILED",
+            totalPips:    Number(d.result.total_pips ?? 0),
+            winRate:      Number(d.result.win_rate ?? 0),
+            profitFactor: d.result.profit_factor != null ? Number(d.result.profit_factor) : null,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [strategy.id, bts]);
+
+  const btStatusColor = (): string => {
+    if (bts === "PASSED")  return NG;
+    if (bts === "FAILED")  return RED;
+    if (bts === "TESTING") return CYAN;
+    return "#334155";
+  };
 
   return (
     <div
@@ -395,7 +440,7 @@ function StrategyDraftCard({ strategy, onDelete }: { strategy: StrategyRecord; o
         boxShadow:  `0 0 20px ${col}08`,
       }}
     >
-      {/* DRAFT バッジ */}
+      {/* DRAFT バッジ + 削除 */}
       <div className="absolute top-3 right-3 flex gap-1.5 items-center">
         <span
           className="text-[7px] font-black tracking-widest px-1.5 py-0.5 rounded"
@@ -435,30 +480,43 @@ function StrategyDraftCard({ strategy, onDelete }: { strategy: StrategyRecord; o
       </div>
 
       {/* バックテスト */}
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-1">
         <p className="text-[8px] tracking-widest" style={{ color: "#334155" }}>BACKTEST</p>
-        <p className="text-[9px] font-black tracking-widest" style={{ color: "#475569" }}>
-          NOT TESTED
+        <p className="text-[9px] font-black tracking-widest" style={{ color: btStatusColor() }}>
+          {bts === "NOT_TESTED" ? "NOT TESTED" : bts === "TESTING" ? "TESTING..." : bts}
         </p>
+        {btData && (
+          <div className="grid grid-cols-3 gap-1 mt-0.5">
+            {[
+              { label: "PIPS", value: `${btData.totalPips! >= 0 ? "+" : ""}${btData.totalPips!.toFixed(1)}`, color: (btData.totalPips ?? 0) >= 0 ? NG : RED },
+              { label: "WR",   value: `${btData.winRate!.toFixed(0)}%`,                                       color: "#94a3b8" },
+              { label: "PF",   value: btData.profitFactor != null ? btData.profitFactor.toFixed(2) : "∞",    color: "#94a3b8" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="px-1.5 py-1 rounded"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <p className="text-[6px] font-mono tracking-widest" style={{ color: "#334155" }}>{label}</p>
+                <p className="text-[9px] font-mono font-bold" style={{ color }}>{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Magic Number */}
       {strategy.magic_number && (
         <div className="flex flex-col gap-0.5">
           <p className="text-[8px] tracking-widest" style={{ color: "#334155" }}>MAGIC</p>
-          <p className="text-[9px]" style={{ color: "#475569" }}>
-            #{strategy.magic_number}
-          </p>
+          <p className="text-[9px]" style={{ color: "#475569" }}>#{strategy.magic_number}</p>
         </div>
       )}
 
-      {/* 詳細ボタン（Phase 2 で詳細画面へ） */}
+      {/* 詳細ボタン */}
       <button
         className="mt-auto text-[9px] font-black tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-70"
         style={{ background: `${col}08`, border: `1px solid ${col}20`, color: col }}
-        onClick={() => toast.info("Strategy 詳細 — Phase 2 で実装予定")}
+        onClick={() => onDetail(strategy)}
       >
-        詳細
+        詳細 →
       </button>
     </div>
   );
@@ -469,8 +527,9 @@ export function EACommandCenter() {
   const [statuses, setStatuses] = useState<Record<string, EAStatus>>(
     () => Object.fromEntries(MOCK_EA_PROFILES.map((p) => [p.id, p.status]))
   );
-  const [showBuilder, setShowBuilder] = useState(false);
-  const [strategies,  setStrategies]  = useState<StrategyRecord[]>([]);
+  const [showBuilder,     setShowBuilder]     = useState(false);
+  const [strategies,      setStrategies]      = useState<StrategyRecord[]>([]);
+  const [detailStrategy,  setDetailStrategy]  = useState<StrategyRecord | null>(null);
 
   // Strategy 一覧を取得
   const fetchStrategies = useCallback(async () => {
@@ -609,6 +668,7 @@ export function EACommandCenter() {
                   key={s.id}
                   strategy={s}
                   onDelete={handleDeleteStrategy}
+                  onDetail={setDetailStrategy}
                 />
               ))}
             </div>
@@ -793,6 +853,14 @@ export function EACommandCenter() {
         onClose={() => setShowBuilder(false)}
         onSaved={handleStrategySaved}
       />
+
+      {/* ── Strategy 詳細モーダル (Phase 2-E) ── */}
+      {detailStrategy && (
+        <StrategyDetailModal
+          strategy={detailStrategy}
+          onClose={() => setDetailStrategy(null)}
+        />
+      )}
     </div>
   );
 }
