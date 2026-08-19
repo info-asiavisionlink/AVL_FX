@@ -64,6 +64,10 @@ input int    InpHistorySyncChunkDays = 28;       // 1チャンクの日数
 input int    InpHistorySyncBatchSize = 2000;     // 1 HTTP requestあたりの最大bar数 (100〜5000)
 input string InpHistorySyncTFs       = "M5";    // 対象TF (カンマ区切り: M5,H1,H4 等)
 
+sinput group "=== Data Sync Command (Incremental Sync) ==="
+input bool InpDataSyncEnabled   = true;   // true: Incremental Sync Job をポーリング
+input int  InpDataSyncPollSec   = 30;     // /data-commands/pending をポーリングする間隔(秒)
+
 //--- 全対象時間足
 ENUM_TIMEFRAMES g_TfList[]    = { PERIOD_M1, PERIOD_M5, PERIOD_M15, PERIOD_M30,
                                    PERIOD_H1, PERIOD_H4, PERIOD_D1,  PERIOD_W1  };
@@ -82,6 +86,8 @@ int      g_TimerCount         = 0;
 bool     g_HistorySyncPending   = false;
 bool     g_HistorySyncRunning   = false;
 bool     g_HistorySyncCompleted = false;
+datetime g_LastDataSyncPoll     = 0;  // Data Phase B: 最後のポーリング時刻
+bool     g_DataSyncRunning      = false; // Data Phase B: Incremental Sync 実行中フラグ
 
 #define BULK_RESEND_SEC              600
 #define HISTORY_SYNC_BATCH_SLEEP_MS  100   // バッチ間のSleep (ms)
@@ -238,6 +244,20 @@ void OnTimer()
       g_HistorySyncCompleted = true;
       // Sync完了後にOHLC Bulk送信を実行（通常運転の起点）
       if(InpOHLCEnabled) { OHLCStream_SendBulk(); g_LastBulkSent = TimeCurrent(); }
+   }
+
+   // Data Phase B — Incremental Sync Job ポーリング
+   // HistorySync / DataSync が実行中でなければ、InpDataSyncPollSec 間隔で polling する。
+   // DataSync_Poll() はブロッキング実行（job 発見時は HistorySync_Timeframe を同期実行）。
+   if(InpDataSyncEnabled && !g_HistorySyncRunning && !g_DataSyncRunning)
+   {
+      if(g_LastDataSyncPoll == 0 || (now - g_LastDataSyncPoll) >= InpDataSyncPollSec)
+      {
+         g_LastDataSyncPoll = now;
+         g_DataSyncRunning  = true;
+         DataSync_Poll();
+         g_DataSyncRunning  = false;
+      }
    }
 }
 
@@ -1228,4 +1248,180 @@ double JsonGetDbl(const string json, const string key)
    }
    return StringToDouble(num);
 }
+
+//=================================================================//
+//  Data Phase B — Incremental Sync Command                        //
+//                                                                 //
+//  Gateway /data-commands/pending を polling し、                  //
+//  PENDING な FORWARD / BACKFILL Sync Job を取得・実行する。       //
+//  既存の HistorySync_Timeframe() を再利用することで、             //
+//  chunk / batch / retry ロジックの重複実装を避ける。              //
+//=================================================================//
+
+// DataSync_SendProgress — job 進捗を Gateway に POST
+// 失敗してもジョブ実行は継続する（fire-and-don't-crash）
+void DataSync_SendProgress(
+    const string jobId,
+    const string status,
+    const int    progressPct,
+    const long   receivedBars,
+    const long   sentBars,
+    const int    failedBatches,
+    const datetime currentFrom,
+    const datetime currentTo,
+    const string errorMsg = ""
+)
+{
+   string body = StringFormat(
+      "{\"status\":\"%s\","
+      "\"progress_pct\":%d,"
+      "\"received_bars\":%I64d,"
+      "\"sent_bars\":%I64d,"
+      "\"failed_batches\":%d,"
+      "\"current_from\":%I64d,"
+      "\"current_to\":%I64d",
+      status, progressPct,
+      receivedBars, sentBars,
+      failedBatches,
+      (long)currentFrom, (long)currentTo
+   );
+   if(StringLen(errorMsg) > 0)
+      body += ",\"error_message\":\"" + errorMsg + "\"";
+   body += "}";
+
+   HTTP_Post("/data-commands/" + jobId + "/progress", body);
+}
+
+// DataSync_Execute — Sync Job を実行する
+// 既存 HistorySync_Timeframe() を mode に応じた range で呼び出す。
+void DataSync_Execute(
+    const string jobId,
+    const string symbol,
+    ENUM_TIMEFRAMES tf,
+    const string tfName,
+    const string mode,
+    datetime targetFrom,
+    datetime targetTo   // FORWARD では 0 = TimeCurrent() を使用
+)
+{
+   // FORWARD の場合 targetTo = TimeCurrent() (最新確定barまで)
+   if(mode == "FORWARD" || targetTo == 0)
+      targetTo = TimeCurrent();
+
+   int tfSec = TF_ToSeconds(tf);
+
+   // 最低限の期間チェック (confirmedTo <= targetFrom になる場合はスキップ)
+   long confirmedToL = (long)targetTo - (long)tfSec;
+   if(confirmedToL <= (long)targetFrom)
+   {
+      Print("[DataSync] job=", jobId, " SKIP: range too narrow for TF=", tfName,
+            " (", TimeToString(targetFrom, TIME_DATE), " → ", TimeToString(targetTo, TIME_DATE), ")");
+      DataSync_SendProgress(jobId, "COMPLETED", 100, 0, 0, 0, targetFrom, targetTo);
+      return;
+   }
+
+   Print("[DataSync] EXECUTE job=", jobId);
+   Print("[DataSync] Mode=", mode, " Symbol=", symbol, " TF=", tfName);
+   Print("[DataSync] From=", TimeToString(targetFrom, TIME_DATE|TIME_SECONDS));
+   Print("[DataSync] To=  ", TimeToString(targetTo,   TIME_DATE|TIME_SECONDS));
+
+   // 進捗送信: RUNNING
+   DataSync_SendProgress(jobId, "RUNNING", 0, 0, 0, 0, targetFrom, targetTo);
+
+   // 既存 HistorySync_Timeframe() を再利用
+   long copied = 0, sent = 0;
+   int  failedBatches = 0;
+   bool ok = HistorySync_Timeframe(
+      symbol, tf, tfName,
+      targetFrom, targetTo,
+      InpHistorySyncBatchSize,
+      InpHistorySyncChunkDays,
+      copied, sent, failedBatches
+   );
+
+   if(ok)
+   {
+      Print("[DataSync] COMPLETE job=", jobId,
+            " recv=", copied, " sent=", sent, " failed_batches=", failedBatches);
+      DataSync_SendProgress(jobId, "COMPLETED", 100,
+         copied, sent, failedBatches, targetFrom, targetTo);
+   }
+   else
+   {
+      string errMsg = "HistorySync_Timeframe returned false";
+      Print("[DataSync] FAILED job=", jobId, ": ", errMsg);
+      DataSync_SendProgress(jobId, "FAILED", 0,
+         copied, sent, failedBatches, targetFrom, targetTo, errMsg);
+   }
+}
+
+// DataSync_Poll — /data-commands/pending を 1 回 GET して job があれば実行
+void DataSync_Poll()
+{
+   char req[], res[];
+   string headers = "Authorization: Bearer " + InpServerSecret + "\r\n";
+   string resHdr;
+
+   // symbol フィルタ付きで pending job を取得 (自分の symbol のみ)
+   string url = InpServerURL + "/data-commands/pending?symbol=" + g_Symbol;
+   int code = WebRequest("GET", url, headers, 5000, req, res, resHdr);
+
+   if(code != 200 || ArraySize(res) == 0) return;
+
+   string response = CharArrayToString(res);
+   if(StringLen(response) <= 2) return;
+
+   // jobs 配列を探す: {"jobs":[{...}]}
+   int jobsStart = StringFind(response, "[");
+   if(jobsStart < 0) return;
+   int jobStart = StringFind(response, "{", jobsStart);
+   if(jobStart < 0) return; // 空配列 []
+
+   int jobEnd = StringFind(response, "}", jobStart);
+   if(jobEnd < 0) return;
+
+   string jobJson = StringSubstr(response, jobStart, jobEnd - jobStart + 1);
+
+   // フィールド解析
+   string jobId       = JsonGetStr(jobJson, "id");
+   string symbol      = JsonGetStr(jobJson, "symbol");
+   string tfStr       = JsonGetStr(jobJson, "timeframe");
+   string mode        = JsonGetStr(jobJson, "mode");
+   long   targetFromL = (long)JsonGetDbl(jobJson, "target_from");
+   long   targetToL   = (long)JsonGetDbl(jobJson, "target_to");
+
+   // 基本バリデーション
+   if(StringLen(jobId) == 0 || StringLen(symbol) == 0 || StringLen(tfStr) == 0)
+   {
+      Print("[DataSync] malformed job JSON: ", jobJson);
+      return;
+   }
+   if(symbol != g_Symbol)
+   {
+      Print("[DataSync] job symbol mismatch: got=", symbol, " own=", g_Symbol, " skipping");
+      return;
+   }
+   if(mode != "FORWARD" && mode != "BACKFILL")
+   {
+      Print("[DataSync] unknown mode=", mode, " job=", jobId);
+      return;
+   }
+
+   // TF 文字列 → ENUM
+   ENUM_TIMEFRAMES tf = TF_FromString(tfStr);
+   if(tf == PERIOD_CURRENT)
+   {
+      Print("[DataSync] unsupported timeframe=", tfStr, " job=", jobId);
+      DataSync_SendProgress(jobId, "FAILED", 0, 0, 0, 0, 0, 0,
+         "Unsupported timeframe: " + tfStr);
+      return;
+   }
+
+   datetime targetFrom = (datetime)targetFromL;
+   datetime targetTo   = (datetime)targetToL; // FORWARD では 0 が渡される
+
+   // 実行
+   DataSync_Execute(jobId, symbol, tf, tfStr, mode, targetFrom, targetTo);
+}
+
 //+------------------------------------------------------------------+

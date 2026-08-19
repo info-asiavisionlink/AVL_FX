@@ -46,6 +46,11 @@ import {
   isEnabled as isSupabaseEnabled,
   type BarRecord,
 } from "./barDataStore";
+import {
+  claimNextSyncJob,
+  updateSyncJobProgress,
+  SUPPORTED_TIMEFRAMES,
+} from "./syncJobStore";
 
 // -----------------------------------------------------------------
 // 型定義 — EA から受け取った値をそのまま保持する
@@ -835,6 +840,111 @@ app.post("/admin/sync-to-supabase", auth, (_req, res) => {
   });
   res.json({ ok: true, message: "同期をバックグラウンドで開始しました。ログを確認してください。" });
 });
+
+// -----------------------------------------------------------------
+// Data Phase B — Sync Command API
+// -----------------------------------------------------------------
+
+/**
+ * GET /data-commands/pending
+ *
+ * MT5 EA がポーリングして PENDING な Sync Job を取得する。
+ * claim_next_sync_job() RPC で PENDING→RUNNING を atomic に遷移。
+ * EA の symbol でフィルタリングし、自分が処理可能な job のみを返す。
+ *
+ * レスポンス:
+ *   { "jobs": [] }            — PENDING job なし
+ *   { "jobs": [{ id, symbol, timeframe, mode, target_from, target_to }] }
+ */
+app.get("/data-commands/pending", auth, async (req: Request, res: Response) => {
+  const symbol = (req.query["symbol"] as string | undefined)?.toUpperCase() ?? undefined;
+
+  try {
+    const job = await claimNextSyncJob(symbol);
+    if (!job) {
+      res.json({ jobs: [] });
+      return;
+    }
+    res.json({
+      jobs: [{
+        id:          job.id,
+        symbol:      job.symbol,
+        timeframe:   job.timeframe,
+        mode:        job.mode,
+        target_from: job.target_from,
+        target_to:   job.target_to,
+      }],
+    });
+  } catch (err) {
+    console.warn("[DataSync] /data-commands/pending error:", err);
+    res.json({ jobs: [] }); // EA を止めない
+  }
+});
+
+/**
+ * POST /data-commands/:id/progress
+ *
+ * EA が Sync Job の進捗・完了・失敗を Gateway 経由で Supabase に書き込む。
+ *
+ * body: {
+ *   status:          "RUNNING" | "COMPLETED" | "FAILED"
+ *   progress_pct?:   0〜100
+ *   received_bars?:  number
+ *   sent_bars?:      number
+ *   failed_batches?: number
+ *   current_from?:   number (epoch sec)
+ *   current_to?:     number (epoch sec)
+ *   error_message?:  string
+ * }
+ */
+app.post("/data-commands/:id/progress", auth, async (req: Request, res: Response) => {
+  const jobId = req.params["id"];
+  if (!jobId) { res.status(400).json({ error: "id required" }); return; }
+
+  const body = req.body as {
+    status?:          string;
+    progress_pct?:    number;
+    received_bars?:   number;
+    sent_bars?:       number;
+    failed_batches?:  number;
+    current_from?:    number;
+    current_to?:      number;
+    error_message?:   string;
+  };
+
+  const validStatuses = ["RUNNING", "COMPLETED", "FAILED"] as const;
+  type ValidStatus = typeof validStatuses[number];
+  const status = body.status as ValidStatus | undefined;
+  if (!status || !validStatuses.includes(status)) {
+    res.status(400).json({ error: "status must be RUNNING | COMPLETED | FAILED" });
+    return;
+  }
+
+  // 対応 TF の検証（SUPPORTED_TIMEFRAMES で TF文字列を確認）
+  // job id をキーに更新するだけなので TF 検証は不要 (job 作成時に検証済み)
+
+  const ok = await updateSyncJobProgress(jobId, {
+    status,
+    progress_pct:   body.progress_pct,
+    received_bars:  body.received_bars,
+    sent_bars:      body.sent_bars,
+    failed_batches: body.failed_batches,
+    current_from:   body.current_from  ?? null,
+    current_to:     body.current_to    ?? null,
+    error_message:  body.error_message ?? null,
+  });
+
+  if (status === "COMPLETED") {
+    console.log(`[DataSync] job=${jobId} COMPLETED recv=${body.received_bars} sent=${body.sent_bars} failed_batches=${body.failed_batches}`);
+  } else if (status === "FAILED") {
+    console.warn(`[DataSync] job=${jobId} FAILED: ${body.error_message}`);
+  }
+
+  res.json({ ok });
+});
+
+// suppress unused import warning for SUPPORTED_TIMEFRAMES
+void SUPPORTED_TIMEFRAMES;
 
 // -----------------------------------------------------------------
 // 起動
