@@ -170,23 +170,31 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (spec.filters?.trend_filter) tfsSet.add(spec.filters.trend_filter.timeframe);
   const tfs = [...tfsSet];
 
+  const FETCH_PAGE = 1000;
+  type BarRow = { time_utc: string; open: number; high: number; low: number; close: number; volume: number };
+
   const barsByTf: Record<string, Bar[]> = {};
   try {
     for (const tf of tfs) {
-      let query = db
-        .from("bar_data")
-        .select("time_utc, open, high, low, close, volume")
-        .eq("symbol", symbol)
-        .eq("timeframe", tf)
-        .order("time_utc", { ascending: true });
-
-      if (fromDate) query = query.gte("time_utc", fromDate.toISOString());
-
-      const { data, error } = await query;
-      if (error) throw new Error(`bar_data fetch failed (${symbol} ${tf}): ${error.message}`);
-
-      type BarRow = { time_utc: string; open: number; high: number; low: number; close: number; volume: number };
-      barsByTf[tf] = (data as BarRow[] ?? []).map(row => ({
+      const allRows: BarRow[] = [];
+      let offset = 0;
+      for (;;) {
+        let q = db
+          .from("bar_data")
+          .select("time_utc, open, high, low, close, volume")
+          .eq("symbol", symbol)
+          .eq("timeframe", tf)
+          .order("time_utc", { ascending: true })
+          .range(offset, offset + FETCH_PAGE - 1);
+        if (fromDate) q = q.gte("time_utc", fromDate.toISOString());
+        const { data, error } = await q;
+        if (error) throw new Error(`bar_data fetch failed (${symbol} ${tf}): ${error.message}`);
+        const rows = (data as BarRow[]) ?? [];
+        allRows.push(...rows);
+        if (rows.length < FETCH_PAGE) break;
+        offset += FETCH_PAGE;
+      }
+      barsByTf[tf] = allRows.map(row => ({
         time:   new Date(row.time_utc).getTime(),
         open:   Number(row.open),
         high:   Number(row.high),

@@ -261,6 +261,42 @@ async function run() {
       assert.equal(rows[count - 1]!.time,  data[count - 1]!.time);
     });
 
+    await test("P16: 73,216 bars (EURUSD/M5 実データ相当) → 全件取得・欠落なし", async () => {
+      // Phase 4-A/B/C pagination fix の実データ規模検証
+      const count = 73_216;
+      const data = makeBarData(count);
+      const fetcher = createMockFetcher(data);
+      const { rows, callCount } = await paginatedFetch(fetcher);
+      assert.equal(rows.length, count, `all ${count} bars fetched`);
+      // ceil(73216 / 1000) = 74 ページ目で残り216行 → 74+1=75呼び出し以内
+      assert.ok(callCount >= 74 && callCount <= 75, `callCount=${callCount} expected 74-75`);
+      // 昇順維持
+      assert.equal(rows[0]!.time, data[0]!.time, "first bar correct");
+      assert.equal(rows[count - 1]!.time, data[count - 1]!.time, "last bar correct");
+    });
+
+    await test("P17: 複数TF並列取得 (optimize/WF route相当) → 各TF全件独立取得", async () => {
+      // optimize/walk-forward route は複数TFをfor..ofでループして各TF paginate
+      const m5Count = 73_216;
+      const h1Count = 10_001;
+      const m5Data  = makeBarData(m5Count);
+      const h1Data  = makeBarData(h1Count).map(b => ({ ...b, time: b.time + 1 })); // 時刻をずらして区別
+
+      const m5Fetcher = createMockFetcher(m5Data);
+      const h1Fetcher = createMockFetcher(h1Data);
+
+      const [m5Result, h1Result] = await Promise.all([
+        paginatedFetch(m5Fetcher),
+        paginatedFetch(h1Fetcher),
+      ]);
+
+      assert.equal(m5Result.rows.length, m5Count, "M5 all fetched");
+      assert.equal(h1Result.rows.length, h1Count, "H1 all fetched");
+      // 各TFが独立したoffsetカウンタを持つことを確認 (相互干渉なし)
+      assert.equal(m5Result.rows[0]!.time, m5Data[0]!.time, "M5 first bar correct");
+      assert.equal(h1Result.rows[0]!.time, h1Data[0]!.time, "H1 first bar correct");
+    });
+
   });
 
   console.log(`\n${"=".repeat(55)}`);

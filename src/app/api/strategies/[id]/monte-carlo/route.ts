@@ -60,6 +60,8 @@ function collectTimeframes(spec: ReturnType<typeof StrategySpecSchema.parse>): s
 // Helper: fetch bars
 // ------------------------------------------------------------------
 
+const FETCH_PAGE = 1000;
+
 async function fetchBars(
   symbol:    string,
   timeframe: string,
@@ -68,19 +70,26 @@ async function fetchBars(
 ): Promise<Bar[]> {
   type BarRow = { time_utc: string; open: number; high: number; low: number; close: number; volume: number };
 
-  let query = db
-    .from("bar_data")
-    .select("time_utc, open, high, low, close, volume")
-    .eq("symbol", symbol)
-    .eq("timeframe", timeframe)
-    .order("time_utc", { ascending: true });
+  const allRows: BarRow[] = [];
+  let offset = 0;
+  for (;;) {
+    let q = db
+      .from("bar_data")
+      .select("time_utc, open, high, low, close, volume")
+      .eq("symbol", symbol)
+      .eq("timeframe", timeframe)
+      .order("time_utc", { ascending: true })
+      .range(offset, offset + FETCH_PAGE - 1);
+    if (fromDate) q = q.gte("time_utc", fromDate.toISOString());
+    const { data, error } = await q;
+    if (error) throw new Error(`bar_data fetch failed (${symbol} ${timeframe}): ${error.message}`);
+    const rows = (data as BarRow[]) ?? [];
+    allRows.push(...rows);
+    if (rows.length < FETCH_PAGE) break;
+    offset += FETCH_PAGE;
+  }
 
-  if (fromDate) query = query.gte("time_utc", fromDate.toISOString());
-
-  const { data, error } = await query;
-  if (error) throw new Error(`bar_data fetch failed (${symbol} ${timeframe}): ${error.message}`);
-
-  return (data as BarRow[] ?? []).map(row => ({
+  return allRows.map(row => ({
     time:   new Date(row.time_utc).getTime(),
     open:   Number(row.open),
     high:   Number(row.high),
