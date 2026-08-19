@@ -50,7 +50,10 @@ import {
   claimNextSyncJob,
   updateSyncJobProgress,
   SUPPORTED_TIMEFRAMES,
+  SYNC_JOB_STALE_MS,
 } from "./syncJobStore";
+
+void SYNC_JOB_STALE_MS; // suppress unused warning
 
 // -----------------------------------------------------------------
 // 型定義 — EA から受け取った値をそのまま保持する
@@ -867,12 +870,13 @@ app.get("/data-commands/pending", auth, async (req: Request, res: Response) => {
     }
     res.json({
       jobs: [{
-        id:          job.id,
-        symbol:      job.symbol,
-        timeframe:   job.timeframe,
-        mode:        job.mode,
-        target_from: job.target_from,
-        target_to:   job.target_to,
+        id:           job.id,
+        symbol:       job.symbol,
+        timeframe:    job.timeframe,
+        mode:         job.mode,
+        target_from:  job.target_from,
+        target_to:    job.target_to,
+        current_from: job.current_from ?? null,  // Resume 起点 (null = 最初から)
       }],
     });
   } catch (err) {
@@ -923,6 +927,25 @@ app.post("/data-commands/:id/progress", auth, async (req: Request, res: Response
   // 対応 TF の検証（SUPPORTED_TIMEFRAMES で TF文字列を確認）
   // job id をキーに更新するだけなので TF 検証は不要 (job 作成時に検証済み)
 
+  // Input validation
+  const progressPct = body.progress_pct;
+  if (progressPct !== undefined && (progressPct < 0 || progressPct > 100 || !Number.isInteger(progressPct))) {
+    res.status(400).json({ error: "progress_pct must be integer 0-100" });
+    return;
+  }
+  if (body.received_bars !== undefined && body.received_bars < 0) {
+    res.status(400).json({ error: "received_bars must be >= 0" });
+    return;
+  }
+  if (body.sent_bars !== undefined && body.sent_bars < 0) {
+    res.status(400).json({ error: "sent_bars must be >= 0" });
+    return;
+  }
+  if (body.failed_batches !== undefined && body.failed_batches < 0) {
+    res.status(400).json({ error: "failed_batches must be >= 0" });
+    return;
+  }
+
   const ok = await updateSyncJobProgress(jobId, {
     status,
     progress_pct:   body.progress_pct,
@@ -943,8 +966,7 @@ app.post("/data-commands/:id/progress", auth, async (req: Request, res: Response
   res.json({ ok });
 });
 
-// suppress unused import warning for SUPPORTED_TIMEFRAMES
-void SUPPORTED_TIMEFRAMES;
+void SUPPORTED_TIMEFRAMES; // suppress unused import warning
 
 // -----------------------------------------------------------------
 // 起動

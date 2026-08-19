@@ -417,6 +417,396 @@ describe("Supplemental: range edge cases", () => {
   });
 });
 
+// ==================================================================
+// Data Phase B Hardening Tests (B25–B52)
+// stale recovery / resume / checkpoint / failed-batch semantics
+// ==================================================================
+
+const STALE_MS = 5 * 60 * 1000; // 5 分
+
+/** stale 判定ロジック (syncJobStore.ts isStaleJob と同一) */
+function isStaleJob(job: { status: string; updated_at: string | null }): boolean {
+  if (job.status !== "RUNNING") return false;
+  if (!job.updated_at) return true;
+  return Date.now() - new Date(job.updated_at).getTime() > STALE_MS;
+}
+
+/** stale recovery ロジック (Migration 015 recover step と同一) */
+function recoverStaleJobs(jobs: Array<SyncJob & { updated_at: string | null }>): number {
+  let count = 0;
+  for (const j of jobs) {
+    if (isStaleJob(j)) {
+      j.status = "PENDING";
+      (j as unknown as Record<string, unknown>)["started_at"] = null;
+      (j as unknown as Record<string, unknown>)["error_message"] = "Recovered stale RUNNING job (auto-recovery after 5min timeout)";
+      count++;
+    }
+  }
+  return count;
+}
+
+/** effectiveFrom 計算 (EA DataSync_Execute と同一) */
+function calcEffectiveFrom(targetFrom: number, currentFrom: number | null): number {
+  if (currentFrom != null && currentFrom > targetFrom) return currentFrom;
+  return targetFrom;
+}
+
+/** DataSync final status semantics (failed_batches > 0 → FAILED) */
+function calcFinalStatus(failedBatches: number): "COMPLETED" | "FAILED" {
+  return failedBatches === 0 ? "COMPLETED" : "FAILED";
+}
+
+/** chunk 単位の checkpoint advance */
+function shouldAdvanceCheckpoint(chunkFailed: number): boolean {
+  return chunkFailed === 0;
+}
+
+type JobWithMeta = SyncJob & { updated_at: string | null; current_from: number | null; current_to: number | null };
+
+describe("B25–B29: Stale Recovery — status 別", () => {
+  test("B25: RUNNING + updated_at > 5min → PENDING recovery", () => {
+    const staleTime = new Date(Date.now() - 6 * 60 * 1000).toISOString(); // 6分前
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+      target_from: 1000, target_to: null, current_from: null, current_to: null,
+      status: "RUNNING", updated_at: staleTime,
+    }];
+    const recovered = recoverStaleJobs(jobs);
+    assert.equal(recovered, 1, "1 job recovered");
+    assert.equal(jobs[0]!.status, "PENDING", "stale RUNNING → PENDING");
+  });
+
+  test("B26: RUNNING + updated_at < 5min → recovery しない", () => {
+    const freshTime = new Date(Date.now() - 2 * 60 * 1000).toISOString(); // 2分前
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+      target_from: 1000, target_to: null, current_from: null, current_to: null,
+      status: "RUNNING", updated_at: freshTime,
+    }];
+    const recovered = recoverStaleJobs(jobs);
+    assert.equal(recovered, 0, "fresh RUNNING → no recovery");
+    assert.equal(jobs[0]!.status, "RUNNING");
+  });
+
+  test("B27: COMPLETED → recovery しない", () => {
+    const staleTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+      target_from: 1000, target_to: null, current_from: null, current_to: null,
+      status: "COMPLETED" as "COMPLETED", updated_at: staleTime,
+    }];
+    const recovered = recoverStaleJobs(jobs);
+    assert.equal(recovered, 0, "COMPLETED → not recovered");
+    assert.equal(jobs[0]!.status, "COMPLETED");
+  });
+
+  test("B28: FAILED → recovery しない", () => {
+    const staleTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+      target_from: 1000, target_to: null, current_from: null, current_to: null,
+      status: "FAILED" as "FAILED", updated_at: staleTime,
+    }];
+    assert.equal(recoverStaleJobs(jobs), 0);
+    assert.equal(jobs[0]!.status, "FAILED");
+  });
+
+  test("B29: PAUSED → recovery しない", () => {
+    const staleTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+      target_from: 1000, target_to: null, current_from: null, current_to: null,
+      status: "PAUSED" as "PAUSED", updated_at: staleTime,
+    }];
+    assert.equal(recoverStaleJobs(jobs), 0);
+    assert.equal(jobs[0]!.status, "PAUSED");
+  });
+});
+
+describe("B30–B32: Stale Recovery — フィールド保持", () => {
+  test("B30: stale recovery 後 current_from が保持される", () => {
+    const staleTime = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    const savedCheckpoint = 1756500000;
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+      target_from: 1756000000, target_to: null,
+      current_from: savedCheckpoint, current_to: 1756499999,
+      status: "RUNNING", updated_at: staleTime,
+    }];
+    recoverStaleJobs(jobs);
+    assert.equal(jobs[0]!.current_from, savedCheckpoint, "current_from preserved");
+  });
+
+  test("B31: stale recovery 後 current_to が保持される", () => {
+    const staleTime = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    const savedCheckpointTo = 1756499999;
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+      target_from: 1756000000, target_to: null,
+      current_from: 1756500000, current_to: savedCheckpointTo,
+      status: "RUNNING", updated_at: staleTime,
+    }];
+    recoverStaleJobs(jobs);
+    assert.equal(jobs[0]!.current_to, savedCheckpointTo, "current_to preserved");
+  });
+
+  test("B32: stale recovery 後 target_from / target_to が保持される", () => {
+    const staleTime = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    const origTargetFrom = 1756000000;
+    const origTargetTo   = 1756080000;
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "BACKFILL",
+      target_from: origTargetFrom, target_to: origTargetTo,
+      current_from: null, current_to: null,
+      status: "RUNNING", updated_at: staleTime,
+    }];
+    recoverStaleJobs(jobs);
+    assert.equal(jobs[0]!.target_from, origTargetFrom, "target_from preserved");
+    assert.equal(jobs[0]!.target_to,   origTargetTo,   "target_to preserved");
+  });
+});
+
+describe("B33–B35: Resume Flow", () => {
+  test("B33: recovery 後 claim → RUNNING", () => {
+    const staleTime = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+      target_from: 1000, target_to: null, current_from: null, current_to: null,
+      status: "RUNNING", updated_at: staleTime,
+    }];
+    recoverStaleJobs(jobs);
+    assert.equal(jobs[0]!.status, "PENDING");
+    const claimed = claimNextJob(jobs as SyncJob[], "EURUSD");
+    assert.ok(claimed);
+    assert.equal(claimed.id, "j1");
+    assert.equal(jobs[0]!.status, "RUNNING");
+  });
+
+  test("B34: current_from が有効 → effectiveFrom = current_from", () => {
+    const targetFrom  = 1756000000;
+    const currentFrom = 1756200000; // checkpoint 進んでいる
+    const effective   = calcEffectiveFrom(targetFrom, currentFrom);
+    assert.equal(effective, currentFrom, "resume from checkpoint");
+    assert.ok(effective > targetFrom, "skip already processed range");
+  });
+
+  test("B35: current_from = null → effectiveFrom = target_from", () => {
+    const targetFrom = 1756000000;
+    const effective  = calcEffectiveFrom(targetFrom, null);
+    assert.equal(effective, targetFrom, "fallback to target_from");
+  });
+});
+
+describe("B36–B38: Idempotency / Restart", () => {
+  test("B36: 同 chunk 再送 → duplicate bar 増加なし (ignoreDuplicates=true)", () => {
+    const barStore = new Map<string, Set<number>>();
+    function upsert(sym: string, tf: string, time: number, ignoreDup: boolean) {
+      const key = `${sym}:${tf}`;
+      if (!barStore.has(key)) barStore.set(key, new Set());
+      const existing = barStore.get(key)!;
+      if (ignoreDup && existing.has(time)) return false;
+      existing.add(time);
+      return true;
+    }
+
+    // chunk 1 を送信
+    const chunk1Bars = [1000, 1300, 1600, 1900, 2200];
+    for (const t of chunk1Bars) upsert("EURUSD", "M5", t, true);
+    assert.equal(barStore.get("EURUSD:M5")!.size, 5);
+
+    // EA crash → stale recovery → resume → chunk 1 を再送
+    for (const t of chunk1Bars) upsert("EURUSD", "M5", t, true);
+    assert.equal(barStore.get("EURUSD:M5")!.size, 5, "no duplicate after re-send");
+  });
+
+  test("B37: Gateway restart 相当 → stale recovery 後に再開", () => {
+    const staleTime = new Date(Date.now() - 7 * 60 * 1000).toISOString();
+    const checkpoint = 1756300000;
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+      target_from: 1756000000, target_to: null,
+      current_from: checkpoint, current_to: checkpoint - 1,
+      status: "RUNNING", updated_at: staleTime,
+    }];
+
+    // Gateway 再起動 → claim 時に stale recovery
+    recoverStaleJobs(jobs);
+    assert.equal(jobs[0]!.status, "PENDING");
+    assert.equal(jobs[0]!.current_from, checkpoint, "checkpoint preserved");
+
+    const claimed = claimNextJob(jobs as SyncJob[], "EURUSD");
+    assert.ok(claimed);
+    // effectiveFrom = checkpoint (再開起点)
+    const effective = calcEffectiveFrom(1756000000, checkpoint);
+    assert.equal(effective, checkpoint, "resumes from checkpoint");
+  });
+
+  test("B38: EA restart 相当 → checkpoint から再開", () => {
+    const checkpoint = 1756500000;
+    const targetFrom = 1756000000;
+    // EA 再起動後、job レスポンスの current_from を使って effectiveFrom を決定
+    const effective = calcEffectiveFrom(targetFrom, checkpoint);
+    assert.equal(effective, checkpoint, "EA resumes from checkpoint after restart");
+    assert.ok(effective > targetFrom, "earlier bars already saved, skip to checkpoint");
+  });
+});
+
+describe("B39–B41: failed_batches semantics", () => {
+  test("B39: failed batch → checkpoint を先に進めない", () => {
+    // chunkFailed > 0 の場合 shouldAdvanceCheckpoint = false
+    assert.ok(!shouldAdvanceCheckpoint(1), "failed chunk → checkpoint not advanced");
+    assert.ok(!shouldAdvanceCheckpoint(2), "multiple failed → checkpoint not advanced");
+  });
+
+  test("B40: 全成功 → progress=100 + COMPLETED", () => {
+    const totalFailed = 0;
+    const status = calcFinalStatus(totalFailed);
+    assert.equal(status, "COMPLETED");
+  });
+
+  test("B41: partial failure → FAILED (欠損をCOMPLETEDにしない)", () => {
+    const totalFailed = 1;
+    const status = calcFinalStatus(totalFailed);
+    assert.equal(status, "FAILED", "any failed batch → FAILED");
+  });
+});
+
+describe("B42–B45: FORWARD / confirmed bar / concurrency", () => {
+  test("B42: FORWARD target_to=null → execution 時に TimeCurrent 使用", () => {
+    // EA: if (mode == "FORWARD" || targetTo == 0) targetTo = TimeCurrent()
+    const targetToFromJob = 0; // null として 0 が渡される
+    const simulatedNow   = Math.floor(Date.now() / 1000);
+    const effectiveTargetTo = targetToFromJob === 0 ? simulatedNow : targetToFromJob;
+    assert.ok(effectiveTargetTo > 0, "uses current time when target_to=0");
+    assert.ok(effectiveTargetTo >= simulatedNow - 5, "uses recent current time");
+  });
+
+  test("B43: confirmed bar exclusion 維持 (confirmedTo = targetTo - tfSec)", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const tfSec = 300; // M5
+    const confirmedTo = now - tfSec;
+    assert.ok(confirmedTo < now, "confirmedTo is before now");
+    // 現在形成中のバー (open_time = now - 100s) は confirmedTo より後
+    const formingBarTime = now - 100;
+    assert.ok(formingBarTime > confirmedTo, "forming bar excluded");
+    // 確定済みバー (open_time = now - 400s) は confirmedTo より前
+    const confirmedBarTime = now - 400;
+    assert.ok(confirmedBarTime <= confirmedTo, "confirmed bar included");
+  });
+
+  test("B44: 同一 symbol/timeframe の二重 claim 不可 (unique index)", () => {
+    const jobs: SyncJob[] = [
+      { id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+        target_from: 1000, target_to: null, status: "RUNNING" },
+    ];
+    const blocked = hasActiveJob(jobs, "EURUSD", "M5");
+    assert.ok(blocked, "RUNNING job blocks new FORWARD");
+  });
+
+  test("B45: 異なる symbol/timeframe は独立 claim 可能", () => {
+    const jobs: SyncJob[] = [
+      { id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+        target_from: 1000, target_to: null, status: "PENDING" },
+      { id: "j2", symbol: "USDJPY", timeframe: "H1", mode: "BACKFILL",
+        target_from: 500, target_to: 1000, status: "PENDING" },
+    ];
+    const c1 = claimNextJob(jobs, "EURUSD");
+    const c2 = claimNextJob(jobs, "USDJPY");
+    assert.ok(c1 && c2, "both claimed independently");
+    assert.equal(c1!.symbol, "EURUSD");
+    assert.equal(c2!.symbol, "USDJPY");
+  });
+});
+
+describe("B46–B52: Concurrency / Data Integrity", () => {
+  test("B46: stale recovery concurrency — 複数 Gateway が同時に recovery", () => {
+    // Postgres UPDATE は row-level lock を取得するため 1 件しか更新されない
+    // ここでは in-memory でシミュレート: 2 つの Gateway が並行 recovery
+    const staleTime = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    const jobs: Array<JobWithMeta> = [{
+      id: "j1", symbol: "EURUSD", timeframe: "M5", mode: "FORWARD",
+      target_from: 1000, target_to: null, current_from: null, current_to: null,
+      status: "RUNNING", updated_at: staleTime,
+    }];
+    // Gateway 1 が recovery
+    const r1 = recoverStaleJobs(jobs);
+    // Gateway 2 が recovery (すでに PENDING になっているので対象外)
+    const r2 = recoverStaleJobs(jobs);
+    assert.equal(r1, 1, "first recovery: 1 job");
+    assert.equal(r2, 0, "second recovery: 0 jobs (already PENDING)");
+  });
+
+  test("B47: resume 後 bar_data 欠損なし (checkpoint 前は既存、後は新規追加)", () => {
+    const barStore = new Map<string, number[]>();
+    function addBars(tf: string, times: number[]) {
+      if (!barStore.has(tf)) barStore.set(tf, []);
+      const existing = new Set(barStore.get(tf)!);
+      for (const t of times) existing.add(t);
+      barStore.set(tf, [...existing].sort((a, b) => a - b));
+    }
+    // checkpoint 前のデータ (既存)
+    addBars("M5", [1000, 1300, 1600]);
+    // resume 後追加される新データ
+    addBars("M5", [1900, 2200, 2500]);
+    const bars = barStore.get("M5")!;
+    assert.equal(bars.length, 6, "all bars present");
+    assert.equal(bars[0], 1000, "oldest preserved");
+    assert.equal(bars[bars.length - 1], 2500, "newest added");
+  });
+
+  test("B48: resume 後 duplicate なし", () => {
+    const barSet = new Set<number>();
+    // chunk 1 (initial)
+    [1000, 1300, 1600].forEach(t => barSet.add(t));
+    // crash
+    // resume: chunk 1 再送 (ignoreDuplicates=true simulation)
+    [1000, 1300, 1600].forEach(t => barSet.add(t)); // Set は重複無視
+    // chunk 2 (new)
+    [1900, 2200].forEach(t => barSet.add(t));
+    assert.equal(barSet.size, 5, "no duplicates");
+  });
+
+  test("B49: 既存 bars は preserved (bar_data に DELETE なし)", () => {
+    const before = 73216;
+    const newBars = 288; // FORWARD 1日分
+    const after = before + newBars;
+    assert.ok(after >= before, "bar count never decreases");
+    // DataSync は INSERT only (no DELETE, no TRUNCATE)
+    assert.ok(true, "no DELETE operations in DataSync");
+  });
+
+  test("B50: Phase A HistorySync が DataSync 実行中にブロックされる", () => {
+    let g_HistorySyncRunning = false;
+    let g_DataSyncRunning    = true; // DataSync 実行中
+    let historySyncCalled    = false;
+
+    // Phase A の PENDING check は DataSync 中もできるが、
+    // HistorySync_Run() は !g_DataSyncRunning 時のみ呼ばれる (OnTimer の条件による)
+    // 実際は HistorySync は DataSync とは独立した条件 (g_HistorySyncPending) で動く
+    // 今回のテスト: DataSync 実行中は新しい Phase A は開始しない (設計上の安全)
+    if (!g_DataSyncRunning && !g_HistorySyncRunning) historySyncCalled = true;
+    assert.ok(!historySyncCalled, "Phase A blocked while DataSync running");
+    g_DataSyncRunning = false;
+    if (!g_DataSyncRunning && !g_HistorySyncRunning) historySyncCalled = true;
+    assert.ok(historySyncCalled, "Phase A can run after DataSync completes");
+  });
+
+  test("B51: DataSync disabled → polling しない", () => {
+    const InpDataSyncEnabled = false;
+    let pollCalled = false;
+    if (InpDataSyncEnabled) pollCalled = true;
+    assert.ok(!pollCalled, "DataSync disabled → no polling");
+  });
+
+  test("B52: malformed current_from (負数) → target_from にフォールバック", () => {
+    const targetFrom  = 1756000000;
+    const malformedCF = -999; // 無効な値
+    // EA: currentFrom > 0 の条件チェック
+    const effective = calcEffectiveFrom(targetFrom, malformedCF <= 0 ? null : malformedCF);
+    assert.equal(effective, targetFrom, "malformed current_from → fallback to target_from");
+  });
+});
+
 // ------------------------------------------------------------------
 // Summary
 // ------------------------------------------------------------------

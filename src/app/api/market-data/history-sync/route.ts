@@ -7,9 +7,11 @@
 // POST: FORWARD または BACKFILL の Sync Job を作成する。
 //   - Supabase bar_data から現在の newest/oldest を取得 (Source of Truth)
 //   - target_from / target_to をサーバー側で計算 (クライアント入力に依存しない)
-//   - PENDING または RUNNING の重複 job があればエラーを返す
+//   - 正常 RUNNING job があれば 409
+//   - stale RUNNING job (5分以上更新なし) は resumable として扱う
 //
 // GET: 全 Sync Job の一覧を返す。
+//   各 job に isStale / resumable / ageSeconds / lastCheckpoint を付加。
 //
 // Body (POST):
 //   {
@@ -24,6 +26,7 @@
 //   - target_from / target_to は epoch 秒 (integer) で保存
 //   - FORWARD: target_to = null (EA が TimeCurrent() を使用)
 //   - BACKFILL: target_to = oldest bar epoch 秒
+//   - stale timeout: 5 分 (Migration 015 と同一)
 // =================================================================
 
 import { NextRequest, NextResponse } from "next/server";
@@ -33,6 +36,7 @@ export const runtime = "nodejs";
 
 const SUPPORTED_TIMEFRAMES = new Set(["M1","M5","M15","M30","H1","H4","D1","W1"]);
 const BACKFILL_DEFAULT_MONTHS = 12;
+const STALE_MS = 5 * 60 * 1000; // 5 分 (Migration 015 の v_stale_cutoff と同一)
 
 /** timeframe 文字列 → 秒数（EA 側と同一ロジック） */
 function tfToSeconds(tf: string): number {
@@ -43,8 +47,26 @@ function tfToSeconds(tf: string): number {
   return map[tf.toUpperCase()] ?? 0;
 }
 
+/** job の stale 判定と補助フィールドを付加 */
+function enrichJob(job: Record<string, unknown>) {
+  const updatedAt = job["updated_at"] as string | null;
+  const ageMs  = updatedAt ? Date.now() - new Date(updatedAt).getTime() : 0;
+  const isStale = job["status"] === "RUNNING" && ageMs > STALE_MS;
+  const cfRaw = job["current_from"];
+  const cfNum = typeof cfRaw === "number" ? cfRaw : (cfRaw != null ? Number(cfRaw) : null);
+  return {
+    ...job,
+    isStale,
+    resumable:      isStale && cfNum !== null && cfNum > 0,
+    ageSeconds:     Math.floor(ageMs / 1000),
+    lastCheckpoint: cfNum != null && cfNum > 0
+      ? new Date(cfNum * 1000).toISOString()
+      : null,
+  };
+}
+
 // ------------------------------------------------------------------
-// GET — Job 一覧
+// GET — Job 一覧 (Phase C の Coverage UI に向けた準備)
 // ------------------------------------------------------------------
 
 export async function GET(_req: NextRequest) {
@@ -52,7 +74,12 @@ export async function GET(_req: NextRequest) {
 
   const { data, error } = await db
     .from("market_data_sync_jobs")
-    .select("id, symbol, timeframe, mode, status, progress_pct, received_bars, sent_bars, failed_batches, target_from, target_to, started_at, completed_at, created_at, error_message")
+    .select(
+      "id, symbol, timeframe, mode, status, progress_pct, " +
+      "received_bars, sent_bars, failed_batches, " +
+      "target_from, target_to, current_from, current_to, " +
+      "started_at, completed_at, created_at, updated_at, error_message"
+    )
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -60,7 +87,8 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ jobs: data ?? [] });
+  const jobs = (data ?? []).map(j => enrichJob(j as unknown as Record<string, unknown>));
+  return NextResponse.json({ jobs });
 }
 
 // ------------------------------------------------------------------
@@ -104,8 +132,7 @@ export async function POST(req: NextRequest) {
 
   // ── 現在の bar_data 範囲を取得 (Source of Truth) ───────────────
 
-  const { data: statusRows, error: statusErr } = await db
-    .rpc("get_bar_data_status");
+  const { data: statusRows, error: statusErr } = await db.rpc("get_bar_data_status");
 
   if (statusErr) {
     return NextResponse.json({ error: `Failed to read bar_data status: ${statusErr.message}` }, { status: 500 });
@@ -116,22 +143,49 @@ export async function POST(req: NextRequest) {
     oldest_bar: string | null; newest_bar: string | null;
   }>).find(r => r.symbol === symbol && r.timeframe === timeframe);
 
-  // ── 重複ジョブチェック ──────────────────────────────────────────
+  // ── active job チェック (stale 判定込み) ────────────────────────
 
   const { data: existingJobs, error: existErr } = await db
     .from("market_data_sync_jobs")
-    .select("id, status")
+    .select("id, status, updated_at, current_from")
     .eq("symbol", symbol)
     .eq("timeframe", timeframe)
     .in("status", ["PENDING", "RUNNING"])
+    .order("created_at", { ascending: false })
     .limit(1);
 
   if (existErr) {
     return NextResponse.json({ error: `DB error: ${existErr.message}` }, { status: 500 });
   }
+
   if (existingJobs && existingJobs.length > 0) {
+    const existing = existingJobs[0]!;
+    const enriched = enrichJob(existing as unknown as Record<string, unknown>);
+
+    if (enriched.isStale) {
+      // stale RUNNING job が存在する → claim_next_sync_job() が自動 recovery してくれる
+      // クライアントには resumable であることを通知する
+      return NextResponse.json(
+        {
+          error:      `Stale RUNNING job found for ${symbol}/${timeframe}. It will be auto-recovered by the next EA poll (within 30s).`,
+          jobId:      existing.id,
+          isStale:    true,
+          resumable:  enriched.resumable,
+          ageSeconds: enriched.ageSeconds,
+          lastCheckpoint: enriched.lastCheckpoint,
+          hint:       "No action needed. The EA will resume automatically when it next polls.",
+        },
+        { status: 409 },
+      );
+    }
+
+    // 正常 RUNNING / PENDING
     return NextResponse.json(
-      { error: `Active job already exists for ${symbol}/${timeframe} (status: ${existingJobs[0]!.status}). Wait for it to complete or cancel it first.` },
+      {
+        error:   `Active job already exists for ${symbol}/${timeframe} (status: ${existing.status}).`,
+        jobId:   existing.id,
+        isStale: false,
+      },
       { status: 409 },
     );
   }
@@ -148,12 +202,10 @@ export async function POST(req: NextRequest) {
         { status: 422 },
       );
     }
-    // target_from = newest bar + 1 tfSec (次のbar開始時刻)
     const newestEpoch = Math.floor(new Date(rangeRow.newest_bar).getTime() / 1000);
     targetFrom = newestEpoch + tfSec;
-    targetTo   = null; // EA が TimeCurrent() を使用
+    targetTo   = null;
   } else {
-    // BACKFILL
     if (!rangeRow?.oldest_bar) {
       return NextResponse.json(
         { error: `No existing bar_data for ${symbol}/${timeframe}. Run a Full History Sync (Phase A) first.` },
@@ -161,7 +213,6 @@ export async function POST(req: NextRequest) {
       );
     }
     const oldestEpoch = Math.floor(new Date(rangeRow.oldest_bar).getTime() / 1000);
-    // target_to = existing oldest bar time (confirmedTo ロジックが -tfSec してくれる)
     targetTo = oldestEpoch;
 
     if (body.target_from) {
@@ -171,7 +222,6 @@ export async function POST(req: NextRequest) {
       }
       targetFrom = Math.floor(parsed.getTime() / 1000);
     } else {
-      // デフォルト: oldest から 12 ヶ月前
       targetFrom = oldestEpoch - BACKFILL_DEFAULT_MONTHS * 30 * 86400;
     }
 
@@ -187,19 +237,11 @@ export async function POST(req: NextRequest) {
 
   const { data: inserted, error: insertErr } = await db
     .from("market_data_sync_jobs")
-    .insert({
-      symbol,
-      timeframe,
-      mode,
-      target_from: targetFrom,
-      target_to:   targetTo,
-      status:      "PENDING",
-    })
+    .insert({ symbol, timeframe, mode, target_from: targetFrom, target_to: targetTo, status: "PENDING" })
     .select("id, symbol, timeframe, mode, target_from, target_to, status, created_at")
     .single();
 
   if (insertErr || !inserted) {
-    // 一意制約違反（concurrent insert race）
     if (insertErr?.code === "23505") {
       return NextResponse.json(
         { error: `Concurrent active job for ${symbol}/${timeframe}. Please retry later.` },
@@ -209,15 +251,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Failed to create job: ${insertErr?.message}` }, { status: 500 });
   }
 
+  const row = inserted as Record<string, unknown>;
   return NextResponse.json({
-    jobId:       inserted.id,
-    symbol:      inserted.symbol,
-    timeframe:   inserted.timeframe,
-    mode:        inserted.mode,
-    target_from: inserted.target_from,
-    target_to:   inserted.target_to,
-    status:      inserted.status,
-    created_at:  inserted.created_at,
-    message:     `Sync job created. MT5 EA will pick it up within ${mode === "FORWARD" ? "30" : "30"}s if connected.`,
+    jobId:       row["id"],
+    symbol:      row["symbol"],
+    timeframe:   row["timeframe"],
+    mode:        row["mode"],
+    target_from: row["target_from"],
+    target_to:   row["target_to"],
+    status:      row["status"],
+    created_at:  row["created_at"],
+    message:     `Sync job created. MT5 EA will pick it up within 30s if connected.`,
   }, { status: 201 });
 }

@@ -1292,8 +1292,19 @@ void DataSync_SendProgress(
    HTTP_Post("/data-commands/" + jobId + "/progress", body);
 }
 
-// DataSync_Execute — Sync Job を実行する
-// 既存 HistorySync_Timeframe() を mode に応じた range で呼び出す。
+// DataSync_Execute — Sync Job を実行する (chunk 単位でCheckpoint保存)
+//
+// 変更点 (Phase B Hardening):
+//   1. currentFrom パラメータ追加 (resume 起点)
+//      effectiveFrom = currentFrom > 0 ? currentFrom : targetFrom
+//   2. chunk ループを DataSync_Execute() 内で直接実装し、
+//      chunk 成功後に current_from をDBへ更新 (DataSync_SendProgress)
+//   3. failed_batches > 0 → FAILED (欠損データを COMPLETED にしない)
+//   4. chunk レベルの confirmed bar 除外 (確定済みバーのみ送信)
+//
+// HistorySync_Timeframe() / confirmedTo ロジックは変更しない。
+// DataSync_Execute() は同等の chunk ループを独自実装して
+// 中間 checkpoint 更新を実現する。
 void DataSync_Execute(
     const string jobId,
     const string symbol,
@@ -1301,61 +1312,151 @@ void DataSync_Execute(
     const string tfName,
     const string mode,
     datetime targetFrom,
-    datetime targetTo   // FORWARD では 0 = TimeCurrent() を使用
+    datetime targetTo,    // FORWARD では 0 = TimeCurrent() を使用
+    datetime currentFrom  // Resume 起点 (0 = 最初から)
 )
 {
    // FORWARD の場合 targetTo = TimeCurrent() (最新確定barまで)
    if(mode == "FORWARD" || targetTo == 0)
       targetTo = TimeCurrent();
 
-   int tfSec = TF_ToSeconds(tf);
+   int  tfSec    = TF_ToSeconds(tf);
+   long chunkSec = (long)InpHistorySyncChunkDays * 86400L;
+   int  batchSize = InpHistorySyncBatchSize;
 
-   // 最低限の期間チェック (confirmedTo <= targetFrom になる場合はスキップ)
+   // confirmedTo = targetTo - tfSec (現在形成中の未確定barを除外)
+   // Phase A HistorySync_Timeframe と完全同一ロジック
    long confirmedToL = (long)targetTo - (long)tfSec;
-   if(confirmedToL <= (long)targetFrom)
+
+   // Resume: currentFrom が有効なら effectiveFrom として使用
+   // 0 または targetFrom 以前の場合は targetFrom にフォールバック
+   datetime effectiveFrom = targetFrom;
+   if(currentFrom > 0 && (long)currentFrom > (long)targetFrom)
+      effectiveFrom = currentFrom;
+
+   // 最低限の期間チェック
+   if(confirmedToL <= (long)effectiveFrom)
    {
       Print("[DataSync] job=", jobId, " SKIP: range too narrow for TF=", tfName,
-            " (", TimeToString(targetFrom, TIME_DATE), " → ", TimeToString(targetTo, TIME_DATE), ")");
-      DataSync_SendProgress(jobId, "COMPLETED", 100, 0, 0, 0, targetFrom, targetTo);
+            " effectiveFrom=", TimeToString(effectiveFrom, TIME_DATE|TIME_SECONDS),
+            " confirmedTo=", TimeToString((datetime)confirmedToL, TIME_DATE|TIME_SECONDS));
+      DataSync_SendProgress(jobId, "COMPLETED", 100, 0, 0, 0, effectiveFrom, targetTo);
       return;
    }
 
+   datetime confirmedTo = (datetime)confirmedToL;
+
    Print("[DataSync] EXECUTE job=", jobId);
    Print("[DataSync] Mode=", mode, " Symbol=", symbol, " TF=", tfName);
-   Print("[DataSync] From=", TimeToString(targetFrom, TIME_DATE|TIME_SECONDS));
-   Print("[DataSync] To=  ", TimeToString(targetTo,   TIME_DATE|TIME_SECONDS));
+   Print("[DataSync] EffectiveFrom=", TimeToString(effectiveFrom,   TIME_DATE|TIME_SECONDS),
+         (currentFrom > 0 ? " (RESUME)" : " (NEW)"));
+   Print("[DataSync] confirmedTo=  ", TimeToString(confirmedTo,  TIME_DATE|TIME_SECONDS));
+   Print("[DataSync] ChunkDays=", InpHistorySyncChunkDays, " BatchSize=", batchSize);
 
-   // 進捗送信: RUNNING
-   DataSync_SendProgress(jobId, "RUNNING", 0, 0, 0, 0, targetFrom, targetTo);
+   // RUNNING 開始を Gateway に通知
+   DataSync_SendProgress(jobId, "RUNNING", 0, 0, 0, 0, effectiveFrom, targetTo);
 
-   // 既存 HistorySync_Timeframe() を再利用
-   long copied = 0, sent = 0;
-   int  failedBatches = 0;
-   bool ok = HistorySync_Timeframe(
-      symbol, tf, tfName,
-      targetFrom, targetTo,
-      InpHistorySyncBatchSize,
-      InpHistorySyncChunkDays,
-      copied, sent, failedBatches
+   long totalCopied  = 0;
+   long totalSent    = 0;
+   int  totalFailed  = 0;
+   datetime chunkFrom = effectiveFrom;
+
+   // Chunk ループ (HistorySync_Timeframe と同一アルゴリズム)
+   while(chunkFrom < confirmedTo)
+   {
+      long chunkToL = (long)chunkFrom + chunkSec;
+      if(chunkToL > (long)confirmedTo) chunkToL = (long)confirmedTo;
+      datetime chunkTo = (datetime)chunkToL;
+
+      // CopyRates (第3オーバーロード: startTime ≤ bar.time ≤ stopTime)
+      MqlRates rates[];
+      int n = CopyRates(symbol, tf, chunkFrom, chunkTo, rates);
+
+      if(n <= 0)
+      {
+         Print("[DataSync] ", symbol, ":", tfName,
+               " chunk ", TimeToString(chunkFrom, TIME_DATE), " → ",
+               TimeToString(chunkTo, TIME_DATE), " | n=", n, " (no data)");
+         chunkFrom = (datetime)((long)chunkTo + 1L);
+         continue;
+      }
+
+      Print("[DataSync] ", symbol, ":", tfName,
+            " chunk ", TimeToString(chunkFrom, TIME_DATE), " → ",
+            TimeToString(chunkTo, TIME_DATE), " | ", n, " bars");
+
+      // Batch 送信 (HistorySync_SendBatch を再利用: retry 3 回)
+      int totalBatches = (n + batchSize - 1) / batchSize;
+      int chunkFailed  = 0;
+
+      for(int b = 0; b < totalBatches; b++)
+      {
+         int start = b * batchSize;
+         int count = (n - start < batchSize) ? (n - start) : batchSize;
+
+         bool ok = HistorySync_SendBatch(
+            symbol, tfName, rates, start, count, b + 1, totalBatches
+         );
+         if(ok)
+            totalSent += count;
+         else
+         {
+            chunkFailed++;
+            totalFailed++;
+         }
+
+         if(b + 1 < totalBatches)
+            Sleep(HISTORY_SYNC_BATCH_SLEEP_MS);
+      }
+
+      totalCopied += n;
+      datetime nextChunkFrom = (datetime)((long)chunkTo + 1L);
+
+      // Checkpoint 更新 (chunk 成功時のみ current_from を前進)
+      // 失敗があった chunk は current_from を advance しない
+      // → resume 時に同 chunk を再試行 (ignoreDuplicates で安全)
+      if(chunkFailed == 0)
+      {
+         // 進捗率計算 (0〜99: 100はCOMPLETED用に予約)
+         int progressPct = 0;
+         long totalRange = (long)confirmedTo - (long)effectiveFrom;
+         if(totalRange > 0)
+         {
+            progressPct = (int)((double)(chunkTo - effectiveFrom) / (double)totalRange * 100.0);
+            if(progressPct > 99) progressPct = 99;
+         }
+         DataSync_SendProgress(jobId, "RUNNING", progressPct,
+            totalCopied, totalSent, totalFailed,
+            (long)nextChunkFrom, (long)chunkTo
+         );
+         // checkpoint: 次 chunk の開始時刻を current_from として記録
+         // (nextChunkFrom が次回 resume 起点になる)
+      }
+
+      chunkFrom = nextChunkFrom;
+   }
+
+   // 最終判定
+   // failed_batches > 0 → FAILED (部分欠損を COMPLETED にしない)
+   // 既存 Phase A HistorySync_Timeframe は FAILED でも継続するが、
+   // DataSync では厳格に FAILED を返して再実行を促す。
+   string finalStatus = (totalFailed == 0) ? "COMPLETED" : "FAILED";
+   string errMsg = (totalFailed > 0) ?
+      ("Failed batches: " + IntegerToString(totalFailed) + ". Resume from checkpoint to retry.") : "";
+
+   Print("[DataSync] ", finalStatus, " job=", jobId,
+         " recv=", totalCopied, " sent=", totalSent, " failed_batches=", totalFailed);
+
+   DataSync_SendProgress(jobId, finalStatus, 100,
+      totalCopied, totalSent, totalFailed,
+      (long)confirmedTo, (long)confirmedTo,
+      errMsg
    );
-
-   if(ok)
-   {
-      Print("[DataSync] COMPLETE job=", jobId,
-            " recv=", copied, " sent=", sent, " failed_batches=", failedBatches);
-      DataSync_SendProgress(jobId, "COMPLETED", 100,
-         copied, sent, failedBatches, targetFrom, targetTo);
-   }
-   else
-   {
-      string errMsg = "HistorySync_Timeframe returned false";
-      Print("[DataSync] FAILED job=", jobId, ": ", errMsg);
-      DataSync_SendProgress(jobId, "FAILED", 0,
-         copied, sent, failedBatches, targetFrom, targetTo, errMsg);
-   }
 }
 
 // DataSync_Poll — /data-commands/pending を 1 回 GET して job があれば実行
+// stale recovery は Gateway 側の claim_next_sync_job() RPC が自動実行する
+// (Migration 015 で更新済み)
 void DataSync_Poll()
 {
    char req[], res[];
@@ -1382,13 +1483,14 @@ void DataSync_Poll()
 
    string jobJson = StringSubstr(response, jobStart, jobEnd - jobStart + 1);
 
-   // フィールド解析
-   string jobId       = JsonGetStr(jobJson, "id");
-   string symbol      = JsonGetStr(jobJson, "symbol");
-   string tfStr       = JsonGetStr(jobJson, "timeframe");
-   string mode        = JsonGetStr(jobJson, "mode");
-   long   targetFromL = (long)JsonGetDbl(jobJson, "target_from");
-   long   targetToL   = (long)JsonGetDbl(jobJson, "target_to");
+   // フィールド解析 (current_from を追加)
+   string jobId        = JsonGetStr(jobJson, "id");
+   string symbol       = JsonGetStr(jobJson, "symbol");
+   string tfStr        = JsonGetStr(jobJson, "timeframe");
+   string mode         = JsonGetStr(jobJson, "mode");
+   long   targetFromL  = (long)JsonGetDbl(jobJson, "target_from");
+   long   targetToL    = (long)JsonGetDbl(jobJson, "target_to");
+   long   currentFromL = (long)JsonGetDbl(jobJson, "current_from"); // Resume 起点
 
    // 基本バリデーション
    if(StringLen(jobId) == 0 || StringLen(symbol) == 0 || StringLen(tfStr) == 0)
@@ -1417,11 +1519,15 @@ void DataSync_Poll()
       return;
    }
 
-   datetime targetFrom = (datetime)targetFromL;
-   datetime targetTo   = (datetime)targetToL; // FORWARD では 0 が渡される
+   datetime targetFrom  = (datetime)targetFromL;
+   datetime targetTo    = (datetime)targetToL;    // FORWARD では 0 が渡される
+   datetime currentFrom = (datetime)currentFromL; // 0 = 最初から
+
+   if(currentFrom > 0)
+      Print("[DataSync] RESUME: current_from=", TimeToString(currentFrom, TIME_DATE|TIME_SECONDS));
 
    // 実行
-   DataSync_Execute(jobId, symbol, tf, tfStr, mode, targetFrom, targetTo);
+   DataSync_Execute(jobId, symbol, tf, tfStr, mode, targetFrom, targetTo, currentFrom);
 }
 
 //+------------------------------------------------------------------+

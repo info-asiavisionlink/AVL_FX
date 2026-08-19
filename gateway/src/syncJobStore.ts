@@ -48,6 +48,13 @@ function getClient(): SupabaseClient | null {
 }
 
 // ------------------------------------------------------------------
+// 定数
+// ------------------------------------------------------------------
+
+/** stale RUNNING job とみなすタイムアウト (ミリ秒)。Migration 015 の 5 分と合わせる。 */
+export const SYNC_JOB_STALE_MS = 5 * 60 * 1000;
+
+// ------------------------------------------------------------------
 // 型定義
 // ------------------------------------------------------------------
 
@@ -58,7 +65,10 @@ export interface SyncJob {
   mode:          "FORWARD" | "BACKFILL";
   target_from:   number | null; // Unix epoch 秒
   target_to:     number | null; // Unix epoch 秒 (FORWARD では null → EA が TimeCurrent() を使用)
+  current_from:  number | null; // Resume 起点 (最後に成功した chunk の次の開始時刻)
+  current_to:    number | null; // 最後に成功した chunk の終了時刻
   status:        "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "PAUSED";
+  updated_at?:   string | null; // stale 判定用
 }
 
 export interface ProgressUpdate {
@@ -96,7 +106,11 @@ export async function claimNextSyncJob(symbol?: string): Promise<SyncJob | null>
     if (!rows || rows.length === 0) return null;
 
     const job = rows[0]!;
-    console.log(`[syncJob] CLAIMED job=${job.id} ${job.symbol}:${job.timeframe} mode=${job.mode}`);
+    const isResumed = (job.current_from ?? 0) > 0;
+    console.log(
+      `[syncJob] CLAIMED job=${job.id} ${job.symbol}:${job.timeframe} mode=${job.mode}` +
+      (isResumed ? ` (RESUME from current_from=${job.current_from})` : "")
+    );
     return job;
 
   } catch (err) {
@@ -271,3 +285,19 @@ export function tfToSeconds(timeframe: string): number {
 }
 
 export const SUPPORTED_TIMEFRAMES = new Set(["M1","M5","M15","M30","H1","H4","D1","W1"]);
+
+// ------------------------------------------------------------------
+// isStaleJob — RUNNING job が stale かどうかを判定
+// ------------------------------------------------------------------
+
+export function isStaleJob(job: { status: string; updated_at?: string | null }): boolean {
+  if (job.status !== "RUNNING") return false;
+  if (!job.updated_at) return true; // updated_at がなければ stale とみなす
+  const age = Date.now() - new Date(job.updated_at).getTime();
+  return age > SYNC_JOB_STALE_MS;
+}
+
+export function jobAgeSeconds(job: { updated_at?: string | null }): number {
+  if (!job.updated_at) return 0;
+  return Math.floor((Date.now() - new Date(job.updated_at).getTime()) / 1000);
+}
