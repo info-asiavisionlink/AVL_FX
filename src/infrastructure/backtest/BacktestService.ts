@@ -64,7 +64,12 @@ export interface GetLatestResult {
 function collectTimeframes(spec: StrategySpec): string[] {
   const tfs = new Set<string>(spec.timeframes);
   for (const c of spec.entry_conditions.conditions) tfs.add(c.timeframe);
+  // Phase 5-A: singular trend_filter
   if (spec.filters?.trend_filter) tfs.add(spec.filters.trend_filter.timeframe);
+  // Phase 5-A/B: plural trend_filters[]
+  if (spec.filters?.trend_filters) {
+    for (const tf of spec.filters.trend_filters) tfs.add(tf.timeframe);
+  }
   return [...tfs];
 }
 

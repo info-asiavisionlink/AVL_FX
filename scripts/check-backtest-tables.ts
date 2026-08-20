@@ -1,6 +1,8 @@
 // scripts/check-backtest-tables.ts
 // Usage: npx tsx --env-file=.env.local scripts/check-backtest-tables.ts
 
+export {};
+
 async function main() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
