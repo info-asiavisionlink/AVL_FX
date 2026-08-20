@@ -56,6 +56,7 @@ export const ALLOWED_OPERATORS = [
   "ABOVE_SIGNAL", "BELOW_SIGNAL",
   "HISTOGRAM_POSITIVE", "HISTOGRAM_NEGATIVE",
   "REVERSAL",
+  "NEAR_EMA",
 ] as const;
 
 export const ALLOWED_SL_METHODS = [
@@ -108,19 +109,24 @@ const ExitConditionsSchema = z.object({
   }).optional(),
 }).optional();
 
-/** トレンドフィルター */
-const TrendFilterSchema = z.object({
+/** トレンドフィルター (単体) */
+const TrendFilterItemSchema = z.object({
   timeframe:  z.enum(ALLOWED_TIMEFRAMES),
   indicator:  z.enum(ALLOWED_INDICATORS),
   period:     z.number().int().min(1).max(500).optional(),
   direction:  z.enum(["BULLISH", "BEARISH", "NEUTRAL"]),
-}).optional();
+});
+
+/** トレンドフィルター (後方互換: optional wrapper) */
+const TrendFilterSchema = TrendFilterItemSchema.optional();
 
 /** フィルター */
 const FiltersSchema = z.object({
   max_spread_pips: z.number().min(0).max(20).optional(),
   sessions:        z.array(z.enum(ALLOWED_SESSIONS)).max(4).optional(),
   trend_filter:    TrendFilterSchema,
+  /** Phase 5-A: 複数トレンドフィルター (AND ロジック) — backward compatible */
+  trend_filters:   z.array(TrendFilterItemSchema).max(4).optional(),
   min_adx:         z.number().min(0).max(100).optional(),
 }).optional();
 

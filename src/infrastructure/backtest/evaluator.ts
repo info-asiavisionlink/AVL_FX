@@ -93,10 +93,18 @@ function inferDirectionFromConditions(
 }
 
 function determineDirection(spec: StrategySpec): Direction {
-  const trendDir = spec.filters?.trend_filter?.direction;
-  if (trendDir === "BULLISH") return "BUY";
-  if (trendDir === "BEARISH") return "SELL";
-  // NEUTRAL or no trend_filter → infer from entry conditions
+  // Phase 5-A: resolve effective trend filters (trend_filters[] takes precedence)
+  const filters = spec.filters;
+  if (filters) {
+    const effectiveFilters = resolveEffectiveTrendFilters(filters);
+    // Use the first non-NEUTRAL filter to determine direction
+    for (const tf of effectiveFilters) {
+      if (tf.direction === "BULLISH") return "BUY";
+      if (tf.direction === "BEARISH") return "SELL";
+    }
+    // All filters are NEUTRAL or none present → fall through to condition inference
+  }
+  // Infer from entry conditions when no directional trend filter exists
   return inferDirectionFromConditions(spec.entry_conditions.conditions);
 }
 
@@ -113,6 +121,29 @@ function getEMAValue(
   if (period === inds.params.ema1Period)        return inds.ema1[idx];
   if (period === inds.params.ema2Period)        return inds.ema2[idx];
   return undefined; // 該当する precomputed EMA なし
+}
+
+// ------------------------------------------------------------------
+// Pip normalization (Phase 5-A)
+// ------------------------------------------------------------------
+
+/**
+ * 1 pip のサイズを symbol から算出する。
+ *   EURUSD, GBPUSD 等の5桁通貨: 0.0001
+ *   USDJPY 等の JPY ペア:        0.01
+ *   XAUUSD / GOLD:               0.10
+ *   XAGUSD / SILVER:             0.01
+ *   US30/US500/US100/OIL/BRENT:  1.0 (index/commodity)
+ */
+export function getPipSize(symbol: string): number {
+  const s = symbol.toUpperCase();
+  if (s.includes("JPY"))                                  return 0.01;
+  if (s === "XAUUSD" || s === "GOLD")                    return 0.10;
+  if (s === "XAGUSD" || s === "SILVER")                  return 0.01;
+  if (s === "US30CASH" || s === "US500CASH" ||
+      s === "US100CASH" || s === "OILCASH" ||
+      s === "BRENTCASH")                                  return 1.0;
+  return 0.0001; // default FOREX (4/5 digit)
 }
 
 // ------------------------------------------------------------------
@@ -153,6 +184,24 @@ function evalTrendFilter(
   }
 
   return true; // 他インジケーターは実装対象外 (Phase 2-B)
+}
+
+/**
+ * Phase 5-A: 複数トレンドフィルターの正規化
+ *   - trend_filters[] が存在する場合はそちらを優先
+ *   - trend_filter (singular) のみの場合は 1 要素配列に変換
+ *   - どちらもなければ空配列（フィルターなし）
+ */
+function resolveEffectiveTrendFilters(
+  filters: NonNullable<StrategySpec["filters"]>,
+): TrendFilter[] {
+  if (filters.trend_filters && filters.trend_filters.length > 0) {
+    return filters.trend_filters as TrendFilter[];
+  }
+  if (filters.trend_filter) {
+    return [filters.trend_filter];
+  }
+  return [];
 }
 
 // ------------------------------------------------------------------
@@ -368,6 +417,7 @@ function evalCondition(
   evalTime: number,
   barsByTf: Record<string, Bar[]>,
   indsByTf: Record<string, PrecomputedIndicators>,
+  symbol:   string,
 ): boolean {
   const bars = barsByTf[cond.timeframe];
   const inds = indsByTf[cond.timeframe];
@@ -375,6 +425,17 @@ function evalCondition(
 
   const idx = getLastConfirmedBarIndex(bars, cond.timeframe, evalTime);
   if (idx < 0) return false;
+
+  // Phase 5-A: NEAR_EMA — direction-free proximity check
+  if (cond.operator === "NEAR_EMA") {
+    const emaVal = getEMAValue(inds, idx, cond.period);
+    if (emaVal === undefined) return false;
+    const threshold = cond.threshold;
+    if (threshold === undefined || threshold <= 0) return false;
+    const pip         = getPipSize(symbol);
+    const distancePips = Math.abs(bars[idx].close - emaVal) / pip;
+    return distancePips <= threshold;
+  }
 
   switch (cond.indicator) {
     case "RSI":
@@ -418,10 +479,14 @@ export function evaluateStrategy(ctx: EvaluationContext): SignalResult {
   const dir: "BUY" | "SELL" = rawDir;
 
   // 4. Trend filter (Look-ahead Bias 防止: 確定済み TF バーを使用)
-  const trendFilter = filters?.trend_filter;
-  if (trendFilter && trendFilter.direction !== "NEUTRAL") {
-    if (!evalTrendFilter(trendFilter, evaluationTime, barsByTimeframe, indicatorsByTimeframe)) {
-      return "SKIP";
+  //    Phase 5-A: 複数フィルターは AND ロジック (全て true で通過)
+  if (filters) {
+    const effectiveTrendFilters = resolveEffectiveTrendFilters(filters);
+    for (const tf of effectiveTrendFilters) {
+      if (tf.direction === "NEUTRAL") continue; // NEUTRAL は常に通過
+      if (!evalTrendFilter(tf, evaluationTime, barsByTimeframe, indicatorsByTimeframe)) {
+        return "SKIP";
+      }
     }
   }
 
@@ -438,9 +503,10 @@ export function evaluateStrategy(ctx: EvaluationContext): SignalResult {
   }
 
   // 6. Entry conditions
+  const symbol = spec.symbols[0] ?? "EURUSD";
   const { logic, conditions } = spec.entry_conditions;
   const results = conditions.map(c =>
-    evalCondition(c, dir, evaluationTime, barsByTimeframe, indicatorsByTimeframe)
+    evalCondition(c, dir, evaluationTime, barsByTimeframe, indicatorsByTimeframe, symbol)
   );
 
   const passed = logic === "AND"
