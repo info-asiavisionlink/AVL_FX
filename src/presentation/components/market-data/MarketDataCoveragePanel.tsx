@@ -1,7 +1,7 @@
 "use client";
 
 // =================================================================
-// Data Phase C/D — Market Data Coverage Panel
+// Data Phase C/D/G — Market Data Coverage Panel
 //
 // Read-only UI showing per-symbol/TF data coverage and sync job
 // status. No job creation, no engine changes.
@@ -11,10 +11,17 @@
 //   - Integrity badge per Symbol/TF row (HEALTHY/WARNING/CRITICAL)
 //   - RUN GAP AUDIT button (calls /api/market-data/gaps on demand only)
 //   - Gap Detail section with filter controls
+//
+// Phase G additions:
+//   - PRODUCTION HEALTH section at panel top
+//   - Overall badge (HEALTHY/DEGRADED/CRITICAL/UNKNOWN)
+//   - Gateway badge
+//   - Per-symbol EA status + TF status badges
+//   - /api/market-data/health polled in existing 30s cycle (lightweight)
 // =================================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RefreshCw, Database, CheckCircle2, Activity, AlertTriangle, ShieldCheck } from "lucide-react";
+import { RefreshCw, Database, CheckCircle2, Activity, AlertTriangle, ShieldCheck, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   getReadiness,
@@ -76,6 +83,40 @@ interface JobsResponse {
   jobs: SyncJob[];
 }
 
+// Phase G — Production Health types (mirror of /api/market-data/health response)
+interface PhaseGTimeframeHealth {
+  timeframe:          string;
+  status:             "LIVE" | "STALE" | "MARKET_CLOSED" | "NO_DATA" | "UNKNOWN";
+  latestConfirmedBar: string | null;
+  lagSeconds:         number | null;
+  marketStatus:       "OPEN" | "CLOSED" | "WEEKEND" | "HOLIDAY" | "UNKNOWN";
+}
+
+interface PhaseGSymbolHealth {
+  symbol:     string;
+  ea: {
+    status:   "ONLINE" | "STALE" | "OFFLINE" | "UNKNOWN";
+    lastSeen: string | null;
+  };
+  timeframes: PhaseGTimeframeHealth[];
+  sync: {
+    status:         string;
+    activeJobCount: number;
+    lastJobStatus:  string | null;
+  };
+  integrity: {
+    status:        "HEALTHY" | "WARNING" | "CRITICAL" | "UNKNOWN";
+    suspectedGaps: number;
+  };
+}
+
+interface ProductionHealthResponse {
+  overall:     "HEALTHY" | "DEGRADED" | "CRITICAL" | "UNKNOWN";
+  gateway:     { status: "ONLINE" | "OFFLINE" | "DEGRADED" | "UNKNOWN"; uptime?: number };
+  symbols:     PhaseGSymbolHealth[];
+  generatedAt: string;
+}
+
 // Phase D — Gap Audit types (mirror of API response)
 interface GapAuditResult {
   symbol:    string;
@@ -114,6 +155,36 @@ const JOB_STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   COMPLETED: { label: "COMPLETED", cls: "text-green-400  border-green-700  bg-green-900/20"  },
   FAILED:    { label: "FAILED",    cls: "text-red-400    border-red-700    bg-red-900/20"    },
   PAUSED:    { label: "PAUSED",    cls: "text-gray-400   border-gray-700   bg-gray-900/20"   },
+};
+
+// Phase G — Production Health badge configs
+const OVERALL_HEALTH_BADGE: Record<string, { label: string; cls: string }> = {
+  HEALTHY:  { label: "HEALTHY",  cls: "text-green-400  border-green-700  bg-green-900/20"  },
+  DEGRADED: { label: "DEGRADED", cls: "text-amber-400  border-amber-700  bg-amber-900/20"  },
+  CRITICAL: { label: "CRITICAL", cls: "text-red-400    border-red-700    bg-red-900/20"    },
+  UNKNOWN:  { label: "UNKNOWN",  cls: "text-gray-500   border-gray-700   bg-gray-900/20"   },
+};
+
+const EA_STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+  ONLINE:  { label: "EA ONLINE",  cls: "text-green-400  border-green-700  bg-green-900/20"  },
+  STALE:   { label: "EA STALE",   cls: "text-amber-400  border-amber-700  bg-amber-900/20"  },
+  OFFLINE: { label: "EA OFFLINE", cls: "text-red-400    border-red-700    bg-red-900/20"    },
+  UNKNOWN: { label: "EA UNKNOWN", cls: "text-gray-500   border-gray-700   bg-gray-900/20"   },
+};
+
+const TF_STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+  LIVE:          { label: "LIVE",     cls: "text-green-400  border-green-700  bg-green-900/20"  },
+  STALE:         { label: "STALE",    cls: "text-amber-400  border-amber-700  bg-amber-900/20"  },
+  MARKET_CLOSED: { label: "CLOSED",   cls: "text-blue-400   border-blue-700   bg-blue-900/20"   },
+  NO_DATA:       { label: "NO DATA",  cls: "text-gray-500   border-gray-700   bg-gray-900/20"   },
+  UNKNOWN:       { label: "?",        cls: "text-gray-700   border-gray-800   bg-gray-900/20"   },
+};
+
+const GW_STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+  ONLINE:  { label: "GW ONLINE",  cls: "text-green-400  border-green-700  bg-green-900/20"  },
+  OFFLINE: { label: "GW OFFLINE", cls: "text-red-400    border-red-700    bg-red-900/20"    },
+  DEGRADED:{ label: "GW DEGRADED",cls: "text-amber-400  border-amber-700  bg-amber-900/20"  },
+  UNKNOWN: { label: "GW UNKNOWN", cls: "text-gray-500   border-gray-700   bg-gray-900/20"   },
 };
 
 // Phase D — integrity status badge config
@@ -439,6 +510,121 @@ function SyncJobRow({ job }: { job: SyncJob }) {
 }
 
 // ------------------------------------------------------------------
+// Phase G — Production Health Section
+// ------------------------------------------------------------------
+
+function fmtUptime(seconds: number | undefined): string {
+  if (seconds === undefined) return "—";
+  if (seconds < 60)   return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+function ProductionHealthSection({ health }: { health: ProductionHealthResponse | null }) {
+  if (!health) {
+    return (
+      <div className="border border-[#0d1520] bg-[#060a12] p-4 shrink-0">
+        <div className="flex items-center gap-2 mb-3">
+          <Radio size={11} className="text-cyan-500/60" />
+          <span className="text-[8px] font-mono text-cyan-500/60 tracking-wider">PRODUCTION HEALTH</span>
+        </div>
+        <p className="text-[7.5px] font-mono text-gray-700">Loading health data...</p>
+      </div>
+    );
+  }
+
+  const overallBadge = OVERALL_HEALTH_BADGE[health.overall] ?? OVERALL_HEALTH_BADGE["UNKNOWN"]!;
+  const gwBadge      = GW_STATUS_BADGE[health.gateway.status] ?? GW_STATUS_BADGE["UNKNOWN"]!;
+
+  // Summary TF counts (across all symbols) — show only M5 and H1 for conciseness
+  const KEY_TFS = ["M5", "H1", "H4"];
+
+  return (
+    <div className="border border-[#0d1520] bg-[#060a12] p-4 space-y-3 shrink-0">
+      {/* Header */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Radio size={11} className="text-cyan-500/60" />
+        <span className="text-[8px] font-mono text-cyan-500/60 tracking-wider">PRODUCTION HEALTH</span>
+
+        {/* Overall + Gateway badges */}
+        <div className="flex items-center gap-1.5 ml-auto">
+          <span className={cn("text-[7.5px] font-mono px-1.5 py-0.5 border", overallBadge.cls)}>
+            {overallBadge.label}
+          </span>
+          <span className={cn("text-[7.5px] font-mono px-1.5 py-0.5 border", gwBadge.cls)}>
+            {gwBadge.label}
+          </span>
+          {health.gateway.uptime !== undefined && (
+            <span className="text-[6.5px] font-mono text-gray-700">
+              up {fmtUptime(health.gateway.uptime)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Per-symbol rows */}
+      {health.symbols.length === 0 ? (
+        <p className="text-[7.5px] font-mono text-gray-700">No symbols tracked yet.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {health.symbols.map(sym => {
+            const eaBadge = EA_STATUS_BADGE[sym.ea.status] ?? EA_STATUS_BADGE["UNKNOWN"]!;
+            const keyTFs  = sym.timeframes.filter(t => KEY_TFS.includes(t.timeframe));
+            return (
+              <div key={sym.symbol}
+                className="flex items-center gap-2 flex-wrap border border-[#080e18] bg-[#04060d] px-2.5 py-1.5"
+              >
+                {/* Symbol */}
+                <span className="text-[9px] font-mono font-bold text-gray-300 w-16 shrink-0">
+                  {sym.symbol}
+                </span>
+
+                {/* EA badge */}
+                <span className={cn("text-[7px] font-mono px-1 py-0.5 border shrink-0", eaBadge.cls)}>
+                  {eaBadge.label}
+                </span>
+
+                {/* Key TF badges */}
+                <div className="flex items-center gap-1 flex-wrap">
+                  {keyTFs.map(tf => {
+                    const tfBadge = TF_STATUS_BADGE[tf.status] ?? TF_STATUS_BADGE["UNKNOWN"]!;
+                    return (
+                      <span
+                        key={tf.timeframe}
+                        title={tf.lagSeconds !== null ? `lag: ${tf.lagSeconds}s` : tf.status}
+                        className={cn("text-[6.5px] font-mono px-1 py-0.5 border", tfBadge.cls)}
+                      >
+                        {tf.timeframe} {tfBadge.label}
+                      </span>
+                    );
+                  })}
+                </div>
+
+                {/* Lag for most important TF (M5) */}
+                {(() => {
+                  const m5 = sym.timeframes.find(t => t.timeframe === "M5");
+                  return m5?.lagSeconds !== null && m5?.lagSeconds !== undefined ? (
+                    <span className="text-[6px] font-mono text-gray-700 ml-auto">
+                      M5 lag: {m5.lagSeconds}s
+                    </span>
+                  ) : null;
+                })()}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Footer */}
+      <p className="text-[6.5px] font-mono text-gray-800 border-t border-[#0d1520] pt-2">
+        AUTO RECOVERY: MANUAL ONLY · Gap Audit: manual (RUN GAP AUDIT button below) ·
+        Generated: {new Date(health.generatedAt).toLocaleTimeString("en-US", { hour12: false })}
+      </p>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
 // Phase D — Gap Detail Section
 // ------------------------------------------------------------------
 
@@ -672,6 +858,9 @@ export function MarketDataCoveragePanel() {
   const [error,       setError]       = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
+  // Phase G — Production Health state (included in 30s polling, lightweight)
+  const [healthData, setHealthData] = useState<ProductionHealthResponse | null>(null);
+
   // Phase D — Gap Audit state (NOT included in 30s polling)
   const [auditMap,     setAuditMap]     = useState<AuditMap>(new Map());
   const [auditLoading, setAuditLoading] = useState<string | null>(null);
@@ -683,13 +872,15 @@ export function MarketDataCoveragePanel() {
     setLoading(true);
     setError(null);
     try {
-      const [statusRes, jobsRes] = await Promise.all([
+      const [statusRes, jobsRes, healthRes] = await Promise.all([
         fetch("/api/market-data/status"),
         fetch("/api/market-data/history-sync"),
+        fetch("/api/market-data/health"),
       ]);
 
       if (!statusRes.ok) throw new Error(`Status API: HTTP ${statusRes.status}`);
       if (!jobsRes.ok)   throw new Error(`Jobs API: HTTP ${jobsRes.status}`);
+      // Health API failure is non-fatal: just don't update healthData
 
       const [sData, jData] = await Promise.all([
         statusRes.json() as Promise<StatusResponse>,
@@ -699,6 +890,12 @@ export function MarketDataCoveragePanel() {
       setStatusData(sData);
       setJobsData(jData);
       setLastRefresh(new Date());
+
+      // Phase G health (non-fatal)
+      if (healthRes.ok) {
+        const hData = await healthRes.json() as ProductionHealthResponse;
+        setHealthData(hData);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fetch error");
     } finally {
@@ -811,6 +1008,9 @@ export function MarketDataCoveragePanel() {
           <span className="text-[8px] font-mono text-red-400">{error}</span>
         </div>
       )}
+
+      {/* ── Phase G — Production Health ──────────────────────────── */}
+      <ProductionHealthSection health={healthData} />
 
       {/* ── Summary cards ────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">

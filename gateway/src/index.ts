@@ -289,6 +289,9 @@ let lastTickTs:      number = 0;
 let lastSymbolTs:    number = 0;
 let lastIndicatorTs: number = 0;
 
+/** Per-symbol heartbeat tracking (symbol → ISO timestamp of last heartbeat) */
+const heartbeatStore = new Map<string, string>();
+
 // -----------------------------------------------------------------
 // WebSocket サーバー /ws
 // -----------------------------------------------------------------
@@ -450,8 +453,12 @@ app.post("/account", auth, (req, res) => {
   res.json({ ok: true });
 });
 
-/** ハートビート */
+/** ハートビート — per-symbol last-seen tracking (Data Phase G) */
 app.post("/heartbeat", auth, (req, res) => {
+  const body = req.body as { symbol?: string; serverTime?: number };
+  if (body.symbol) {
+    heartbeatStore.set(body.symbol.toUpperCase(), new Date().toISOString());
+  }
   broadcast({ type: "HEARTBEAT", data: req.body, ts: Date.now() });
   res.json({ ok: true });
 });
@@ -616,6 +623,9 @@ app.post("/orders", (req, res) => {
 /** ヘルスチェック */
 app.get("/health", (_req, res) => {
   const mem = process.memoryUsage();
+  // Convert heartbeatStore Map → plain object for JSON serialisation
+  const heartbeats: Record<string, string> = {};
+  heartbeatStore.forEach((iso, sym) => { heartbeats[sym] = iso; });
   res.json({
     status:           "ok",
     version:          "3.0",
@@ -633,6 +643,8 @@ app.get("/health", (_req, res) => {
     lastSymbolTs,
     lastIndicatorTs,
     memoryMB:         Math.round(mem.rss / 1024 / 1024),
+    /** Data Phase G: per-symbol heartbeat last-seen (ISO) */
+    heartbeats,
   });
 });
 
