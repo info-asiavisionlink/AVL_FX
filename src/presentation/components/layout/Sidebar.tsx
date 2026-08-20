@@ -7,7 +7,7 @@ import { useConnectionStore } from "@/application/stores/connectionStore";
 import {
   LayoutDashboard, BarChart2, Globe, CalendarDays,
   Newspaper, Briefcase, History, Settings,
-  ScrollText, Cable, X, Bot,
+  ScrollText, Cable, X, Bot, DatabaseZap,
 } from "lucide-react";
 
 // NEON GREEN accent
@@ -21,10 +21,11 @@ export const NAV = [
   { href: "/chart",     icon: BarChart2,       label: "CHART",     group: 1 },
   { href: "/calendar",  icon: CalendarDays,    label: "CALENDAR",  group: 1 },
   { href: "/news",      icon: Newspaper,       label: "NEWS",      group: 1 },
-  { href: "/positions", icon: Briefcase,       label: "POSITIONS", group: 2 },
-  { href: "/history",   icon: History,         label: "HISTORY",   group: 2 },
-  { href: "/logs",      icon: ScrollText,      label: "SYS LOGS",  group: 2 },
-  { href: "/settings",  icon: Settings,        label: "SETTINGS",  group: 2 },
+  { href: "/positions",    icon: Briefcase,    label: "POSITIONS", group: 2 },
+  { href: "/history",      icon: History,      label: "HISTORY",   group: 2 },
+  { href: "/market-data",  icon: DatabaseZap,  label: "DATA",      group: 2 },
+  { href: "/logs",         icon: ScrollText,   label: "SYS LOGS",  group: 2 },
+  { href: "/settings",     icon: Settings,     label: "SETTINGS",  group: 2 },
 ];
 
 interface SidebarProps {
