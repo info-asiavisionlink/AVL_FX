@@ -85,7 +85,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   // ── Audit ─────────────────────────────────────────────────────
 
-  const allGaps = detectGapCandidates(bars, timeframe);
+  const allGaps = detectGapCandidates(bars, timeframe, symbol);
   const summary = summarizeGaps(allGaps);
 
   // Filter: by default return only SUSPECTED_GAP for UI efficiency.

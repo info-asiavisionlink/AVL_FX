@@ -2,16 +2,20 @@
 // Market Data Gap Detection — Pure Functions
 //
 // Classifies time gaps between consecutive bars as NORMAL, WEEKEND,
-// MARKET_CLOSED, or SUSPECTED_GAP. All functions are pure: no I/O,
-// no side effects, deterministic output.
+// HOLIDAY_CLOSED, MARKET_CLOSED, or SUSPECTED_GAP. All functions are
+// pure: no I/O, no side effects, deterministic output.
 //
 // Design principle: no hard-coded UTC clock times (DST-safe).
 // Weekend detection uses day-of-week + duration heuristics only.
+// Holiday detection uses calendar windows derived from real bar data.
 // =================================================================
+
+import { getHolidayContext } from "./marketSchedule";
 
 export type GapClassification =
   | "NORMAL"
   | "WEEKEND"
+  | "HOLIDAY_CLOSED"   // Phase E — known holiday closure
   | "MARKET_CLOSED"
   | "SUSPECTED_GAP";
 
@@ -20,19 +24,27 @@ export type GapSeverity = "INFO" | "WARNING" | "CRITICAL";
 export type IntegrityStatus = "HEALTHY" | "WARNING" | "CRITICAL" | "NO_DATA";
 
 export interface GapCandidate {
-  from: string;           // ISO8601 UTC — current bar の time_utc
-  to: string;             // ISO8601 UTC — next bar の time_utc
+  from: string;                // ISO8601 UTC — current bar の time_utc
+  to: string;                  // ISO8601 UTC — next bar の time_utc
   durationSeconds: number;
-  missingBars: number;
+  rawMissingBars?: number;     // Phase E: total bars absent between from and to
+  missingBars: number;         // backward-compatible: equals rawMissingBars when produced by detectGapCandidates
+  unexpectedMissingBars?: number; // Phase E: 0 for expected closures; equals rawMissingBars for SUSPECTED_GAP
   classification: GapClassification;
   severity: GapSeverity;
+  holidayName?: string | null; // set only when classification === "HOLIDAY_CLOSED"
 }
 
 export interface GapSummary {
   candidateGaps: number;
-  normalClosures: number;
+  normalClosures: number;       // backward-compat: weekendClosures + holidayClosures + marketClosures
+  weekendClosures: number;
+  holidayClosures: number;
+  marketClosures: number;
   suspectedGaps: number;
-  missingBars: number;
+  rawMissingBars: number;       // total missing bars across ALL gap types
+  missingBars: number;          // backward-compat alias: unexpectedMissingBars
+  unexpectedMissingBars: number; // missing bars in SUSPECTED_GAP only
   warningCount: number;
   criticalCount: number;
   integrityStatus: IntegrityStatus;
@@ -120,14 +132,19 @@ function utcDayOfWeek(isoString: string): number {
  * Priority order:
  * 1. No missing bars → NORMAL
  * 2. Friday→Monday + weekend duration range → WEEKEND
- * 3. Not weekend + moderate duration → MARKET_CLOSED (holiday/early close)
- * 4. Everything else with missing bars → SUSPECTED_GAP
+ * 3. Holiday window match (calendar-aware) → HOLIDAY_CLOSED
+ * 4. Not weekend + moderate duration → MARKET_CLOSED (holiday/early close)
+ * 5. Everything else with missing bars → SUSPECTED_GAP
+ *
+ * @param symbol  Optional. Used for holiday calendar lookup.
+ *                Defaults to "EURUSD" for backward compatibility.
  */
 export function classifyGap(
   currentTimeISO: string,
   nextTimeISO: string,
   durationSeconds: number,
   missingBars: number,
+  symbol = "EURUSD",
 ): GapClassification {
   if (missingBars === 0) return "NORMAL";
 
@@ -150,6 +167,15 @@ export function classifyGap(
     return "WEEKEND";
   }
 
+  // Phase E — Holiday closure: calendar-aware check.
+  // Must come before MARKET_CLOSED so that holiday gaps exceeding
+  // MARKET_CLOSED_MAX_S (e.g. 36h Christmas/New Year closures) are
+  // correctly classified rather than falling into SUSPECTED_GAP.
+  const holidayCtx = getHolidayContext(currentTimeISO, nextTimeISO, durationSeconds, symbol);
+  if (holidayCtx.isHolidayClosure) {
+    return "HOLIDAY_CLOSED";
+  }
+
   // Market closure (holiday, bank holiday, early close):
   // moderate gap that is NOT in the weekend pattern
   if (
@@ -170,6 +196,7 @@ export function classifyGap(
 /**
  * Returns severity for a gap based on classification and missing bar
  * count. Only SUSPECTED_GAP gaps can be WARNING or CRITICAL.
+ * WEEKEND, HOLIDAY_CLOSED, and MARKET_CLOSED are always INFO.
  */
 export function getGapSeverity(
   classification: GapClassification,
@@ -188,10 +215,10 @@ export function getGapSeverity(
 /**
  * Derives overall data integrity status from a set of gap candidates.
  *
- * - No gaps at all (empty array)     → HEALTHY
- * - NORMAL/WEEKEND/MARKET_CLOSED     → HEALTHY (no suspected issues)
- * - Any SUSPECTED_GAP + no CRITICAL  → WARNING
- * - Any CRITICAL severity            → CRITICAL
+ * - No gaps at all (empty array)                      → HEALTHY
+ * - NORMAL/WEEKEND/HOLIDAY_CLOSED/MARKET_CLOSED only  → HEALTHY
+ * - Any SUSPECTED_GAP + no CRITICAL                   → WARNING
+ * - Any CRITICAL severity                             → CRITICAL
  */
 export function getIntegrityStatus(gaps: GapCandidate[]): IntegrityStatus {
   if (gaps.length === 0) return "HEALTHY";
@@ -213,10 +240,14 @@ export function getIntegrityStatus(gaps: GapCandidate[]): IntegrityStatus {
  *
  * Caller must ensure bars are sorted ascending by time_utc.
  * Duplicate timestamps are treated as 0-gap (NORMAL).
+ *
+ * @param symbol  Optional. Used for holiday calendar lookup.
+ *                Defaults to "EURUSD" for backward compatibility.
  */
 export function detectGapCandidates(
   bars: ReadonlyArray<{ time_utc: string }>,
   timeframe: string,
+  symbol = "EURUSD",
 ): GapCandidate[] {
   const tfSec = getTimeframeSeconds(timeframe);
   if (tfSec === 0 || bars.length < 2) return [];
@@ -234,22 +265,36 @@ export function detectGapCandidates(
     // Skip out-of-order or duplicate timestamps
     if (durationS <= 0) continue;
 
-    const missingBars    = calculateMissingBars(current.time_utc, next.time_utc, tfSec);
-    const classification = classifyGap(current.time_utc, next.time_utc, durationS, missingBars);
-    const severity       = getGapSeverity(classification, missingBars);
+    const rawMissingBars = calculateMissingBars(current.time_utc, next.time_utc, tfSec);
+    const classification = classifyGap(current.time_utc, next.time_utc, durationS, rawMissingBars, symbol);
+    const severity       = getGapSeverity(classification, rawMissingBars);
+
+    // Holiday name is only available from getHolidayContext; re-call it when needed.
+    let holidayName: string | null | undefined;
+    if (classification === "HOLIDAY_CLOSED") {
+      const ctx = getHolidayContext(current.time_utc, next.time_utc, durationS, symbol);
+      holidayName = ctx.holidayName;
+    }
+
+    // unexpectedMissingBars: only count bars missing in SUSPECTED_GAP
+    const unexpectedMissingBars =
+      classification === "SUSPECTED_GAP" ? rawMissingBars : 0;
 
     gaps.push({
-      from:            current.time_utc,
-      to:              next.time_utc,
-      durationSeconds: durationS,
-      missingBars,
+      from:                 current.time_utc,
+      to:                   next.time_utc,
+      durationSeconds:      durationS,
+      rawMissingBars,
+      missingBars:          rawMissingBars, // backward-compat alias
+      unexpectedMissingBars,
       classification,
       severity,
+      ...(classification === "HOLIDAY_CLOSED" ? { holidayName } : {}),
     });
   }
 
   // Only return entries where there is actually a gap
-  return gaps.filter(g => g.missingBars > 0);
+  return gaps.filter(g => (g.rawMissingBars ?? g.missingBars) > 0);
 }
 
 // ------------------------------------------------------------------
@@ -258,37 +303,54 @@ export function detectGapCandidates(
 
 /**
  * Produces a summary object from a list of detected gap candidates.
- * candidateGaps = total number of gaps (with missing bars).
- * normalClosures = WEEKEND + MARKET_CLOSED (expected closures).
- * suspectedGaps  = SUSPECTED_GAP count.
- * missingBars    = total missing bars across all SUSPECTED_GAP entries.
+ *
+ * normalClosures = weekendClosures + holidayClosures + marketClosures (backward compat).
+ * missingBars    = unexpectedMissingBars (backward compat: SUSPECTED_GAP only).
  */
 export function summarizeGaps(gaps: GapCandidate[]): GapSummary {
-  let normalClosures = 0;
-  let suspectedGaps  = 0;
-  let missingBars    = 0;
-  let warningCount   = 0;
-  let criticalCount  = 0;
+  let weekendClosures = 0;
+  let holidayClosures = 0;
+  let marketClosures  = 0;
+  let suspectedGaps   = 0;
+  let rawMissingBars  = 0;
+  let unexpectedMissingBars = 0;
+  let warningCount    = 0;
+  let criticalCount   = 0;
 
   for (const g of gaps) {
-    if (g.classification === "WEEKEND" || g.classification === "MARKET_CLOSED") {
-      normalClosures++;
+    // rawMissingBars may be undefined in legacy GapCandidate objects
+    // constructed before Phase E — fall back to missingBars for compat.
+    const bars = g.rawMissingBars ?? g.missingBars;
+    rawMissingBars += bars;
+
+    if (g.classification === "WEEKEND") {
+      weekendClosures++;
+    } else if (g.classification === "HOLIDAY_CLOSED") {
+      holidayClosures++;
+    } else if (g.classification === "MARKET_CLOSED") {
+      marketClosures++;
     } else if (g.classification === "SUSPECTED_GAP") {
       suspectedGaps++;
-      missingBars += g.missingBars;
+      unexpectedMissingBars += bars;
       if (g.severity === "WARNING")  warningCount++;
       if (g.severity === "CRITICAL") criticalCount++;
     }
-    // NORMAL gaps are filtered before this point (detectGapCandidates only returns missingBars > 0)
+    // NORMAL gaps are filtered before this point (detectGapCandidates only returns rawMissingBars > 0)
   }
 
   const integrityStatus = getIntegrityStatus(gaps);
+  const normalClosures  = weekendClosures + holidayClosures + marketClosures;
 
   return {
-    candidateGaps:   gaps.length,
+    candidateGaps: gaps.length,
     normalClosures,
+    weekendClosures,
+    holidayClosures,
+    marketClosures,
     suspectedGaps,
-    missingBars,
+    rawMissingBars,
+    missingBars: unexpectedMissingBars,  // backward-compat alias
+    unexpectedMissingBars,
     warningCount,
     criticalCount,
     integrityStatus,

@@ -124,12 +124,13 @@ const INTEGRITY_BADGE: Record<IntegrityStatus, { label: string; cls: string }> =
   NO_DATA:  { label: "NO DATA",  cls: "text-gray-500   border-gray-700   bg-gray-900/20"   },
 };
 
-// Phase D — gap type badge
+// Phase D/E — gap type badge
 const GAP_CLASS_BADGE: Record<string, { label: string; cls: string }> = {
-  NORMAL:        { label: "NORMAL",       cls: "text-gray-500  border-gray-800 bg-gray-900/20"  },
-  WEEKEND:       { label: "WEEKEND",      cls: "text-blue-400  border-blue-800 bg-blue-900/20"  },
-  MARKET_CLOSED: { label: "MKT CLOSED",  cls: "text-violet-400 border-violet-800 bg-violet-900/20" },
-  SUSPECTED_GAP: { label: "SUSPECTED",   cls: "text-red-400   border-red-800  bg-red-900/20"   },
+  NORMAL:         { label: "NORMAL",      cls: "text-gray-500   border-gray-800   bg-gray-900/20"    },
+  WEEKEND:        { label: "WEEKEND",     cls: "text-blue-400   border-blue-800   bg-blue-900/20"    },
+  HOLIDAY_CLOSED: { label: "HOLIDAY",     cls: "text-purple-400 border-purple-800 bg-purple-900/20"  },
+  MARKET_CLOSED:  { label: "MKT CLOSED", cls: "text-violet-400 border-violet-800 bg-violet-900/20"  },
+  SUSPECTED_GAP:  { label: "SUSPECTED",  cls: "text-red-400    border-red-800    bg-red-900/20"     },
 };
 
 const GAP_SEVERITY_CLS: Record<string, string> = {
@@ -441,7 +442,7 @@ function SyncJobRow({ job }: { job: SyncJob }) {
 // Phase D — Gap Detail Section
 // ------------------------------------------------------------------
 
-type GapFilter = "SUSPECTED_GAP" | "ALL" | "WEEKEND" | "MARKET_CLOSED";
+type GapFilter = "SUSPECTED_GAP" | "ALL" | "WEEKEND" | "HOLIDAY_CLOSED" | "MARKET_CLOSED";
 
 function GapDetailSection({
   auditMap,
@@ -462,7 +463,9 @@ function GapDetailSection({
   // Aggregate suspicious gaps across all audited symbol/TFs
   const totalSuspected = allAudits.reduce((s, a) => s + a.summary.suspectedGaps, 0);
   const totalCritical  = allAudits.reduce((s, a) => s + a.summary.criticalCount, 0);
-  const totalMissing   = allAudits.reduce((s, a) => s + a.summary.missingBars, 0);
+  const totalMissing   = allAudits.reduce((s, a) => s + (a.summary.unexpectedMissingBars ?? a.summary.missingBars), 0);
+  const totalHoliday   = allAudits.reduce((s, a) => s + (a.summary.holidayClosures ?? 0), 0);
+  const totalWeekend   = allAudits.reduce((s, a) => s + (a.summary.weekendClosures ?? 0), 0);
 
   const isAuditRunning = auditLoading !== null;
 
@@ -497,9 +500,9 @@ function GapDetailSection({
 
       {/* Summary bar */}
       {allAudits.length > 0 && (
-        <div className="px-4 grid grid-cols-3 gap-2">
+        <div className="px-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="border border-[#0d1520] bg-[#04060d] p-2">
-            <p className="text-[7px] font-mono text-gray-700 mb-0.5">SUSPECTED GAPS</p>
+            <p className="text-[7px] font-mono text-gray-700 mb-0.5">UNEXPECTED GAPS</p>
             <p className={cn("text-sm font-mono font-bold", totalSuspected > 0 ? "text-amber-400" : "text-green-400")}>
               {totalSuspected}
             </p>
@@ -511,9 +514,18 @@ function GapDetailSection({
             </p>
           </div>
           <div className="border border-[#0d1520] bg-[#04060d] p-2">
-            <p className="text-[7px] font-mono text-gray-700 mb-0.5">MISSING BARS</p>
+            <p className="text-[7px] font-mono text-gray-700 mb-0.5">UNEXPECTED MISSING</p>
             <p className={cn("text-sm font-mono font-bold", totalMissing > 0 ? "text-red-400" : "text-green-400")}>
               {totalMissing}
+            </p>
+          </div>
+          <div className="border border-[#0d1520] bg-[#04060d] p-2">
+            <p className="text-[7px] font-mono text-gray-700 mb-0.5">EXPECTED CLOSURES</p>
+            <p className="text-sm font-mono font-bold text-gray-400">
+              {totalWeekend + totalHoliday}
+            </p>
+            <p className="text-[6px] font-mono text-gray-700 mt-0.5">
+              {totalWeekend}W / {totalHoliday}H
             </p>
           </div>
         </div>
@@ -524,9 +536,10 @@ function GapDetailSection({
         <div className="mx-4 flex items-start gap-1.5 border border-amber-800/40 bg-amber-900/10 px-2 py-1.5">
           <AlertTriangle size={10} className="text-amber-500 mt-0.5 shrink-0" />
           <span className="text-[7.5px] font-mono text-amber-500/80">
-            {totalSuspected} suspected gap{totalSuspected !== 1 ? "s" : ""} detected
-            {totalMissing > 0 ? ` · ${totalMissing} missing bars` : ""}.
+            {totalSuspected} unexpected gap{totalSuspected !== 1 ? "s" : ""} detected
+            {totalMissing > 0 ? ` · ${totalMissing} unexpected missing bars` : ""}.
             {totalCritical > 0 ? ` ${totalCritical} CRITICAL.` : ""}
+            {totalHoliday > 0 ? ` (${totalHoliday} holiday closure${totalHoliday !== 1 ? "s" : ""} correctly classified)` : ""}
             {" "}Backtest accuracy may be affected. Consider running a BACKFILL sync.
           </span>
         </div>
@@ -543,7 +556,7 @@ function GapDetailSection({
           {/* Filter controls */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[7px] font-mono text-gray-700">SHOW:</span>
-            {(["SUSPECTED_GAP", "ALL", "WEEKEND", "MARKET_CLOSED"] as GapFilter[]).map(f => (
+            {(["SUSPECTED_GAP", "ALL", "WEEKEND", "HOLIDAY_CLOSED", "MARKET_CLOSED"] as GapFilter[]).map(f => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
@@ -554,7 +567,7 @@ function GapDetailSection({
                     : "border-[#0d1520] text-gray-600 hover:border-gray-700 hover:text-gray-500",
                 )}
               >
-                {f === "SUSPECTED_GAP" ? "SUSPECTED" : f === "ALL" ? "ALL GAPS" : f.replace("_", " ")}
+                {f === "SUSPECTED_GAP" ? "SUSPECTED" : f === "ALL" ? "ALL GAPS" : f === "HOLIDAY_CLOSED" ? "HOLIDAY" : f.replace("_", " ")}
               </button>
             ))}
           </div>
@@ -567,10 +580,10 @@ function GapDetailSection({
               ? audit.gaps.filter(g => g.classification === "SUSPECTED_GAP")
               : audit.gaps.filter(g => g.classification === filter);
 
-            // For WEEKEND/MARKET_CLOSED, re-fetch all=1 would be needed.
+            // For WEEKEND/HOLIDAY_CLOSED/MARKET_CLOSED, re-fetch all=1 would be needed.
             // Currently gaps array from API defaults to SUSPECTED only,
             // so show a hint when filtering for other types.
-            const needsAllData = (filter === "WEEKEND" || filter === "MARKET_CLOSED") && displayGaps.length === 0;
+            const needsAllData = (filter === "WEEKEND" || filter === "HOLIDAY_CLOSED" || filter === "MARKET_CLOSED") && displayGaps.length === 0;
             const intBadge = INTEGRITY_BADGE[audit.summary.integrityStatus];
 
             return (
@@ -589,12 +602,12 @@ function GapDetailSection({
                 {needsAllData ? (
                   <div className="px-3 py-2">
                     <p className="text-[7px] font-mono text-gray-700">
-                      Re-run audit with &quot;all=1&quot; query to view {filter.replace("_", " ")} gaps.
+                      Re-run audit with &quot;all=1&quot; query to view {filter === "HOLIDAY_CLOSED" ? "holiday" : filter.replace("_", " ").toLowerCase()} gaps.
                     </p>
                   </div>
                 ) : displayGaps.length === 0 ? (
                   <div className="px-3 py-2">
-                    <p className="text-[7px] font-mono text-gray-600">No {filter === "SUSPECTED_GAP" ? "suspected" : filter.toLowerCase()} gaps found.</p>
+                    <p className="text-[7px] font-mono text-gray-600">No {filter === "SUSPECTED_GAP" ? "suspected" : filter === "HOLIDAY_CLOSED" ? "holiday" : filter.toLowerCase()} gaps found.</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -606,6 +619,7 @@ function GapDetailSection({
                           <th className="text-right px-2 py-1 text-gray-700">DURATION</th>
                           <th className="text-right px-2 py-1 text-gray-700">MISSING</th>
                           <th className="text-left px-2 py-1 text-gray-700">TYPE</th>
+                          <th className="text-left px-2 py-1 text-gray-700">REASON</th>
                           <th className="text-right px-3 py-1 text-gray-700">SEVERITY</th>
                         </tr>
                       </thead>
@@ -613,16 +627,20 @@ function GapDetailSection({
                         {displayGaps.map((g, i) => {
                           const classBadge = GAP_CLASS_BADGE[g.classification] ?? GAP_CLASS_BADGE["SUSPECTED_GAP"]!;
                           const sevCls = GAP_SEVERITY_CLS[g.severity] ?? "text-gray-500";
+                          const unexpectedMissing = (g as { unexpectedMissingBars?: number }).unexpectedMissingBars ?? g.missingBars;
                           return (
                             <tr key={i} className="border-b border-[#080e18] last:border-0">
                               <td className="px-3 py-1.5 text-gray-500">{formatDate(g.from)} {formatTime(g.from)}</td>
                               <td className="px-2 py-1.5 text-gray-500">{formatDate(g.to)} {formatTime(g.to)}</td>
                               <td className="px-2 py-1.5 text-right text-gray-500">{fmtDuration(g.durationSeconds)}</td>
-                              <td className="px-2 py-1.5 text-right text-gray-400">{g.missingBars}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-400">{unexpectedMissing}</td>
                               <td className="px-2 py-1.5">
                                 <span className={cn("inline-block text-[6.5px] px-1 py-0.5 border", classBadge.cls)}>
                                   {classBadge.label}
                                 </span>
+                              </td>
+                              <td className="px-2 py-1.5 text-gray-700">
+                                {(g as { holidayName?: string | null }).holidayName ?? "—"}
                               </td>
                               <td className={cn("px-3 py-1.5 text-right font-semibold", sevCls)}>
                                 {g.severity}
