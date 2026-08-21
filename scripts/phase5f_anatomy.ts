@@ -8,6 +8,9 @@
  * Usage: npx tsx --env-file=.env.local scripts/phase5f_anatomy.ts
  */
 
+// Make this file a proper ES module to avoid global-scope conflicts with other scripts
+export {};
+
 // ── Config ──────────────────────────────────────────────────────────
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
