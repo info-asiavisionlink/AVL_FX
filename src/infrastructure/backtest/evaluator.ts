@@ -109,6 +109,59 @@ function determineDirection(spec: StrategySpec): Direction {
 }
 
 // ------------------------------------------------------------------
+// Bidirectional condition classifier
+//
+// Used when direction = AMBIGUOUS. Classifies each condition into the
+// direction group it naturally belongs to, using MOMENTUM semantics:
+//   RSI ABOVE 50  → BUY  (momentum above neutral line)
+//   RSI BELOW 50  → SELL (momentum below neutral line)
+//   RSI ABOVE 70+ → SELL (overbought reversal)
+//   RSI BELOW 30- → BUY  (oversold reversal)
+//
+// This differs from inferDirectionFromConditions (reversal semantics)
+// and is only applied during bidirectional evaluation.
+// ------------------------------------------------------------------
+
+type ConditionDirection = "BUY" | "SELL" | "NEUTRAL";
+
+function getConditionDirection(c: StrategySpec["entry_conditions"]["conditions"][number]): ConditionDirection {
+  const op  = c.operator;
+  const thr = c.threshold ?? 50;
+
+  switch (c.indicator) {
+    case "EMA":
+    case "SMA":
+      if (op === "PRICE_ABOVE" || op === "BULLISH_CROSS" || op === "NEAR_EMA") return "BUY";
+      if (op === "PRICE_BELOW" || op === "BEARISH_CROSS")                       return "SELL";
+      return "NEUTRAL";
+
+    case "RSI":
+    case "STOCHASTIC":
+      if (op === "CROSS_UP")                  return "BUY";
+      if (op === "CROSS_DOWN")                return "SELL";
+      // Momentum: ABOVE neutral (≤50) = bullish, ABOVE overbought (>50) = bearish
+      if (op === "ABOVE") return thr <= 50 ? "BUY" : "SELL";
+      // Momentum: BELOW neutral (≥50) = bearish, BELOW oversold (<50) = bullish
+      if (op === "BELOW") return thr >= 50 ? "SELL" : "BUY";
+      if (op === "REVERSAL") return thr <= 50 ? "BUY" : "SELL";
+      return "NEUTRAL";
+
+    case "MACD":
+      if (op === "ABOVE_SIGNAL" || op === "HISTOGRAM_POSITIVE") return "BUY";
+      if (op === "BELOW_SIGNAL" || op === "HISTOGRAM_NEGATIVE") return "SELL";
+      return "NEUTRAL";
+
+    case "BOLLINGER_BANDS":
+      if (op === "PRICE_BELOW") return "BUY";   // below lower band = oversold
+      if (op === "PRICE_ABOVE") return "SELL";  // above upper band = overbought
+      return "NEUTRAL";
+
+    default:
+      return "NEUTRAL"; // ADX, PRICE_ACTION, MARKET_STRUCTURE 等
+  }
+}
+
+// ------------------------------------------------------------------
 // EMA value lookup: period → ema1 or ema2
 // ------------------------------------------------------------------
 
@@ -475,7 +528,42 @@ export function evaluateStrategy(ctx: EvaluationContext): SignalResult {
 
   // 3. Direction determination
   const rawDir = determineDirection(spec);
-  if (rawDir === "AMBIGUOUS") return "SKIP";
+  const symbol = spec.symbols[0] ?? "EURUSD";
+  const { logic, conditions } = spec.entry_conditions;
+
+  // AMBIGUOUS: bidirectional strategy (e.g. LONG on EMA↑+RSI>50, SHORT on EMA↓+RSI<50)
+  // Evaluate each direction independently using condition direction classification.
+  if (rawDir === "AMBIGUOUS") {
+    // Apply min_adx (symmetric — strength filter applies to both directions)
+    if (filters?.min_adx !== undefined) {
+      const mainTf = spec.timeframes[0];
+      const mBars  = barsByTimeframe[mainTf];
+      const mInds  = indicatorsByTimeframe[mainTf];
+      if (!mBars || !mInds) return "SKIP";
+      const idx    = getLastConfirmedBarIndex(mBars, mainTf, evaluationTime);
+      if (idx < 0) return "SKIP";
+      const adxVal = mInds.adx[idx]?.adx;
+      if (adxVal === undefined || adxVal < filters.min_adx) return "SKIP";
+    }
+
+    // Try BUY, then SELL
+    for (const dir of ["BUY", "SELL"] as const) {
+      // Filter to direction-appropriate conditions (own direction + neutral)
+      const dirConds = conditions.filter(c => {
+        const cd = getConditionDirection(c);
+        return cd === dir || cd === "NEUTRAL";
+      });
+      if (dirConds.length === 0) continue;
+
+      const results = dirConds.map(c =>
+        evalCondition(c, dir, evaluationTime, barsByTimeframe, indicatorsByTimeframe, symbol)
+      );
+      const passed = logic === "AND" ? results.every(Boolean) : results.some(Boolean);
+      if (passed) return dir;
+    }
+    return "SKIP";
+  }
+
   const dir: "BUY" | "SELL" = rawDir;
 
   // 4. Trend filter (Look-ahead Bias 防止: 確定済み TF バーを使用)
@@ -503,8 +591,6 @@ export function evaluateStrategy(ctx: EvaluationContext): SignalResult {
   }
 
   // 6. Entry conditions
-  const symbol = spec.symbols[0] ?? "EURUSD";
-  const { logic, conditions } = spec.entry_conditions;
   const results = conditions.map(c =>
     evalCondition(c, dir, evaluationTime, barsByTimeframe, indicatorsByTimeframe, symbol)
   );
