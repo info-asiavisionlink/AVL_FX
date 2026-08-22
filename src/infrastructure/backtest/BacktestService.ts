@@ -3,8 +3,9 @@
 //
 // Supabase bar_data → BacktestEngine → BacktestReporter → 保存
 //
-// 現在は API Route 内で同期実行。
-// 将来は Railway Worker から呼び出せるよう Service Layer として設計。
+// runBacktestCore:   DB非依存コア（Preview Backtest用）
+// runBacktestJob:    正式Strategyの Backtest Job 実行
+// promotePreviewBacktest: Preview結果を正式DB記録へ昇格
 // =================================================================
 
 import { createAdminClient }  from "@/infrastructure/supabase/admin";
@@ -14,6 +15,7 @@ import type { Bar }           from "@/infrastructure/analysis/types";
 import { runBacktest }        from "./BacktestEngine";
 import { generateReport, type BacktestReport } from "./BacktestReporter";
 import { getSessionsAtTime }  from "./timeframe";
+import type { BacktestTrade } from "./PositionManager";
 
 // ------------------------------------------------------------------
 // Constants
@@ -58,15 +60,47 @@ export interface GetLatestResult {
 }
 
 // ------------------------------------------------------------------
+// TradeForPromotion — Preview Backtest の trade を DB 昇格に使う型
+// (client → server の JSON 境界を越えるため plain object)
+// ------------------------------------------------------------------
+
+export interface TradeForPromotion {
+  symbol:        string;
+  timeframe:     string;
+  direction:     string;
+  entryTime:     number;   // Unix ms
+  entryPrice:    number;
+  exitTime:      number;
+  exitPrice:     number;
+  sl:            number;
+  tp:            number;
+  lot:           number;
+  pips:          number;
+  result:        string;
+  exitReason:    string;
+  durationMin:   number;
+  spreadPips:    number;
+  slippagePips:  number;
+  entryBarIdx:   number;
+  exitBarIdx:    number;
+}
+
+// runBacktestCore の戻り値
+export interface RunBacktestCoreResult {
+  report:   BacktestReport;
+  trades:   BacktestTrade[];
+  barCount: number;
+  warnings: string[];
+}
+
+// ------------------------------------------------------------------
 // Helper: collect all timeframes from spec
 // ------------------------------------------------------------------
 
 function collectTimeframes(spec: StrategySpec): string[] {
   const tfs = new Set<string>(spec.timeframes);
   for (const c of spec.entry_conditions.conditions) tfs.add(c.timeframe);
-  // Phase 5-A: singular trend_filter
   if (spec.filters?.trend_filter) tfs.add(spec.filters.trend_filter.timeframe);
-  // Phase 5-A/B: plural trend_filters[]
   if (spec.filters?.trend_filters) {
     for (const tf of spec.filters.trend_filters) tfs.add(tf.timeframe);
   }
@@ -138,7 +172,40 @@ async function fetchBars(
 // ------------------------------------------------------------------
 
 function tradeToRow(
-  t:          import("./PositionManager").BacktestTrade,
+  t:          BacktestTrade,
+  jobId:      string,
+  strategyId: string,
+) {
+  const sessions = getSessionsAtTime(t.entryTime);
+  const session  = sessions.length === 0 ? "OFF" : sessions.length === 1 ? sessions[0] : "OVERLAP";
+  return {
+    job_id:        jobId,
+    strategy_id:   strategyId,
+    symbol:        t.symbol,
+    entry_tf:      t.timeframe,
+    direction:     t.direction,
+    entry_time:    new Date(t.entryTime).toISOString(),
+    entry_price:   t.entryPrice,
+    exit_time:     new Date(t.exitTime).toISOString(),
+    exit_price:    t.exitPrice,
+    sl:            t.sl,
+    tp:            t.tp,
+    lot:           t.lot,
+    pips:          t.pips,
+    result:        t.result,
+    exit_reason:   t.exitReason,
+    duration_min:  t.durationMin,
+    session,
+    spread_pips:   t.spreadPips,
+    slippage_pips: t.slippagePips,
+    entry_bar_idx: t.entryBarIdx,
+    exit_bar_idx:  t.exitBarIdx,
+  };
+}
+
+// TradeForPromotion 版（構造は同一、型だけ異なる）
+function promotionTradeToRow(
+  t:          TradeForPromotion,
   jobId:      string,
   strategyId: string,
 ) {
@@ -192,7 +259,7 @@ function reportToRow(r: BacktestReport, jobId: string, strategyId: string) {
     avg_pips:              r.avgPips,
     gross_profit:          r.grossProfit,
     gross_loss:            r.grossLoss,
-    profit_factor:         r.profitFactor,  // null = infinite
+    profit_factor:         r.profitFactor,
     max_drawdown:          r.maxDrawdown,
     max_drawdown_pct:      r.maxDrawdownPct,
     max_drawdown_pips:     r.maxDrawdownPips,
@@ -209,9 +276,63 @@ function reportToRow(r: BacktestReport, jobId: string, strategyId: string) {
   };
 }
 
-// ------------------------------------------------------------------
-// runBacktest — メイン実行
-// ------------------------------------------------------------------
+// ==================================================================
+// runBacktestCore — DB非依存コア実行 (Preview Backtest 用)
+// ==================================================================
+
+export async function runBacktestCore(params: {
+  spec:             StrategySpec;
+  period?:          PeriodLabel;
+  initialBalance?:  number;
+}): Promise<RunBacktestCoreResult> {
+  const { spec, period = "AVAILABLE", initialBalance = 10_000 } = params;
+
+  if (spec.symbols.length !== 1) {
+    throw new Error("マルチシンボル Strategy はサポートされていません");
+  }
+  const symbol = spec.symbols[0];
+  const db     = createAdminClient();
+
+  const fromDate   = getFromDate(period);
+  const timeframes = collectTimeframes(spec);
+  const mainTf     = spec.timeframes[0];
+
+  const barsByTf: Record<string, Bar[]> = {};
+  for (const tf of timeframes) {
+    barsByTf[tf] = await fetchBars(symbol, tf, fromDate, db);
+  }
+
+  const mainBars = barsByTf[mainTf] ?? [];
+  if (mainBars.length === 0) {
+    throw new Error(`バーデータが見つかりません: ${symbol} ${mainTf}`);
+  }
+
+  const engineResult = runBacktest({
+    spec,
+    symbol,
+    mainTimeframe:   mainTf,
+    barsByTimeframe: barsByTf,
+    initialBalance,
+    fixedLot:        0.01,
+  });
+
+  const report = generateReport({
+    engineResult,
+    periodLabel: period,
+    barCount:    mainBars.length,
+  });
+
+  return {
+    report,
+    trades:   engineResult.trades,
+    barCount: mainBars.length,
+    warnings: [],
+  };
+}
+
+// ==================================================================
+// runBacktestJob — 正式 Strategy ID ベースの Backtest 実行
+// ==================================================================
 
 export async function runBacktestJob(params: RunBacktestParams): Promise<RunBacktestResult> {
   const { strategyId, period, initialBalance = 10_000 } = params;
@@ -229,11 +350,6 @@ export async function runBacktestJob(params: RunBacktestParams): Promise<RunBack
   }
 
   // 2. Spec バリデーション
-  const specResult = StrategySpecSchema.safeParse(strategyRow.entry_conditions
-    ? { ...strategyRow }  // full record as-is? No — reconstruct spec
-    : strategyRow
-  );
-  // Strategy Spec is stored across multiple columns; reconstruct
   const rawSpec = {
     name:             strategyRow.name,
     strategy_type:    strategyRow.strategy_type,
@@ -251,11 +367,10 @@ export async function runBacktestJob(params: RunBacktestParams): Promise<RunBack
   }
   const spec = validation.data;
 
-  // 3. Symbol 確認（単一 Symbol のみ対応）
+  // 3. Symbol 確認
   if (spec.symbols.length !== 1) {
-    return { jobId: "", status: "FAILED", error: "Multi-symbol strategies not supported in Phase 2-D" };
+    return { jobId: "", status: "FAILED", error: "Multi-symbol strategies not supported" };
   }
-  const symbol = spec.symbols[0];
 
   // 4. Job 作成
   const { data: jobRow, error: jobErr } = await db
@@ -281,40 +396,11 @@ export async function runBacktestJob(params: RunBacktestParams): Promise<RunBack
       started_at: new Date().toISOString(),
     }).eq("id", jobId);
 
-    // 6. Bar data 取得
-    const fromDate  = getFromDate(period);
-    const timeframes = collectTimeframes(spec);
-    const mainTf    = spec.timeframes[0];
-
-    const barsByTf: Record<string, Bar[]> = {};
-    for (const tf of timeframes) {
-      barsByTf[tf] = await fetchBars(symbol, tf, fromDate, db);
-    }
-
-    const mainBars = barsByTf[mainTf] ?? [];
-    if (mainBars.length === 0) {
-      throw new Error(`No bar data available for ${symbol} ${mainTf}`);
-    }
-
-    // 7. BacktestEngine 実行
-    const engineResult = runBacktest({
-      spec,
-      symbol,
-      mainTimeframe:   mainTf,
-      barsByTimeframe: barsByTf,
-      initialBalance,
-      fixedLot:        0.01,
-    });
-
-    // 8. BacktestReporter 実行
-    const report = generateReport({
-      engineResult,
-      periodLabel: period,
-      barCount:    mainBars.length,
-    });
+    // 6-8. コア実行（DB 非依存）
+    const coreResult = await runBacktestCore({ spec, period, initialBalance });
 
     // 9. Trades batch INSERT
-    const tradeRows = engineResult.trades.map(t => tradeToRow(t, jobId, strategyId));
+    const tradeRows = coreResult.trades.map(t => tradeToRow(t, jobId, strategyId));
     for (let i = 0; i < tradeRows.length; i += TRADE_BATCH_SIZE) {
       const batch = tradeRows.slice(i, i + TRADE_BATCH_SIZE);
       const { error: tradeErr } = await db.from("backtest_trades").insert(batch);
@@ -324,11 +410,11 @@ export async function runBacktestJob(params: RunBacktestParams): Promise<RunBack
     // 10. Results INSERT
     const { error: resultErr } = await db
       .from("backtest_results")
-      .insert(reportToRow(report, jobId, strategyId));
+      .insert(reportToRow(coreResult.report, jobId, strategyId));
     if (resultErr) throw new Error(`Results insert failed: ${resultErr.message}`);
 
     // 11. strategy_registry.backtest_status 更新
-    const newStatus = report.verdict === "FAILED" ? "FAILED" : "PASSED";
+    const newStatus = coreResult.report.verdict === "FAILED" ? "FAILED" : "PASSED";
     await db.from("strategy_registry").update({
       backtest_status: newStatus,
       updated_at:      new Date().toISOString(),
@@ -336,21 +422,20 @@ export async function runBacktestJob(params: RunBacktestParams): Promise<RunBack
 
     // 12. Job → COMPLETED
     await db.from("backtest_jobs").update({
-      status:        "COMPLETED",
-      completed_at:  new Date().toISOString(),
-      data_from:     report.dataFrom > 0 ? new Date(report.dataFrom).toISOString() : null,
-      data_to:       report.dataTo   > 0 ? new Date(report.dataTo).toISOString()   : null,
-      bar_count:     mainBars.length,
-      progress_pct:  100,
+      status:       "COMPLETED",
+      completed_at: new Date().toISOString(),
+      data_from:    coreResult.report.dataFrom > 0 ? new Date(coreResult.report.dataFrom).toISOString() : null,
+      data_to:      coreResult.report.dataTo   > 0 ? new Date(coreResult.report.dataTo).toISOString()   : null,
+      bar_count:    coreResult.barCount,
+      progress_pct: 100,
     }).eq("id", jobId);
 
-    return { jobId, status: "COMPLETED", report };
+    return { jobId, status: "COMPLETED", report: coreResult.report };
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[BacktestService]", err);
 
-    // Job → FAILED (best effort)
     try {
       await db.from("backtest_jobs").update({
         status:        "FAILED",
@@ -363,9 +448,63 @@ export async function runBacktestJob(params: RunBacktestParams): Promise<RunBack
   }
 }
 
-// ------------------------------------------------------------------
+// ==================================================================
+// promotePreviewBacktest — Preview Backtest 結果を正式 DB 記録へ昇格
+// ==================================================================
+
+export async function promotePreviewBacktest(params: {
+  strategyId: string;
+  report:     BacktestReport;
+  trades:     TradeForPromotion[];
+  barCount:   number;
+}): Promise<{ jobId: string }> {
+  const { strategyId, report, trades, barCount } = params;
+  const db  = createAdminClient();
+  const now = new Date().toISOString();
+
+  // Job 作成（最初から COMPLETED）
+  const { data: jobRow, error: jobErr } = await db
+    .from("backtest_jobs")
+    .insert({
+      strategy_id:  strategyId,
+      status:       "COMPLETED",
+      period_label: report.periodLabel,
+      created_at:   now,
+      started_at:   now,
+      completed_at: now,
+      data_from:    report.dataFrom > 0 ? new Date(report.dataFrom).toISOString() : null,
+      data_to:      report.dataTo   > 0 ? new Date(report.dataTo).toISOString()   : null,
+      bar_count:    barCount,
+      progress_pct: 100,
+    })
+    .select()
+    .single();
+
+  if (jobErr || !jobRow) {
+    throw new Error(`Job promotion failed: ${jobErr?.message}`);
+  }
+  const jobId = jobRow.id as string;
+
+  // Results INSERT
+  const { error: resultErr } = await db
+    .from("backtest_results")
+    .insert(reportToRow(report, jobId, strategyId));
+  if (resultErr) throw new Error(`Results insert failed: ${resultErr.message}`);
+
+  // Trades batch INSERT
+  const tradeRows = trades.map(t => promotionTradeToRow(t, jobId, strategyId));
+  for (let i = 0; i < tradeRows.length; i += TRADE_BATCH_SIZE) {
+    const batch = tradeRows.slice(i, i + TRADE_BATCH_SIZE);
+    const { error: tradeErr } = await db.from("backtest_trades").insert(batch);
+    if (tradeErr) throw new Error(`Trades insert failed: ${tradeErr.message}`);
+  }
+
+  return { jobId };
+}
+
+// ==================================================================
 // getJob — Job + Result + Trades 取得
-// ------------------------------------------------------------------
+// ==================================================================
 
 export async function getJob(jobId: string): Promise<GetJobResult> {
   const db = createAdminClient();
@@ -387,9 +526,9 @@ export async function getJob(jobId: string): Promise<GetJobResult> {
   };
 }
 
-// ------------------------------------------------------------------
+// ==================================================================
 // getLatestBacktest — Strategy の最新 Backtest 結果
-// ------------------------------------------------------------------
+// ==================================================================
 
 export async function getLatestBacktest(strategyId: string): Promise<GetLatestResult> {
   const db = createAdminClient();
@@ -414,8 +553,8 @@ export async function getLatestBacktest(strategyId: string): Promise<GetLatestRe
     .single();
 
   return {
-    status: "HAS_RESULT",
-    result: result ?? undefined,
-    latestJob: latestJob as Record<string, unknown>,
+    status:     "HAS_RESULT",
+    result:     result ?? undefined,
+    latestJob:  latestJob as Record<string, unknown>,
   };
 }

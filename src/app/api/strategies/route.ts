@@ -6,6 +6,11 @@
 import { NextRequest, NextResponse }  from "next/server";
 import { createAdminClient }           from "@/infrastructure/supabase/admin";
 import { StrategySpecSchema, type StrategyRecord } from "@/lib/strategySchema";
+import {
+  promotePreviewBacktest,
+  type TradeForPromotion,
+} from "@/infrastructure/backtest/BacktestService";
+import type { BacktestReport } from "@/infrastructure/backtest/BacktestReporter";
 
 export const runtime = "nodejs";
 
@@ -37,8 +42,13 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as {
-      spec?:       unknown;
-      raw_prompt?: string;
+      spec?:                unknown;
+      raw_prompt?:          string;
+      previewBacktestData?: {
+        report:   BacktestReport;
+        trades:   TradeForPromotion[];
+        barCount: number;
+      };
     };
 
     if (!body.spec) {
@@ -68,6 +78,11 @@ export async function POST(req: NextRequest) {
 
     const magicNumber = (maxRow?.magic_number ?? 20000) + 1;
 
+    // Backtest 昇格ありの場合: backtest_status を verdict から設定
+    const backtestStatusFromPreview = body.previewBacktestData
+      ? (body.previewBacktestData.report.verdict === "FAILED" ? "FAILED" : "PASSED")
+      : "NOT_TESTED";
+
     // DB 保存
     const { data: saved, error } = await db
       .from("strategy_registry")
@@ -84,13 +99,25 @@ export async function POST(req: NextRequest) {
         magic_number:     magicNumber,
         enabled:          false,
         status:           "DRAFT",
-        backtest_status:  "NOT_TESTED",
+        backtest_status:  backtestStatusFromPreview,
         raw_prompt:       body.raw_prompt ?? null,
       })
       .select()
       .single();
 
     if (error) throw error;
+
+    const strategyId = (saved as StrategyRecord).id;
+
+    // Preview Backtest 結果を正式 DB 記録へ昇格（同じBacktestを再実行しない）
+    if (body.previewBacktestData) {
+      await promotePreviewBacktest({
+        strategyId,
+        report:   body.previewBacktestData.report,
+        trades:   body.previewBacktestData.trades,
+        barCount: body.previewBacktestData.barCount,
+      });
+    }
 
     return NextResponse.json({ strategy: saved as StrategyRecord }, { status: 201 });
 

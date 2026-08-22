@@ -5,7 +5,11 @@
 
 ---
 
-## 現在実装されているフロー
+## 現在実装されているフロー（STEP 02更新後）
+
+**Last Updated:** 2026-08-22 (STEP 02: Pre-Add Backtest)
+
+
 
 ```
 STEP 1: EA Command Center を開く（/ea）
@@ -61,8 +65,26 @@ STEP 6: [保存して登録] → POST /api/strategies
     enabled = false
     raw_prompt = "[ENTRY]\n...\n\n[TAKE_PROFIT]\n...\n\n[STOP_LOSS]\n..."
   
-STEP 7: EA Command Center下部にStrategyCardが追加される
-  ↓ [詳細] ボタンでStrategyDetailModalを開く
+STEP 6.5: バックテスト自動実行（RESULT画面）
+  ↓ POST /api/ai/strategy/preview-backtest { spec }
+  → DB登録なし
+  → BacktestResult表示（PIPS / WR / PF / MaxDD / BUY-SELL / Session）
+  → UNSUPPORTED条件あり: エラー表示、[修正する]のみ
+  → FAILED: 警告確認ダイアログ
+  
+  選択肢:
+    [キャンセル]       → 何も保存しない
+    [← 修正する]       → 3欄に戻る
+    [EA を追加する]    → 正式保存へ
+  ↓
+STEP 7: [EA を追加する] → POST /api/strategies {spec, raw_prompt, previewBacktestData}
+  ↓ strategy_registry INSERT (backtest_status=PASSED/FAILED即設定)
+  ↓ backtest_jobs INSERT (status=COMPLETED — 再実行なし)
+  ↓ backtest_results INSERT
+  ↓ backtest_trades INSERT
+  
+STEP 8: EA Command Center に Strategy Card 追加（実データ）
+  ↓ [詳細] → StrategyDetailModal BACKTEST タブで結果確認可能
 ```
 
 ---

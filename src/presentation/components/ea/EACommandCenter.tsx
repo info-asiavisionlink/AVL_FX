@@ -378,7 +378,7 @@ function strategyLabel(s: string): string {
   }
 }
 
-// ── Strategy Draft Card ────────────────────────────────────────────────────
+// ── Strategy Card (実データ) ──────────────────────────────────────────────
 function StrategyDraftCard({
   strategy,
   onDelete,
@@ -395,12 +395,12 @@ function StrategyDraftCard({
   };
   const col = typeColor[strategy.strategy_type] ?? "#64748b";
 
-  // Backtest status loaded from API
   const [btData, setBtData] = useState<{
-    verdict?: "PASSED" | "CONDITIONAL" | "FAILED";
-    totalPips?: number;
-    winRate?: number;
-    profitFactor?: number | null;
+    verdict?:       "PASSED" | "CONDITIONAL" | "FAILED";
+    totalPips?:     number;
+    winRate?:       number;
+    profitFactor?:  number | null;
+    maxDrawdownPct?: number;
   } | null>(null);
   const bts = strategy.backtest_status;
 
@@ -408,116 +408,194 @@ function StrategyDraftCard({
     if (bts === "NOT_TESTED") return;
     fetch(`/api/strategies/${strategy.id}/backtest`)
       .then(r => r.json())
-      .then((d: {
-        status: string;
-        result?: Record<string, unknown>;
-      }) => {
+      .then((d: { status: string; result?: Record<string, unknown> }) => {
         if (d.status === "HAS_RESULT" && d.result) {
           setBtData({
-            verdict:      d.result.verdict as "PASSED" | "CONDITIONAL" | "FAILED",
-            totalPips:    Number(d.result.total_pips ?? 0),
-            winRate:      Number(d.result.win_rate ?? 0),
-            profitFactor: d.result.profit_factor != null ? Number(d.result.profit_factor) : null,
+            verdict:        d.result.verdict as "PASSED" | "CONDITIONAL" | "FAILED",
+            totalPips:      Number(d.result.total_pips ?? 0),
+            winRate:        Number(d.result.win_rate ?? 0),
+            profitFactor:   d.result.profit_factor != null ? Number(d.result.profit_factor) : null,
+            maxDrawdownPct: Number(d.result.max_drawdown_pct ?? 0),
           });
         }
       })
       .catch(() => {});
   }, [strategy.id, bts]);
 
-  const btStatusColor = (): string => {
-    if (bts === "PASSED")  return NG;
-    if (bts === "FAILED")  return RED;
-    if (bts === "TESTING") return CYAN;
-    return "#334155";
-  };
+  const verdictColor = btData?.verdict === "PASSED" ? NG : btData?.verdict === "CONDITIONAL" ? AMBER : btData?.verdict === "FAILED" ? RED : "#334155";
+  const isRunning    = false; // Live Trading 未実装
 
   return (
     <div
-      className="relative flex flex-col gap-3 p-4 rounded"
+      className="relative flex flex-col rounded-lg overflow-hidden"
       style={{
-        background: "rgba(8,14,26,0.9)",
-        border:     `1px solid ${col}25`,
+        background: "linear-gradient(135deg, rgba(4,8,18,0.95) 0%, rgba(2,4,10,0.98) 100%)",
+        border:     `1px solid ${col}30`,
         boxShadow:  `0 0 20px ${col}08`,
       }}
     >
-      {/* DRAFT バッジ + 削除 */}
-      <div className="absolute top-3 right-3 flex gap-1.5 items-center">
-        <span
-          className="text-[7px] font-black tracking-widest px-1.5 py-0.5 rounded"
-          style={{ background: `${AMBER}12`, border: `1px solid ${AMBER}30`, color: AMBER }}
-        >
-          DRAFT
-        </span>
-        <button
-          onClick={() => onDelete(strategy.id)}
-          className="text-[9px] leading-none opacity-30 hover:opacity-70 transition-opacity"
-          style={{ color: RED }}
-          title="削除"
-        >
-          ×
-        </button>
-      </div>
-
-      {/* 名前 + タイプ */}
-      <div>
-        <p className="text-[11px] font-black tracking-wider pr-16" style={{ color: "#f0f9ff" }}>
-          {strategy.name}
-        </p>
-        <span
-          className="text-[8px] font-black tracking-widest px-1.5 py-0.5 rounded inline-block mt-1"
-          style={{ background: `${col}12`, border: `1px solid ${col}25`, color: col }}
-        >
-          {strategy.strategy_type}
-        </span>
-      </div>
-
-      {/* シンボル / TF */}
-      <div className="flex flex-col gap-0.5">
-        <p className="text-[8px] tracking-widest" style={{ color: "#334155" }}>SYMBOL / TF</p>
-        <p className="text-[10px]" style={{ color: "#64748b" }}>
-          {strategy.symbols.join(", ")} &nbsp;/&nbsp; {strategy.timeframes.join(", ")}
-        </p>
-      </div>
-
-      {/* バックテスト */}
-      <div className="flex flex-col gap-1">
-        <p className="text-[8px] tracking-widest" style={{ color: "#334155" }}>BACKTEST</p>
-        <p className="text-[9px] font-black tracking-widest" style={{ color: btStatusColor() }}>
-          {bts === "NOT_TESTED" ? "NOT TESTED" : bts === "TESTING" ? "TESTING..." : bts}
-        </p>
-        {btData && (
-          <div className="grid grid-cols-3 gap-1 mt-0.5">
-            {[
-              { label: "PIPS", value: `${btData.totalPips! >= 0 ? "+" : ""}${btData.totalPips!.toFixed(1)}`, color: (btData.totalPips ?? 0) >= 0 ? NG : RED },
-              { label: "WR",   value: `${btData.winRate!.toFixed(0)}%`,                                       color: "#94a3b8" },
-              { label: "PF",   value: btData.profitFactor != null ? btData.profitFactor.toFixed(2) : "∞",    color: "#94a3b8" },
-            ].map(({ label, value, color }) => (
-              <div key={label} className="px-1.5 py-1 rounded"
-                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <p className="text-[6px] font-mono tracking-widest" style={{ color: "#334155" }}>{label}</p>
-                <p className="text-[9px] font-mono font-bold" style={{ color }}>{value}</p>
-              </div>
-            ))}
+      {/* ── ヘッダー ── */}
+      <div className="px-4 pt-4 pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h3 className="font-mono font-black text-[13px] tracking-widest" style={{ color: "#e2e8f0" }}>
+              {strategy.name}
+            </h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[9px] font-mono tracking-widest" style={{ color: "#4b5563" }}>
+                ○ 停止中
+              </span>
+              {strategy.magic_number && (
+                <span className="text-[8px] font-mono" style={{ color: "#334155" }}>
+                  #{strategy.magic_number}
+                </span>
+              )}
+            </div>
           </div>
+          <div className="flex flex-col items-end gap-1">
+            <span
+              className="text-[8px] font-mono font-bold tracking-widest px-2 py-0.5 rounded"
+              style={{ background: `${col}08`, border: `1px solid ${col}20`, color: col }}
+            >
+              {strategy.strategy_type}
+            </span>
+            <button
+              onClick={() => onDelete(strategy.id)}
+              className="text-[9px] leading-none opacity-20 hover:opacity-60 transition-opacity"
+              style={{ color: RED }}
+              title="削除"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* Symbol / TF */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+          {strategy.symbols.map(s => (
+            <span key={s} className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded"
+              style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }}>
+              {s}
+            </span>
+          ))}
+          {strategy.timeframes.map(tf => (
+            <span key={tf} className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+              style={{ background: "rgba(255,255,255,0.04)", color: "#64748b", border: "1px solid rgba(255,255,255,0.06)" }}>
+              {tf}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mx-4 h-px" style={{ background: "rgba(255,255,255,0.05)" }} />
+
+      {/* ── BACKTEST PERFORMANCE ── */}
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[9px] font-mono font-semibold tracking-[0.18em]" style={{ color: "#475569" }}>
+            BACKTEST
+          </p>
+          {btData?.verdict && (
+            <span
+              className="text-[7px] font-black tracking-widest px-1.5 py-0.5 rounded"
+              style={{ color: verdictColor, background: `${verdictColor}15`, border: `1px solid ${verdictColor}30` }}
+            >
+              {btData.verdict}
+            </span>
+          )}
+          {bts === "NOT_TESTED" && (
+            <span className="text-[8px] font-mono" style={{ color: "#334155" }}>NOT TESTED</span>
+          )}
+        </div>
+
+        {btData ? (
+          <>
+            {/* Total Pips */}
+            <div className="mb-2 px-2 py-1.5 rounded"
+              style={{
+                background: `${(btData.totalPips ?? 0) >= 0 ? NG : RED}08`,
+                border:     `1px solid ${(btData.totalPips ?? 0) >= 0 ? NG : RED}20`,
+              }}>
+              <p className="text-[7px] font-mono tracking-widest mb-0.5" style={{ color: "#334155" }}>
+                TOTAL PIPS
+              </p>
+              <p className="text-[16px] font-mono font-black leading-none"
+                style={{ color: (btData.totalPips ?? 0) >= 0 ? NG : RED }}>
+                {(btData.totalPips ?? 0) >= 0 ? "+" : ""}{(btData.totalPips ?? 0).toFixed(1)}
+              </p>
+            </div>
+
+            {/* Stats grid */}
+            <div className="grid grid-cols-3 gap-1">
+              {[
+                { label: "WIN RATE",  value: `${(btData.winRate ?? 0).toFixed(0)}%`,
+                  color: (btData.winRate ?? 0) >= 55 ? NG : (btData.winRate ?? 0) >= 50 ? AMBER : RED },
+                { label: "PF",
+                  value: btData.profitFactor != null ? btData.profitFactor.toFixed(2) : "∞",
+                  color: (btData.profitFactor ?? 0) >= 1.2 ? NG : (btData.profitFactor ?? 0) >= 1 ? AMBER : RED },
+                { label: "MAX DD",
+                  value: `${(btData.maxDrawdownPct ?? 0).toFixed(1)}%`,
+                  color: (btData.maxDrawdownPct ?? 0) < 10 ? NG : (btData.maxDrawdownPct ?? 0) < 20 ? AMBER : RED },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="px-1.5 py-1 rounded"
+                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                  <p className="text-[6px] font-mono tracking-widest" style={{ color: "#334155" }}>{label}</p>
+                  <p className="text-[10px] font-mono font-bold mt-0.5" style={{ color }}>{value}</p>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : bts !== "NOT_TESTED" ? (
+          <div className="flex items-center gap-2 py-2">
+            <div className="w-1.5 h-1.5 rounded-full" style={{ background: CYAN, animation: "avl-blink 0.6s ease-in-out infinite" }} />
+            <span className="text-[9px] font-mono" style={{ color: CYAN }}>読み込み中...</span>
+          </div>
+        ) : (
+          <p className="text-[9px] font-mono" style={{ color: "#334155" }}>バックテスト未実施</p>
         )}
       </div>
 
-      {/* Magic Number */}
-      {strategy.magic_number && (
-        <div className="flex flex-col gap-0.5">
-          <p className="text-[8px] tracking-widest" style={{ color: "#334155" }}>MAGIC</p>
-          <p className="text-[9px]" style={{ color: "#475569" }}>#{strategy.magic_number}</p>
-        </div>
-      )}
+      <div className="mx-4 h-px" style={{ background: "rgba(255,255,255,0.05)" }} />
 
-      {/* 詳細ボタン */}
-      <button
-        className="mt-auto text-[9px] font-black tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-70"
-        style={{ background: `${col}08`, border: `1px solid ${col}20`, color: col }}
-        onClick={() => onDetail(strategy)}
-      >
-        詳細 →
-      </button>
+      {/* ── LIVE PERFORMANCE ── */}
+      <div className="px-4 py-3">
+        <p className="text-[9px] font-mono font-semibold tracking-[0.18em] mb-2" style={{ color: "#475569" }}>
+          LIVE PERFORMANCE
+        </p>
+        <p className="text-[8px] font-mono" style={{ color: "#334155" }}>
+          NO LIVE TRADES YET
+        </p>
+      </div>
+
+      <div className="mx-4 h-px" style={{ background: "rgba(255,255,255,0.05)" }} />
+
+      {/* ── CTA ── */}
+      <div className="px-4 pb-4 pt-3 flex flex-col gap-2">
+        {/* 起動/停止（未実装 placeholder） */}
+        <button
+          disabled
+          className="w-full h-8 rounded font-mono font-black text-[10px] tracking-widest cursor-not-allowed"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border:     "1px solid rgba(255,255,255,0.07)",
+            color:      "#334155",
+          }}
+          title="Live Trading: 未実装"
+        >
+          ▶ 起動（未実装）
+        </button>
+        <button
+          className="w-full h-8 rounded font-mono font-black text-[10px] tracking-widest transition-opacity hover:opacity-70"
+          style={{
+            background: `${col}08`,
+            border:     `1px solid ${col}20`,
+            color:      col,
+          }}
+          onClick={() => onDetail(strategy)}
+        >
+          詳細 →
+        </button>
+      </div>
     </div>
   );
 }
