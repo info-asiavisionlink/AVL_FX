@@ -217,10 +217,11 @@ export function conditionToJapanese(cond: z.infer<typeof IndicatorConditionSchem
     }
     case "EMA":
     case "SMA": {
-      if (op === "PRICE_ABOVE")    return `${tf} ${ind}${p} より価格が上`;
-      if (op === "PRICE_BELOW")    return `${tf} ${ind}${p} より価格が下`;
-      if (op === "BULLISH_CROSS")  return `${tf} ${ind}${p} ゴールデンクロス`;
-      if (op === "BEARISH_CROSS")  return `${tf} ${ind}${p} デッドクロス`;
+      if (op === "PRICE_ABOVE")   return `${tf} ${ind}${p} より価格が上`;
+      if (op === "PRICE_BELOW")   return `${tf} ${ind}${p} より価格が下`;
+      if (op === "BULLISH_CROSS") return `${tf} ${ind}${p} ゴールデンクロス`;
+      if (op === "BEARISH_CROSS") return `${tf} ${ind}${p} デッドクロス`;
+      if (op === "NEAR_EMA")      return `${tf} ${ind}${p} 付近`;
       return `${tf} ${ind}${p}`;
     }
     case "MACD": {
@@ -246,9 +247,17 @@ export function conditionToJapanese(cond: z.infer<typeof IndicatorConditionSchem
       return `${tf} Stochastic${p}`;
     }
     case "MARKET_STRUCTURE": {
-      if (op === "ABOVE")  return `${tf} 上昇トレンド構造`;
-      if (op === "BELOW")  return `${tf} 下降トレンド構造`;
+      if (op === "ABOVE") return `${tf} 上昇トレンド構造`;
+      if (op === "BELOW") return `${tf} 下降トレンド構造`;
       return `${tf} 市場構造`;
+    }
+    case "SUPPORT_RESISTANCE": {
+      if (op === "PRICE_ABOVE") return `${tf} レジスタンス上抜け`;
+      if (op === "PRICE_BELOW") return `${tf} サポート下抜け`;
+      return `${tf} サポレジ`;
+    }
+    case "PRICE_ACTION": {
+      return `${tf} プライスアクション`;
     }
     default:
       return `${tf} ${ind}${p}`;

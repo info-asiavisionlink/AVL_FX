@@ -4,33 +4,53 @@
 // AIEABuilder — AI EA Builder ダイアログ
 //
 // フロー: INPUT → GENERATING → PREVIEW → SAVING → DONE
-// デザイン: 既存 NEON GREEN / BLACK / GLASS UI に統一
+// 入力: ENTRY / TAKE PROFIT / STOP LOSS を3欄に分離
+// デザイン: Neon GREEN / BLACK / GLASS UI
 // =================================================================
 
-import { useState, useRef }  from "react";
-import { toast }              from "sonner";
+import { useState } from "react";
+import { toast }    from "sonner";
 import {
   conditionToJapanese,
   type StrategySpec,
   type StrategyRecord,
 } from "@/lib/strategySchema";
 
-// ── カラー定数（EACommandCenter と統一）──────────────────────────
+// ── カラー定数 ─────────────────────────────────────────────────────
 const NG      = "#00ff88";
 const NG_rgba = "rgba(0,255,136,";
 const CYAN    = "#00e5ff";
 const AMBER   = "#fbbf24";
 const RED     = "#ff4466";
-const DARK    = "#04060d";
 
-// ── ステップ型 ─────────────────────────────────────────────────────
+// ── 型定義 ────────────────────────────────────────────────────────
 type Step = "input" | "generating" | "preview" | "saving" | "done";
 
-// ── プロンプト例 ────────────────────────────────────────────────────
-const EXAMPLES = [
-  "EURUSDのM5でRSIスキャルピング。RSI30以下から反転したらBUY。H1がEMA21より上の時だけ。スプレッド2pips以下。",
-  "USDJPYのH1でEMAトレンドフォロー。EMA21がEMA200を上抜けたらBUY。ADXが25以上の時のみ。ロンドン・NY時間限定。",
-  "GOLDのH4でスイングトレード。市場構造が上昇トレンドで、RSIが50付近から反発したらBUY。ATRでSLを設定。",
+interface InputState {
+  entry:      string;
+  takeProfit: string;
+  stopLoss:   string;
+}
+
+const EMPTY_INPUT: InputState = { entry: "", takeProfit: "", stopLoss: "" };
+
+// ── 例文 — 3欄フォーマット ─────────────────────────────────────────
+const EXAMPLES: InputState[] = [
+  {
+    entry:      "EURUSDのM5。H1の価格がEMA21より上で上昇トレンド。M5のRSIが30以下から上向きに反転したらBUY。ロンドン時間はエントリーしない。スプレッド2pips以下。",
+    takeProfit: "ATR14の3倍で利確。",
+    stopLoss:   "ATR14の2倍で損切り。",
+  },
+  {
+    entry:      "USDJPYのH1。EMA21がEMA200より上でBUY。ADX25以上。NY時間のみ。",
+    takeProfit: "リスクリワード1:2",
+    stopLoss:   "直近安値",
+  },
+  {
+    entry:      "GOLDのH4。上昇トレンド中にRSI50付近から反発したらBUY。",
+    takeProfit: "直近高値",
+    stopLoss:   "ATR × 2",
+  },
 ];
 
 // ── Props ─────────────────────────────────────────────────────────
@@ -40,7 +60,7 @@ interface Props {
   onSaved: (strategy: StrategyRecord) => void;
 }
 
-// ── Strategy Type ラベル ──────────────────────────────────────────
+// ── ラベルヘルパー ─────────────────────────────────────────────────
 function typeLabel(t: string) {
   if (t === "SCALPING")  return "スキャルピング";
   if (t === "DAY_TRADE") return "デイトレード";
@@ -48,7 +68,6 @@ function typeLabel(t: string) {
   return t;
 }
 
-// ── Session ラベル ────────────────────────────────────────────────
 function sessionLabel(s: string) {
   if (s === "TOKYO")    return "東京";
   if (s === "LONDON")   return "ロンドン";
@@ -57,26 +76,46 @@ function sessionLabel(s: string) {
   return s;
 }
 
+function slToJapanese(sl: { method: string; period?: number; multiplier?: number; pips?: number; pct?: number }) {
+  if (sl.method === "ATR")        return `ATR(${sl.period ?? 14}) × ${sl.multiplier ?? 2}`;
+  if (sl.method === "FIXED_PIPS") return `${sl.pips} pips`;
+  if (sl.method === "SWING_LOW")  return "直近安値";
+  if (sl.method === "SWING_HIGH") return "直近高値";
+  if (sl.method === "PERCENTAGE") return `${sl.pct}%`;
+  return sl.method;
+}
+
+function tpToJapanese(tp: { method: string; period?: number; multiplier?: number; pips?: number; rr_ratio?: number; pct?: number }) {
+  if (tp.method === "ATR")        return `ATR(${tp.period ?? 14}) × ${tp.multiplier ?? 3}`;
+  if (tp.method === "FIXED_PIPS") return `${tp.pips} pips`;
+  if (tp.method === "SWING_LOW")  return "直近安値";
+  if (tp.method === "SWING_HIGH") return "直近高値";
+  if (tp.method === "RR_RATIO")   return `RR 1:${tp.rr_ratio}`;
+  if (tp.method === "PERCENTAGE") return `${tp.pct}%`;
+  return tp.method;
+}
+
 // =================================================================
 // メインコンポーネント
 // =================================================================
 
 export function AIEABuilder({ open, onClose, onSaved }: Props) {
-  const [step,   setStep]   = useState<Step>("input");
-  const [prompt, setPrompt] = useState("");
-  const [spec,   setSpec]   = useState<StrategySpec | null>(null);
-  const [error,  setError]  = useState<string | null>(null);
-  const textRef = useRef<HTMLTextAreaElement>(null);
+  const [step,  setStep]  = useState<Step>("input");
+  const [input, setInput] = useState<InputState>(EMPTY_INPUT);
+  const [spec,  setSpec]  = useState<StrategySpec | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
+
+  const isReady =
+    input.entry.trim().length >= 10 &&
+    input.takeProfit.trim().length >= 3 &&
+    input.stopLoss.trim().length >= 3;
 
   // ── ハンドラ ────────────────────────────────────────────────────
 
   async function handleBuild() {
-    if (prompt.trim().length < 10) {
-      toast.error("10文字以上入力してください");
-      return;
-    }
+    if (!isReady) return;
     setError(null);
     setStep("generating");
 
@@ -84,12 +123,16 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
       const res  = await fetch("/api/ai/strategy/build", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ prompt: prompt.trim() }),
+        body:    JSON.stringify({
+          entry_conditions_text:       input.entry.trim(),
+          take_profit_conditions_text: input.takeProfit.trim(),
+          stop_loss_conditions_text:   input.stopLoss.trim(),
+        }),
       });
       const data = await res.json() as {
-        success: boolean;
-        spec?: StrategySpec;
-        error?: string;
+        success:  boolean;
+        spec?:    StrategySpec;
+        error?:   string;
         details?: string[];
       };
 
@@ -114,11 +157,14 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
     if (!spec) return;
     setStep("saving");
 
+    // raw_prompt に3入力内容を [ENTRY] / [TAKE_PROFIT] / [STOP_LOSS] 形式で保存
+    const rawPrompt = `[ENTRY]\n${input.entry}\n\n[TAKE_PROFIT]\n${input.takeProfit}\n\n[STOP_LOSS]\n${input.stopLoss}`;
+
     try {
       const res  = await fetch("/api/strategies", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ spec, raw_prompt: prompt }),
+        body:    JSON.stringify({ spec, raw_prompt: rawPrompt }),
       });
       const data = await res.json() as { strategy?: StrategyRecord; error?: string };
 
@@ -139,15 +185,20 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
 
   function handleClose() {
     setStep("input");
-    setPrompt("");
+    setInput(EMPTY_INPUT);
     setSpec(null);
     setError(null);
     onClose();
   }
 
+  function handleBack() {
+    setStep("input");
+    setError(null);
+    // input は保持したまま
+  }
+
   // ── レンダリング ────────────────────────────────────────────────
   return (
-    // オーバーレイ
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: "rgba(4,6,13,0.92)", backdropFilter: "blur(6px)" }}
@@ -155,7 +206,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
     >
       {/* モーダル本体 */}
       <div
-        className="relative w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden rounded-lg font-mono"
+        className="relative w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden rounded-lg font-mono"
         style={{
           background: "#080e1a",
           border:     `1px solid ${NG_rgba}0.20)`,
@@ -192,36 +243,50 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
         {/* コンテンツ */}
         <div className="flex-1 overflow-y-auto px-5 py-5">
 
-          {/* ─── INPUT ─── */}
+          {/* ─── INPUT / GENERATING ─── */}
           {(step === "input" || step === "generating") && (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-5">
 
-              <div>
-                <p className="text-[11px] tracking-[0.15em] mb-1" style={{ color: "#94a3b8" }}>
-                  どんな EA を作りますか？
-                </p>
-                <p className="text-[9px] tracking-[0.1em]" style={{ color: "#334155" }}>
-                  自然言語でトレード条件を説明してください
-                </p>
-              </div>
-
-              <textarea
-                ref={textRef}
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
+              {/* ENTRY CONDITIONS */}
+              <InputSection
+                label="エントリー条件"
+                sublabel="ENTRY CONDITIONS"
+                accentColor={NG}
+                description="シンボル・時間足・売買条件・フィルターを自然言語で入力"
+                placeholder={"例：EURUSDのM5。\nH1の価格がEMA21より上で上昇トレンド。\nM5のRSIが30以下から上向きに反転したらBUY。\nロンドン時間はエントリーしない。スプレッド2pips以下。"}
+                value={input.entry}
+                onChange={v => setInput(p => ({ ...p, entry: v }))}
                 disabled={step === "generating"}
-                rows={7}
-                placeholder={"例：EURUSDのM5でRSIスキャルピング。\nRSI30以下から反転したらBUY。\nH1がEMA21より上の時だけエントリー。\nATRでSL、直近高値でTP。\nロンドン・NY時間のみ。スプレッド2pips以下。"}
-                className="w-full rounded resize-none text-[11px] leading-relaxed tracking-wide outline-none transition-all"
-                style={{
-                  background: step === "generating" ? "rgba(0,255,136,0.02)" : "#0a1120",
-                  border:     step === "generating"
-                    ? `1px solid ${NG_rgba}0.20)`
-                    : `1px solid rgba(71,85,105,0.4)`,
-                  color:      step === "generating" ? "#334155" : "#cbd5e1",
-                  padding:    "12px",
-                  caretColor: NG,
-                }}
+                minLength={10}
+                rows={5}
+              />
+
+              {/* TAKE PROFIT */}
+              <InputSection
+                label="利確条件"
+                sublabel="TAKE PROFIT"
+                accentColor={NG}
+                description="利益確定する条件を自然言語で入力"
+                placeholder={"例：ATR14の3倍で利確。\nまたは直近高値に到達したら利確。"}
+                value={input.takeProfit}
+                onChange={v => setInput(p => ({ ...p, takeProfit: v }))}
+                disabled={step === "generating"}
+                minLength={3}
+                rows={3}
+              />
+
+              {/* STOP LOSS */}
+              <InputSection
+                label="損切り条件"
+                sublabel="STOP LOSS"
+                accentColor={RED}
+                description="損切りする条件を自然言語で入力"
+                placeholder={"例：ATR14の2倍で損切り。\nまたは直近安値を下抜けたら損切り。"}
+                value={input.stopLoss}
+                onChange={v => setInput(p => ({ ...p, stopLoss: v }))}
+                disabled={step === "generating"}
+                minLength={3}
+                rows={3}
               />
 
               {/* エラー表示 */}
@@ -234,16 +299,16 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                 </div>
               )}
 
-              {/* プロンプト例 */}
+              {/* 例文ボタン */}
               {step === "input" && (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[9px] tracking-widest" style={{ color: "#334155" }}>
-                    例文（クリックで入力）
+                    例文（クリックで3欄に入力）
                   </p>
                   {EXAMPLES.map((ex, i) => (
                     <button
                       key={i}
-                      onClick={() => { setPrompt(ex); textRef.current?.focus(); }}
+                      onClick={() => setInput(ex)}
                       className="text-left text-[9px] leading-relaxed px-3 py-2 rounded transition-all hover:opacity-80"
                       style={{
                         background: "rgba(0,229,255,0.04)",
@@ -251,7 +316,8 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                         color:      "#64748b",
                       }}
                     >
-                      {ex}
+                      <span className="text-[7px] tracking-widest" style={{ color: CYAN }}>ENTRY</span>{" "}
+                      {ex.entry.length > 55 ? ex.entry.slice(0, 55) + "…" : ex.entry}
                     </button>
                   ))}
                 </div>
@@ -284,9 +350,9 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
             </div>
           )}
 
-          {/* ─── PREVIEW ─── */}
+          {/* ─── PREVIEW / SAVING ─── */}
           {(step === "preview" || step === "saving") && spec && (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-5">
 
               {/* 名前 + タイプ */}
               <div>
@@ -308,53 +374,65 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                 )}
               </div>
 
-              {/* シンボル / 時間足 */}
-              <Row label="SYMBOL">
-                <div className="flex flex-wrap gap-1">
-                  {spec.symbols.map(s => (
-                    <Tag key={s} color={NG}>{s}</Tag>
-                  ))}
-                </div>
-              </Row>
+              {/* ── ENTRY CONDITIONS ── */}
+              <PreviewSection title="ENTRY CONDITIONS" accentColor={NG}>
 
-              <Row label="TIMEFRAME">
-                <div className="flex flex-wrap gap-1">
-                  {spec.timeframes.map(t => (
-                    <Tag key={t} color={CYAN}>{t}</Tag>
-                  ))}
-                </div>
-              </Row>
-
-              {/* エントリー条件 */}
-              <div>
-                <Label>ENTRY CONDITIONS</Label>
-                <div
-                  className="rounded px-3 py-2 flex flex-col gap-1.5 mt-1"
-                  style={{ background: "rgba(0,255,136,0.03)", border: `1px solid ${NG_rgba}0.10)` }}
-                >
-                  <p className="text-[8px] tracking-widest mb-1" style={{ color: "#334155" }}>
-                    LOGIC: {spec.entry_conditions.logic}
-                  </p>
-                  {spec.entry_conditions.conditions.map((c, i) => (
-                    <div key={i} className="flex items-start gap-2">
-                      <span style={{ color: NG }} className="text-[8px] mt-0.5">●</span>
-                      <span className="text-[10px]" style={{ color: "#94a3b8" }}>
-                        {conditionToJapanese(c)}
-                      </span>
+                {/* Symbol / Timeframe */}
+                <div className="flex gap-6 mb-3">
+                  <div>
+                    <p className="text-[7px] tracking-widest mb-1.5" style={{ color: "#334155" }}>SYMBOL</p>
+                    <div className="flex flex-wrap gap-1">
+                      {spec.symbols.map(s => <Tag key={s} color={NG}>{s}</Tag>)}
                     </div>
-                  ))}
+                  </div>
+                  <div>
+                    <p className="text-[7px] tracking-widest mb-1.5" style={{ color: "#334155" }}>TIMEFRAME</p>
+                    <div className="flex flex-wrap gap-1">
+                      {spec.timeframes.map(t => <Tag key={t} color={CYAN}>{t}</Tag>)}
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              {/* フィルター */}
-              {spec.filters && (
-                <div>
-                  <Label>FILTERS</Label>
-                  <div className="flex flex-col gap-1 mt-1">
+                {/* エントリー条件 */}
+                <p className="text-[7px] tracking-widest mb-1.5" style={{ color: "#334155" }}>
+                  CONDITIONS — {spec.entry_conditions.logic}
+                </p>
+                <div className="flex flex-col gap-1 mb-3">
+                  {spec.entry_conditions.conditions.map((c, i) => {
+                    const isUnsupported = c.condition?.startsWith("UNSUPPORTED:");
+                    return (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="text-[8px] mt-0.5 shrink-0" style={{ color: isUnsupported ? AMBER : NG }}>
+                          {isUnsupported ? "⚠" : "●"}
+                        </span>
+                        {isUnsupported ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px]" style={{ color: AMBER }}>
+                              {c.condition!.replace("UNSUPPORTED:", "").trim()}
+                            </span>
+                            <span
+                              className="text-[7px] tracking-widest px-1.5 py-0.5 rounded shrink-0"
+                              style={{ background: `${AMBER}15`, border: `1px solid ${AMBER}30`, color: AMBER }}
+                            >
+                              REQUIRES EXTENSION
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px]" style={{ color: "#94a3b8" }}>
+                            {conditionToJapanese(c)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* フィルター */}
+                {spec.filters && (
+                  <>
+                    <p className="text-[7px] tracking-widest mb-1.5" style={{ color: "#334155" }}>FILTERS</p>
                     {spec.filters.max_spread_pips !== undefined && (
-                      <FilterRow icon="SPREAD">
-                        最大 {spec.filters.max_spread_pips} pips
-                      </FilterRow>
+                      <FilterRow icon="SPREAD">最大 {spec.filters.max_spread_pips} pips</FilterRow>
                     )}
                     {spec.filters.sessions && spec.filters.sessions.length > 0 && (
                       <FilterRow icon="SESSION">
@@ -369,64 +447,57 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                         {spec.filters.trend_filter.direction === "BULLISH" ? "↗ 上昇" : "↘ 下降"}
                       </FilterRow>
                     )}
-                    {spec.filters.min_adx !== undefined && (
-                      <FilterRow icon="ADX">
-                        ADX &gt; {spec.filters.min_adx}
+                    {spec.filters.trend_filters?.map((tf, i) => (
+                      <FilterRow key={`tf-${i}`} icon="TREND">
+                        {tf.timeframe} {tf.indicator}
+                        {tf.period ? `(${tf.period})` : ""}{" "}
+                        {tf.direction === "BULLISH" ? "↗ 上昇" : "↘ 下降"}
                       </FilterRow>
+                    ))}
+                    {spec.filters.min_adx !== undefined && (
+                      <FilterRow icon="ADX">ADX &gt; {spec.filters.min_adx}</FilterRow>
                     )}
-                  </div>
-                </div>
-              )}
+                  </>
+                )}
+              </PreviewSection>
 
-              {/* EXIT */}
-              {spec.exit_conditions && (
-                <div>
-                  <Label>EXIT CONDITIONS</Label>
-                  <div className="flex gap-4 mt-1">
-                    {spec.exit_conditions.stop_loss && (
-                      <div>
-                        <p className="text-[8px] tracking-widest mb-0.5" style={{ color: RED }}>
-                          STOP LOSS
-                        </p>
-                        <p className="text-[10px]" style={{ color: "#94a3b8" }}>
-                          {spec.exit_conditions.stop_loss.method}
-                          {spec.exit_conditions.stop_loss.multiplier
-                            ? ` × ${spec.exit_conditions.stop_loss.multiplier}`
-                            : ""}
-                          {spec.exit_conditions.stop_loss.pips
-                            ? ` ${spec.exit_conditions.stop_loss.pips} pips`
-                            : ""}
-                        </p>
-                      </div>
-                    )}
-                    {spec.exit_conditions.take_profit && (
-                      <div>
-                        <p className="text-[8px] tracking-widest mb-0.5" style={{ color: NG }}>
-                          TAKE PROFIT
-                        </p>
-                        <p className="text-[10px]" style={{ color: "#94a3b8" }}>
-                          {spec.exit_conditions.take_profit.method}
-                          {spec.exit_conditions.take_profit.rr_ratio
-                            ? ` RR ${spec.exit_conditions.take_profit.rr_ratio}`
-                            : ""}
-                          {spec.exit_conditions.take_profit.pips
-                            ? ` ${spec.exit_conditions.take_profit.pips} pips`
-                            : ""}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+              {/* ── TAKE PROFIT ── */}
+              <PreviewSection title="TAKE PROFIT" accentColor={NG}>
+                {spec.exit_conditions?.take_profit ? (
+                  <p className="text-[11px]" style={{ color: "#94a3b8" }}>
+                    {tpToJapanese(spec.exit_conditions.take_profit)}
+                  </p>
+                ) : (
+                  <p className="text-[10px]" style={{ color: AMBER }}>
+                    ⚠ 利確条件が生成されませんでした — 修正してください
+                  </p>
+                )}
+              </PreviewSection>
+
+              {/* ── STOP LOSS ── */}
+              <PreviewSection title="STOP LOSS" accentColor={RED}>
+                {spec.exit_conditions?.stop_loss ? (
+                  <p className="text-[11px]" style={{ color: "#94a3b8" }}>
+                    {slToJapanese(spec.exit_conditions.stop_loss)}
+                  </p>
+                ) : (
+                  <p className="text-[10px]" style={{ color: RED }}>
+                    ⚠ 損切り条件が生成されませんでした — 修正してください
+                  </p>
+                )}
+              </PreviewSection>
 
               {/* リスク */}
-              <Row label="RISK">
-                <span style={{ color: AMBER }}>
+              <div className="flex items-center gap-3">
+                <p className="text-[8px] tracking-[0.2em] font-black w-20 shrink-0" style={{ color: "#334155" }}>
+                  RISK
+                </p>
+                <span className="text-[11px]" style={{ color: AMBER }}>
                   {spec.risk.risk_per_trade}% / トレード
                 </span>
-              </Row>
+              </div>
 
-              {/* ステータス */}
+              {/* DRAFT ステータス */}
               <div
                 className="flex items-center gap-3 px-3 py-2 rounded"
                 style={{ background: `${AMBER}08`, border: `1px solid ${AMBER}20` }}
@@ -435,7 +506,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                   DRAFT
                 </span>
                 <span className="text-[9px]" style={{ color: "#64748b" }}>
-                  バックテスト: 未実施 — Phase 2 で実装予定
+                  バックテスト未実施 — 保存後に実行できます
                 </span>
               </div>
 
@@ -474,7 +545,6 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
               </button>
             </div>
           )}
-
         </div>
 
         {/* フッター: アクションボタン */}
@@ -494,13 +564,13 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                 </button>
                 <button
                   onClick={handleBuild}
-                  disabled={prompt.trim().length < 10}
+                  disabled={!isReady}
                   className="text-[10px] font-black tracking-widest px-5 py-2 rounded transition-all hover:opacity-80 disabled:opacity-30"
                   style={{
                     background: `${NG_rgba}0.14)`,
                     border:     `1px solid ${NG_rgba}0.35)`,
                     color:      NG,
-                    boxShadow:  prompt.trim().length >= 10 ? `0 0 12px ${NG_rgba}0.15)` : "none",
+                    boxShadow:  isReady ? `0 0 12px ${NG_rgba}0.15)` : "none",
                   }}
                 >
                   ▶ AI で設計する
@@ -519,7 +589,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
             {(step === "preview" || step === "saving") && (
               <>
                 <button
-                  onClick={() => { setStep("input"); setError(null); }}
+                  onClick={handleBack}
                   disabled={step === "saving"}
                   className="text-[10px] tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-60 disabled:opacity-30"
                   style={{ color: "#64748b", border: "1px solid #1e293b" }}
@@ -555,23 +625,96 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
   );
 }
 
-// ── 小コンポーネント ──────────────────────────────────────────────
+// =================================================================
+// 小コンポーネント
+// =================================================================
 
-function Label({ children }: { children: React.ReactNode }) {
+interface InputSectionProps {
+  label:       string;
+  sublabel:    string;
+  accentColor: string;
+  description: string;
+  placeholder: string;
+  value:       string;
+  onChange:    (v: string) => void;
+  disabled:    boolean;
+  minLength:   number;
+  rows:        number;
+}
+
+function InputSection({
+  label, sublabel, accentColor, description,
+  placeholder, value, onChange, disabled, minLength, rows,
+}: InputSectionProps) {
+  const filled   = value.trim().length >= minLength;
+  const tooShort = value.trim().length > 0 && !filled;
+
   return (
-    <p className="text-[8px] tracking-[0.25em] font-black mb-0" style={{ color: "#334155" }}>
-      {children}
-    </p>
+    <div>
+      <div className="flex items-baseline gap-2 mb-1">
+        <span className="text-[10px] tracking-[0.15em] font-black" style={{ color: accentColor }}>
+          {label}
+        </span>
+        <span className="text-[7px] tracking-widest" style={{ color: "#334155" }}>
+          {sublabel}
+        </span>
+        <span className="text-[7px] tracking-widest ml-auto" style={{ color: accentColor, opacity: 0.55 }}>
+          必須
+        </span>
+      </div>
+      <p className="text-[9px] mb-1.5 tracking-wide" style={{ color: "#334155" }}>
+        {description}
+      </p>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        disabled={disabled}
+        rows={rows}
+        placeholder={placeholder}
+        className="w-full rounded resize-none text-[11px] leading-relaxed tracking-wide outline-none transition-all"
+        style={{
+          background:  disabled ? "rgba(0,255,136,0.02)" : "#0a1120",
+          border:      disabled
+            ? `1px solid ${accentColor}12`
+            : filled
+            ? `1px solid ${accentColor}30`
+            : "1px solid rgba(71,85,105,0.35)",
+          color:       disabled ? "#334155" : "#cbd5e1",
+          padding:     "10px 12px",
+          caretColor:  accentColor,
+        }}
+      />
+      {tooShort && (
+        <p className="text-[8px] mt-1" style={{ color: "#475569" }}>
+          {minLength}文字以上入力してください
+        </p>
+      )}
+    </div>
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+interface PreviewSectionProps {
+  title:       string;
+  accentColor: string;
+  children:    React.ReactNode;
+}
+
+function PreviewSection({ title, accentColor, children }: PreviewSectionProps) {
   return (
-    <div className="flex items-start gap-3">
-      <p className="text-[8px] tracking-[0.2em] font-black w-20 shrink-0 mt-0.5" style={{ color: "#334155" }}>
-        {label}
-      </p>
-      <div className="text-[11px]" style={{ color: "#94a3b8" }}>{children}</div>
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="h-px flex-1" style={{ background: `${accentColor}18` }} />
+        <span className="text-[8px] tracking-[0.3em] font-black px-2" style={{ color: accentColor }}>
+          {title}
+        </span>
+        <div className="h-px flex-1" style={{ background: `${accentColor}18` }} />
+      </div>
+      <div
+        className="rounded px-3 py-3"
+        style={{ background: `${accentColor}03`, border: `1px solid ${accentColor}10` }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -589,7 +732,7 @@ function Tag({ color, children }: { color: string; children: React.ReactNode }) 
 
 function FilterRow({ icon, children }: { icon: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 mb-0.5">
       <span className="text-[7px] tracking-widest w-14 shrink-0" style={{ color: "#334155" }}>
         {icon}
       </span>
