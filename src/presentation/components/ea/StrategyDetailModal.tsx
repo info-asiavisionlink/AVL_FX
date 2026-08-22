@@ -1487,12 +1487,6 @@ function normaliseP4D(d: P4DInterpretation): P4DInterpretation {
 }
 
 const ALL_PHASES: P4DPhase[] = ["BACKTEST_ANALYSIS", "OPTIMIZATION", "WALK_FORWARD", "MONTE_CARLO"];
-const PHASE_LABELS: Record<P4DPhase, string> = {
-  BACKTEST_ANALYSIS: "BACKTEST",
-  OPTIMIZATION:      "OPTIMIZE",
-  WALK_FORWARD:      "WALK FWD",
-  MONTE_CARLO:       "MONTE CARLO",
-};
 const SYNTH_COLORS: Record<SynthType, string> = {
   CONVERGENCE: NG,
   DIVERGENCE:  AMBER,
