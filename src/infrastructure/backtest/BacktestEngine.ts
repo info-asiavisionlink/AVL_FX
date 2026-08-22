@@ -47,6 +47,10 @@ export interface BacktestInput {
   fixedLot?:         number;
   /** テスト用 Evaluator オーバーライド */
   _evaluatorOverride?: (ctx: EvaluationContext) => SignalResult;
+  /** 研究用 Diagnostic — Spread を上書き (pips)。デフォルト: symbol config */
+  _spreadOverride?:   number;
+  /** 研究用 Diagnostic — Slippage を上書き (pips)。デフォルト: symbol config */
+  _slippageOverride?: number;
 }
 
 export interface BacktestResult {
@@ -272,6 +276,8 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     initialBalance  = 10_000,
     fixedLot        = 0.01,
     _evaluatorOverride,
+    _spreadOverride,
+    _slippageOverride,
   } = input;
 
   // ── Validate ──────────────────────────────────────────────
@@ -300,7 +306,10 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   }
 
   // ── Init ──────────────────────────────────────────────────
-  const cfg     = getSymbolConfig(symbol);
+  const _baseCfg = getSymbolConfig(symbol);
+  const cfg = (_spreadOverride !== undefined || _slippageOverride !== undefined)
+    ? { ..._baseCfg, spreadPips: _spreadOverride ?? _baseCfg.spreadPips, slippagePips: _slippageOverride ?? _baseCfg.slippagePips }
+    : _baseCfg;
   const account = new AccountSimulator(initialBalance);
   const trades:  BacktestTrade[] = [];
   let   tradeId = 0;

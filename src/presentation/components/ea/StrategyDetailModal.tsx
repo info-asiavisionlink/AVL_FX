@@ -11,6 +11,12 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createChart, ColorType, LineSeries, type IChartApi, type UTCTimestamp } from "lightweight-charts";
 import { type StrategyRecord } from "@/lib/strategySchema";
+import {
+  TAB_LABELS, VERDICT_LABELS, BACKTEST_STATUS_LABELS,
+  STRATEGY_TYPE_LABELS, DIRECTION_LABELS, TRADE_RESULT_LABELS,
+  EXIT_REASON_LABELS, SESSION_LABELS, WF_VERDICT_LABELS,
+  PHASE_LABELS, labelOf,
+} from "@/lib/ui-labels";
 
 // ------------------------------------------------------------------
 // Colors (aligned with EACommandCenter)
@@ -160,19 +166,19 @@ function OverviewTab({ strategy }: { strategy: StrategyRecord }) {
     <div className="p-5 space-y-5 overflow-y-auto">
       {/* Basic info */}
       <section>
-        <p className="text-[8px] font-black tracking-[0.25em] mb-2" style={{ color: CYAN }}>BASIC INFO</p>
+        <p className="text-[8px] font-black tracking-[0.25em] mb-2" style={{ color: CYAN }}>基本情報</p>
         <div className="px-3 py-1 rounded" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-          <Row label="SYMBOL"    value={strategy.symbols.join(", ")} />
-          <Row label="TIMEFRAME" value={strategy.timeframes.join(", ")} />
-          <Row label="TYPE"      value={strategy.strategy_type} color={CYAN} />
-          <Row label="RISK %"    value={`${(strategy.risk as Record<string,number>)?.risk_per_trade ?? 1}%`} />
+          <Row label="シンボル"    value={strategy.symbols.join(", ")} />
+          <Row label="時間足"     value={strategy.timeframes.join(", ")} />
+          <Row label="種別"       value={labelOf(STRATEGY_TYPE_LABELS, strategy.strategy_type)} color={CYAN} />
+          <Row label="リスク %"   value={`${(strategy.risk as Record<string,number>)?.risk_per_trade ?? 1}%`} />
         </div>
       </section>
 
       {/* Entry conditions */}
       <section>
         <p className="text-[8px] font-black tracking-[0.25em] mb-2" style={{ color: NG }}>
-          ENTRY CONDITIONS <span className="opacity-50 font-normal">— {String(ec?.logic ?? "AND")}</span>
+          エントリー条件 <span className="opacity-50 font-normal">— {String(ec?.logic ?? "AND")}</span>
         </p>
         <div className="space-y-1.5">
           {(conds as Record<string, unknown>[]).map((c, i) => (
@@ -194,21 +200,21 @@ function OverviewTab({ strategy }: { strategy: StrategyRecord }) {
       {/* Filters */}
       {Object.keys(filters).length > 0 && (
         <section>
-          <p className="text-[8px] font-black tracking-[0.25em] mb-2" style={{ color: AMBER }}>FILTERS</p>
+          <p className="text-[8px] font-black tracking-[0.25em] mb-2" style={{ color: AMBER }}>フィルター</p>
           <div className="px-3 py-1 rounded" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
             {filters.max_spread_pips !== undefined && (
-              <Row label="MAX SPREAD" value={`${filters.max_spread_pips} pips`} />
+              <Row label="最大スプレッド" value={`${filters.max_spread_pips} pips`} />
             )}
             {filters.sessions !== undefined && (
-              <Row label="SESSIONS" value={(filters.sessions as string[]).join(", ")} />
+              <Row label="セッション" value={(filters.sessions as string[]).map(s => labelOf(SESSION_LABELS, s)).join(", ")} />
             )}
             {tf && (
-              <Row label="TREND FILTER"
+              <Row label="トレンドフィルター"
                 value={`${String(tf.timeframe)} ${String(tf.indicator)} ${tf.period ? `(${tf.period})` : ""} ${String(tf.direction)}`}
                 color={AMBER} />
             )}
             {filters.min_adx !== undefined && (
-              <Row label="MIN ADX" value={String(filters.min_adx)} />
+              <Row label="最小ADX" value={String(filters.min_adx)} />
             )}
           </div>
         </section>
@@ -217,17 +223,17 @@ function OverviewTab({ strategy }: { strategy: StrategyRecord }) {
       {/* Exit conditions */}
       {exit && Object.keys(exit).length > 0 && (
         <section>
-          <p className="text-[8px] font-black tracking-[0.25em] mb-2" style={{ color: "#64748b" }}>EXIT CONDITIONS</p>
+          <p className="text-[8px] font-black tracking-[0.25em] mb-2" style={{ color: "#64748b" }}>決済条件</p>
           <div className="px-3 py-1 rounded" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
             {exit.stop_loss ? (() => {
               const sl = exit.stop_loss as Record<string, unknown>;
               const v  = `${String(sl.method)}${sl.multiplier ? ` ×${sl.multiplier}` : ""}${sl.pips ? ` ${sl.pips}pips` : ""}`;
-              return <Row label="STOP LOSS" value={v} color={RED} />;
+              return <Row label="損切り (SL)" value={v} color={RED} />;
             })() : null}
             {exit.take_profit ? (() => {
               const tp = exit.take_profit as Record<string, unknown>;
               const v  = `${String(tp.method)}${tp.rr_ratio ? ` RR${tp.rr_ratio}` : ""}${tp.pips ? ` ${tp.pips}pips` : ""}`;
-              return <Row label="TAKE PROFIT" value={v} color={NG} />;
+              return <Row label="利確 (TP)" value={v} color={NG} />;
             })() : null}
           </div>
         </section>
@@ -334,13 +340,13 @@ function ResultDisplay({ r }: { r: DisplayResult }) {
         style={{ background: `${vc}0a`, border: `1px solid ${vc}35` }}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[8px] font-mono tracking-widest mb-1" style={{ color: "#475569" }}>VERDICT</p>
+            <p className="text-[8px] font-mono tracking-widest mb-1" style={{ color: "#475569" }}>判定</p>
             <p className="text-xl font-black tracking-widest" style={{ color: vc, textShadow: `0 0 16px ${vc}60` }}>
-              {r.verdict}
+              {labelOf(VERDICT_LABELS, r.verdict)}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[8px] font-mono tracking-widest mb-1" style={{ color: "#334155" }}>PERIOD</p>
+            <p className="text-[8px] font-mono tracking-widest mb-1" style={{ color: "#334155" }}>期間</p>
             <p className="text-[9px] font-mono" style={{ color: "#475569" }}>{r.periodLabel}</p>
           </div>
         </div>
@@ -358,10 +364,10 @@ function ResultDisplay({ r }: { r: DisplayResult }) {
           <span style={{ color: AMBER }}>⚠</span>
           <div>
             <p className="text-[9px] font-black tracking-widest" style={{ color: AMBER }}>
-              SAMPLE SIZE LIMITED
+              サンプル数不足
             </p>
             <p className="text-[8px] font-mono mt-0.5" style={{ color: "#64748b" }}>
-              {r.totalTrades} trades only. More historical data is recommended before making a final decision.
+              {r.totalTrades}件のみ。より多くの過去データで検証することを推奨します。
             </p>
           </div>
         </div>
