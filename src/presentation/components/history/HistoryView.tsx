@@ -143,7 +143,7 @@ export function HistoryView() {
       <div className="flex items-center gap-3 mb-3 shrink-0 flex-wrap">
         <div className="flex items-center gap-2">
           <div className="w-0.5 h-4 bg-cyan-500/60" />
-          <span className="text-[9px] text-cyan-500/70 font-mono tracking-widest">TRADE HISTORY</span>
+          <span className="text-[9px] text-cyan-500/70 font-mono tracking-widest">取引履歴</span>
         </div>
 
         {/* シンボル */}
@@ -186,9 +186,9 @@ export function HistoryView() {
           {deals.length > 0 && (
             <div className="grid grid-cols-4 gap-1.5 shrink-0">
               {[
-                { label: "Total", value: stats.total, color: "text-gray-300" },
-                { label: "Win Rate", value: stats.winRate.toFixed(1) + "%", color: stats.winRate >= 50 ? "text-green-400" : "text-red-400" },
-                { label: "P&L", value: (stats.totalPL >= 0 ? "+" : "") + stats.totalPL.toFixed(2), color: stats.totalPL >= 0 ? "text-green-400" : "text-red-400" },
+                { label: "取引数", value: stats.total, color: "text-gray-300" },
+                { label: "勝率", value: stats.winRate.toFixed(1) + "%", color: stats.winRate >= 50 ? "text-green-400" : "text-red-400" },
+                { label: "損益", value: (stats.totalPL >= 0 ? "+" : "") + stats.totalPL.toFixed(2), color: stats.totalPL >= 0 ? "text-green-400" : "text-red-400" },
                 { label: "PF", value: stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? "text-green-400" : stats.profitFactor >= 1 ? "text-yellow-400" : "text-red-400" },
               ].map(({ label, value, color }) => (
                 <div key={label} className="border border-[#0d1520] bg-[#060a12] p-2 text-center">
@@ -202,7 +202,7 @@ export function HistoryView() {
           {/* P&L バーチャート */}
           {deals.length > 0 && (
             <div className="border border-[#0d1520] bg-[#060a12] p-2 shrink-0">
-              <p className="text-[7px] text-gray-700 font-mono mb-1">Daily P&L (Last 14 days)</p>
+              <p className="text-[7px] text-gray-700 font-mono mb-1">日次損益（直近14日）</p>
               <PnlChart deals={deals} />
             </div>
           )}
@@ -230,7 +230,7 @@ export function HistoryView() {
                 <table className="w-full text-[8px] font-mono">
                   <thead className="sticky top-0 bg-[#0d1520]">
                     <tr>
-                      {["Ticket","Type","Vol","Close Time","Price","Profit","Net"].map(h => (
+                      {["チケット","種別","数量","決済時刻","価格","損益","純損益"].map(h => (
                         <th key={h} className="px-2 py-1.5 text-left text-gray-600">{h}</th>
                       ))}
                     </tr>
@@ -262,7 +262,7 @@ export function HistoryView() {
 
         {/* 右: AI注文ログ */}
         <div className="w-52 shrink-0 border border-[#0d1520] bg-[#060a12] p-2.5 overflow-y-auto">
-          <p className="text-[8px] text-purple-500/70 font-mono tracking-widest mb-2">AI ORDER LOG</p>
+          <p className="text-[8px] text-purple-500/70 font-mono tracking-widest mb-2">AI 注文ログ</p>
           {aiOrders.length === 0 ? (
             <p className="text-[7px] text-gray-800 font-mono">AI 注文ログなし</p>
           ) : (

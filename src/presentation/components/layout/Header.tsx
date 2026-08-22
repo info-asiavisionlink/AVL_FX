@@ -61,10 +61,10 @@ export function Header() {
                                              "no_data";
 
   const statusLabel =
-    dataStatus === "live"     ? "EA ACTIVE" :
-    dataStatus === "stale"    ? "STALE DATA" :
-    dataStatus === "ind_only" ? "IND ONLY"  :
-                                "NO DATA";
+    dataStatus === "live"     ? "EA稼働中" :
+    dataStatus === "stale"    ? "データ遅延" :
+    dataStatus === "ind_only" ? "指標のみ"  :
+                                "データなし";
 
   const statusColor =
     dataStatus === "live"     ? "text-green-400"    :
@@ -142,7 +142,7 @@ export function Header() {
           style={isConnected ? { boxShadow: "0 0 4px rgba(0,255,136,0.5)" } : undefined}/>
         <span className={cn("hidden sm:block text-[8.5px] font-mono",
           isConnected ? "text-green-400/70" : "text-gray-600")}>
-          {isConnected ? "MT5 LIVE" : "OFFLINE"}
+          {isConnected ? "MT5接続中" : "オフライン"}
         </span>
       </div>
     </header>

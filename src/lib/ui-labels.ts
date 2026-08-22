@@ -110,6 +110,54 @@ export const PHASE_LABELS: Record<string, string> = {
   MONTE_CARLO:       "モンテカルロ",
 };
 
+// ── データステータス ──────────────────────────────────────────────
+export const DATA_STATUS_LABELS: Record<string, string> = {
+  live:     "EA稼働中",
+  stale:    "データ遅延",
+  ind_only: "指標のみ",
+  no_data:  "データなし",
+};
+
+// ── 接続ステータス ────────────────────────────────────────────────
+export const CONNECTION_LABELS: Record<string, string> = {
+  connected:    "MT5接続中",
+  disconnected: "オフライン",
+  connecting:   "接続中...",
+  error:        "エラー",
+};
+
+// ── AI分析セクション ──────────────────────────────────────────────
+export const ANALYSIS_SECTION_LABELS: Record<string, string> = {
+  FACTS:        "ファクト（バックテストデータから確認済み）",
+  OBSERVATIONS: "観察（推測されたパターン）",
+  HYPOTHESES:   "仮説（未確認の可能性）",
+  STRENGTHS:    "強み",
+  WEAKNESSES:   "弱み",
+  SESSION_ANALYSIS:  "セッション分析",
+  RISK_ANALYSIS:     "リスク分析",
+  RECOMMENDATIONS:   "推奨事項",
+};
+
+// ── バックテスト実行ボタン ────────────────────────────────────────
+export const BACKTEST_ACTION_LABELS: Record<string, string> = {
+  run:     "▶ バックテスト実行",
+  rerun:   "↺ 再実行",
+  running: "◌ 実行中...",
+};
+
+// ── ナビゲーションラベル ──────────────────────────────────────────
+export const NAV_LABELS: Record<string, string> = {
+  MARKETS:   "マーケット",
+  CHART:     "チャート",
+  CALENDAR:  "カレンダー",
+  NEWS:      "ニュース",
+  POSITIONS: "ポジション",
+  HISTORY:   "取引履歴",
+  DATA:      "データ",
+  "SYS LOGS": "ログ",
+  SETTINGS:  "設定",
+};
+
 // ── ヘルパー：ラベル変換（fallback付き） ─────────────────────────
 export function labelOf(map: Record<string, string>, key: string): string {
   return map[key] ?? key;

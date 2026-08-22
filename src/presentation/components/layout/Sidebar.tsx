@@ -15,17 +15,17 @@ const NG      = "#00ff88";
 const NG_rgba = "rgba(0,255,136,";
 
 export const NAV = [
-  { href: "/",          icon: LayoutDashboard, label: "AI起動",    group: 1 },
-  { href: "/ea",        icon: Bot,             label: "EA起動",    group: 1 },
-  { href: "/markets",   icon: Globe,           label: "MARKETS",   group: 1 },
-  { href: "/chart",     icon: BarChart2,       label: "CHART",     group: 1 },
-  { href: "/calendar",  icon: CalendarDays,    label: "CALENDAR",  group: 1 },
-  { href: "/news",      icon: Newspaper,       label: "NEWS",      group: 1 },
-  { href: "/positions",    icon: Briefcase,    label: "POSITIONS", group: 2 },
-  { href: "/history",      icon: History,      label: "HISTORY",   group: 2 },
-  { href: "/market-data",  icon: DatabaseZap,  label: "DATA",      group: 2 },
-  { href: "/logs",         icon: ScrollText,   label: "SYS LOGS",  group: 2 },
-  { href: "/settings",     icon: Settings,     label: "SETTINGS",  group: 2 },
+  { href: "/",          icon: LayoutDashboard, label: "AI起動",      group: 1 },
+  { href: "/ea",        icon: Bot,             label: "EA起動",      group: 1 },
+  { href: "/markets",   icon: Globe,           label: "マーケット",   group: 1 },
+  { href: "/chart",     icon: BarChart2,       label: "チャート",     group: 1 },
+  { href: "/calendar",  icon: CalendarDays,    label: "カレンダー",   group: 1 },
+  { href: "/news",      icon: Newspaper,       label: "ニュース",     group: 1 },
+  { href: "/positions",    icon: Briefcase,    label: "ポジション",   group: 2 },
+  { href: "/history",      icon: History,      label: "取引履歴",     group: 2 },
+  { href: "/market-data",  icon: DatabaseZap,  label: "データ",       group: 2 },
+  { href: "/logs",         icon: ScrollText,   label: "ログ",         group: 2 },
+  { href: "/settings",     icon: Settings,     label: "設定",         group: 2 },
 ];
 
 interface SidebarProps {

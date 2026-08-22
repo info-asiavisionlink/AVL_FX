@@ -44,8 +44,8 @@ export function LogsView() {
       <div className="flex items-center gap-3 mb-3 shrink-0 flex-wrap">
         <div className="flex items-center gap-2">
           <div className="w-0.5 h-4 bg-cyan-500/60" />
-          <span className="text-[9px] text-cyan-500/70 font-mono tracking-widest">SYSTEM LOGS</span>
-          <span className="text-[8px] text-gray-700 font-mono">· {aiLogs.length} entries</span>
+          <span className="text-[9px] text-cyan-500/70 font-mono tracking-widest">システムログ</span>
+          <span className="text-[8px] text-gray-700 font-mono">· {aiLogs.length} 件</span>
         </div>
 
         {/* フィルター */}

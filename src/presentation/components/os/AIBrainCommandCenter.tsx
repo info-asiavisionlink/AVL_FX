@@ -243,7 +243,7 @@ export const AIBrainCommandCenter = memo(function AIBrainCommandCenter({
               ? "border-red-700/50 text-red-300 bg-red-950/20 hover:bg-red-900/30"
               : "border-cyan-700/40 text-cyan-400 bg-cyan-950/20 hover:bg-cyan-900/30"
           )}>
-          {scanning ? <><Square size={8}/> STOP SCAN</> : <><Play size={8}/> SCAN ALL</>}
+          {scanning ? <><Square size={8}/> スキャン停止</> : <><Play size={8}/> 全スキャン</>}
         </button>
 
         {/* Single-symbol analyze */}
@@ -257,7 +257,7 @@ export const AIBrainCommandCenter = memo(function AIBrainCommandCenter({
               : "border-purple-700/40 text-purple-400 bg-purple-950/15 hover:bg-purple-900/25"
           )}>
           <Brain size={8} className={brainRunning ? "animate-pulse" : ""}/>
-          {brainRunning ? `${brainStep.toUpperCase()}...` : `ANALYZE ${activeSymbol}`}
+          {brainRunning ? `${brainStep.toUpperCase()}...` : `${activeSymbol} 分析`}
         </button>
       </div>
 
@@ -271,7 +271,7 @@ export const AIBrainCommandCenter = memo(function AIBrainCommandCenter({
           <div className="border border-cyan-900/20 bg-[#030508] p-2 relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-px"
               style={{ background: `linear-gradient(90deg, transparent, ${stateMeta.color}40, transparent)` }}/>
-            <p className="text-[6px] font-mono text-gray-700 tracking-[0.2em] mb-1.5">AI STATE</p>
+            <p className="text-[6px] font-mono text-gray-700 tracking-[0.2em] mb-1.5">AI状態</p>
             <div className="flex items-center gap-1.5 mb-0.5">
               <div className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: stateMeta.color, boxShadow: `0 0 5px ${stateMeta.color}` }}/>
@@ -289,7 +289,7 @@ export const AIBrainCommandCenter = memo(function AIBrainCommandCenter({
                 borderColor: bestOpp.direction === "BUY" ? "#00ff8840" : bestOpp.direction === "SELL" ? "#ff1a4e40" : "#00e5ff30",
                 background:  bestOpp.direction === "BUY" ? "#031508"   : bestOpp.direction === "SELL" ? "#150308"   : "#030508",
               }}>
-              <p className="text-[6px] font-mono text-gray-700 tracking-[0.2em] mb-1">BEST OPPORTUNITY</p>
+              <p className="text-[6px] font-mono text-gray-700 tracking-[0.2em] mb-1">最良シグナル</p>
               <div className="flex items-center gap-1 mb-0.5">
                 {bestOpp.direction === "BUY"  ? <TrendingUp   size={9} style={{ color: "#00ff88" }}/> :
                  bestOpp.direction === "SELL" ? <TrendingDown size={9} style={{ color: "#ff1a4e" }}/> :
@@ -300,7 +300,7 @@ export const AIBrainCommandCenter = memo(function AIBrainCommandCenter({
                 </span>
               </div>
               <div className="flex items-center gap-1 mb-0.5">
-                <span className="text-[6px] font-mono text-gray-700">CONF</span>
+                <span className="text-[6px] font-mono text-gray-700">確信度</span>
                 <div className="flex-1 h-0.5 bg-[#0d1520] rounded-full overflow-hidden">
                   <div className="h-full rounded-full transition-all duration-700"
                     style={{
@@ -321,36 +321,36 @@ export const AIBrainCommandCenter = memo(function AIBrainCommandCenter({
                 )}
               </div>
               {actionable.length > 0 && (
-                <p className="text-[6px] font-mono text-gray-700 mt-1">{actionable.length} actionable setup{actionable.length > 1 ? "s" : ""}</p>
+                <p className="text-[6px] font-mono text-gray-700 mt-1">{actionable.length}件のアクティブシグナル</p>
               )}
             </div>
           ) : (
             <div className="border border-[#0d1520] bg-[#030508] p-2">
-              <p className="text-[6px] font-mono text-gray-700 tracking-[0.2em] mb-1">BEST OPPORTUNITY</p>
+              <p className="text-[6px] font-mono text-gray-700 tracking-[0.2em] mb-1">最良シグナル</p>
               <p className="text-[7px] font-mono text-gray-800 text-center py-2">
-                {scanning ? "SCANNING..." : "RUN SCAN"}
+                {scanning ? "スキャン中..." : "スキャン実行"}
               </p>
             </div>
           )}
 
           {/* SCAN STATUS */}
           <div className="border border-[#0d1520] bg-[#030508] p-2">
-            <p className="text-[6px] font-mono text-gray-700 tracking-[0.2em] mb-1.5">SCAN STATUS</p>
+            <p className="text-[6px] font-mono text-gray-700 tracking-[0.2em] mb-1.5">スキャン状態</p>
             <div className="flex items-center gap-1.5 mb-1">
               <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", scanning ? "bg-cyan-400 animate-pulse" : "bg-gray-700")}/>
               <span className={cn("text-[8px] font-mono font-semibold", scanning ? "text-cyan-400" : "text-gray-600")}>
-                {scanning ? "ACTIVE" : "IDLE"}
+                {scanning ? "稼働中" : "待機中"}
               </span>
             </div>
             <div className="space-y-0.5 text-[6.5px] font-mono">
               <div className="flex justify-between">
-                <span className="text-gray-700">Scanned</span>
+                <span className="text-gray-700">スキャン済</span>
                 <span className="text-gray-400">
                   {scanRows.filter(r => r.status === "done" || r.status === "skip").length}/{scanSymbols.length}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-700">Signals</span>
+                <span className="text-gray-700">シグナル数</span>
                 <span className={actionable.length > 0 ? "text-cyan-400" : "text-gray-700"}>
                   {actionable.length}
                 </span>
@@ -369,7 +369,7 @@ export const AIBrainCommandCenter = memo(function AIBrainCommandCenter({
           {/* BRAIN STEP (single analysis) */}
           {brainStep !== "idle" && (
             <div className="border border-purple-900/30 bg-purple-950/10 p-2">
-              <p className="text-[6px] font-mono text-purple-400/60 tracking-[0.2em] mb-1.5">BRAIN STEP</p>
+              <p className="text-[6px] font-mono text-purple-400/60 tracking-[0.2em] mb-1.5">分析ステップ</p>
               {(["snapshot","decision","risk","dryrun","complete"] as BrainStep[]).map(step => {
                 const ORDER: BrainStep[] = ["idle","snapshot","decision","risk","dryrun","executing","complete","error"];
                 const curIdx  = ORDER.indexOf(brainStep);
@@ -395,7 +395,7 @@ export const AIBrainCommandCenter = memo(function AIBrainCommandCenter({
                 onClick={onResetBrain}
                 disabled={brainRunning}
                 className="w-full mt-2 text-[6.5px] font-mono text-gray-700 hover:text-gray-500 border border-[#0d1520] py-0.5 transition-colors disabled:opacity-30 flex items-center justify-center gap-1">
-                <RefreshCw size={7}/> RESET
+                <RefreshCw size={7}/> リセット
               </button>
             </div>
           )}
@@ -453,9 +453,9 @@ export const AIBrainCommandCenter = memo(function AIBrainCommandCenter({
           {/* Tab bar */}
           <div className="flex border-b border-cyan-900/15 shrink-0 bg-[#030508]">
             {([
-              { id: "scanner" as RightTab, label: "SCAN",  Icon: Activity },
-              { id: "ranker"  as RightTab, label: "OPP",   Icon: Zap      },
-              { id: "feed"    as RightTab, label: "FEED",  Icon: Shield   },
+              { id: "scanner" as RightTab, label: "スキャン", Icon: Activity },
+              { id: "ranker"  as RightTab, label: "シグナル", Icon: Zap      },
+              { id: "feed"    as RightTab, label: "フィード", Icon: Shield   },
             ]).map(({ id, label, Icon }) => (
               <button
                 key={id}

@@ -182,9 +182,9 @@ function verdictColor(v: string) {
 }
 
 function verdictLabel(v: string) {
-  if (v === "PASSED")      return "PASSED";
-  if (v === "CONDITIONAL") return "CONDITIONAL";
-  return "FAILED";
+  if (v === "PASSED")      return "合格";
+  if (v === "CONDITIONAL") return "条件付";
+  return "不合格";
 }
 
 function pipsColor(pips: number) { return pips >= 0 ? NG : RED; }
@@ -376,7 +376,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
   function stepBadge() {
     if (step === "generating")  return "AI設計中...";
     if (step === "backtesting") return "バックテスト実行中...";
-    if (step === "result")      return "RESULT";
+    if (step === "result")      return "結果";
     if (step === "saving")      return "保存中...";
     return null;
   }
@@ -680,7 +680,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                   <div className="flex items-center gap-2">
                     <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
                     <span className="text-[8px] tracking-[0.3em] font-black" style={{ color: "#475569" }}>
-                      BACKTEST RESULT
+                      バックテスト結果
                     </span>
                     <span
                       className="text-[8px] font-black tracking-widest px-2 py-0.5 rounded"
@@ -711,7 +711,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                     }}
                   >
                     <p className="text-[8px] tracking-widest mb-1" style={{ color: "#334155" }}>
-                      TOTAL PIPS
+                      合計 PIPS
                     </p>
                     <p
                       className="text-[28px] font-black leading-none"
@@ -728,11 +728,11 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                   {/* Stats グリッド */}
                   <div className="grid grid-cols-3 gap-1.5">
                     {[
-                      { label: "TRADES",  value: String(backtestResult.report.totalTrades), color: "#94a3b8" },
-                      { label: "WINS",    value: String(backtestResult.report.wins),         color: NG        },
-                      { label: "LOSSES",  value: String(backtestResult.report.losses),       color: RED       },
+                      { label: "取引数",   value: String(backtestResult.report.totalTrades), color: "#94a3b8" },
+                      { label: "勝ち",     value: String(backtestResult.report.wins),         color: NG        },
+                      { label: "負け",     value: String(backtestResult.report.losses),       color: RED       },
                       {
-                        label: "WIN RATE",
+                        label: "勝率",
                         value: `${backtestResult.report.winRate.toFixed(1)}%`,
                         color: backtestResult.report.winRate >= 55 ? NG : backtestResult.report.winRate >= 50 ? AMBER : RED,
                       },
@@ -742,12 +742,12 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                         color: (backtestResult.report.profitFactor ?? 0) >= 1.2 ? NG : (backtestResult.report.profitFactor ?? 0) >= 1 ? AMBER : RED,
                       },
                       {
-                        label: "MAX DD",
+                        label: "最大DD",
                         value: `${backtestResult.report.maxDrawdownPct.toFixed(1)}%`,
                         color: backtestResult.report.maxDrawdownPct < 10 ? NG : backtestResult.report.maxDrawdownPct < 20 ? AMBER : RED,
                       },
                       {
-                        label: "AVG PIPS",
+                        label: "平均PIPS",
                         value: `${backtestResult.report.avgPips >= 0 ? "+" : ""}${backtestResult.report.avgPips.toFixed(1)}`,
                         color: pipsColor(backtestResult.report.avgPips),
                       },
@@ -794,7 +794,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                    Object.keys(backtestResult.report.sessionStats).length > 0 && (
                     <div>
                       <p className="text-[7px] tracking-widest mb-1.5" style={{ color: "#334155" }}>
-                        SESSION
+                        セッション別
                       </p>
                       <div className="flex flex-col gap-1">
                         {Object.entries(backtestResult.report.sessionStats)
@@ -843,7 +843,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
               {/* RISK */}
               <div className="flex items-center gap-3">
                 <p className="text-[8px] tracking-[0.2em] font-black w-20 shrink-0" style={{ color: "#334155" }}>
-                  RISK
+                  リスク
                 </p>
                 <span className="text-[11px]" style={{ color: AMBER }}>
                   {spec.risk.risk_per_trade}% / トレード

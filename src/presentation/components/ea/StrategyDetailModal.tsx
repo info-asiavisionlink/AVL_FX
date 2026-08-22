@@ -317,7 +317,7 @@ function EquityCurve({ trades }: { trades: DBTrade[] }) {
   return (
     <div>
       <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: "#334155" }}>
-        EQUITY CURVE — CUMULATIVE PIPS
+        エクイティカーブ — 累積PIPS
       </p>
       <div ref={containerRef} className="w-full rounded overflow-hidden"
         style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }} />
@@ -375,7 +375,7 @@ function ResultDisplay({ r }: { r: DisplayResult }) {
 
       {/* Key metrics */}
       <div>
-        <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: "#334155" }}>KEY METRICS</p>
+        <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: "#334155" }}>主要指標</p>
 
         {/* Total pips — large */}
         <div className="px-4 py-3 rounded mb-2"
@@ -383,7 +383,7 @@ function ResultDisplay({ r }: { r: DisplayResult }) {
             background: `${pipsColor(r.totalPips)}08`,
             border: `1px solid ${pipsColor(r.totalPips)}25`,
           }}>
-          <p className="text-[8px] font-mono tracking-widest mb-1" style={{ color: "#334155" }}>TOTAL PIPS</p>
+          <p className="text-[8px] font-mono tracking-widest mb-1" style={{ color: "#334155" }}>合計 PIPS</p>
           <p className="text-3xl font-black font-mono leading-none"
             style={{ color: pipsColor(r.totalPips), textShadow: `0 0 20px ${pipsColor(r.totalPips)}50` }}>
             {r.totalPips >= 0 ? "+" : ""}{r.totalPips.toFixed(1)}
@@ -393,15 +393,15 @@ function ResultDisplay({ r }: { r: DisplayResult }) {
         {/* Stats grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
           {[
-            { label: "WIN RATE",     value: `${r.winRate.toFixed(1)}%`,         color: r.winRate >= 55 ? NG : r.winRate >= 45 ? AMBER : RED },
-            { label: "PROFIT FACTOR",value: pfDisplay(r.profitFactor),            color: pfNum >= 1.3 ? NG : pfNum >= 1 ? AMBER : RED },
-            { label: "TRADES",       value: String(r.totalTrades),               color: "#94a3b8" },
-            { label: "AVG PIPS",     value: `${r.avgPips >= 0 ? "+" : ""}${r.avgPips.toFixed(1)}`, color: pipsColor(r.avgPips) },
-            { label: "MAX DD",       value: `${r.maxDrawdownPct.toFixed(1)}%`,   color: r.maxDrawdownPct < 10 ? NG : r.maxDrawdownPct < 20 ? AMBER : RED },
-            { label: "DD PIPS",      value: r.maxDrawdownPips.toFixed(1),        color: "#64748b" },
-            { label: "WINS",         value: String(r.wins),                       color: NG },
-            { label: "LOSSES",       value: String(r.losses),                    color: RED },
-            { label: "AVG DURATION", value: `${r.avgDuration.toFixed(0)} min`,   color: "#64748b" },
+            { label: "勝率",        value: `${r.winRate.toFixed(1)}%`,         color: r.winRate >= 55 ? NG : r.winRate >= 45 ? AMBER : RED },
+            { label: "PF",         value: pfDisplay(r.profitFactor),            color: pfNum >= 1.3 ? NG : pfNum >= 1 ? AMBER : RED },
+            { label: "取引数",     value: String(r.totalTrades),               color: "#94a3b8" },
+            { label: "平均PIPS",   value: `${r.avgPips >= 0 ? "+" : ""}${r.avgPips.toFixed(1)}`, color: pipsColor(r.avgPips) },
+            { label: "最大DD",     value: `${r.maxDrawdownPct.toFixed(1)}%`,   color: r.maxDrawdownPct < 10 ? NG : r.maxDrawdownPct < 20 ? AMBER : RED },
+            { label: "DDのPIPS",   value: r.maxDrawdownPips.toFixed(1),        color: "#64748b" },
+            { label: "勝ち",       value: String(r.wins),                       color: NG },
+            { label: "負け",       value: String(r.losses),                    color: RED },
+            { label: "平均時間",   value: `${r.avgDuration.toFixed(0)} min`,   color: "#64748b" },
           ].map(({ label, value, color }) => (
             <div key={label} className="px-2 py-2 rounded"
               style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
@@ -414,18 +414,18 @@ function ResultDisplay({ r }: { r: DisplayResult }) {
 
       {/* Data coverage */}
       <div className="flex gap-3 text-[8px] font-mono" style={{ color: "#334155" }}>
-        <span>DATA: {r.dataCoverageDays.toFixed(0)} days</span>
+        <span>データ期間: {r.dataCoverageDays.toFixed(0)}日</span>
         <span>·</span>
-        <span>BARS: {r.barCount.toLocaleString()}</span>
+        <span>バー数: {r.barCount.toLocaleString()}</span>
         <span>·</span>
-        <span>STREAK W{r.maxConsWins}/L{r.maxConsLosses}</span>
+        <span>連勝/連敗 {r.maxConsWins}/{r.maxConsLosses}</span>
       </div>
 
       {/* Session performance */}
       {Object.keys(r.sessionStats).length > 0 && (
         <div>
           <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: "#334155" }}>
-            SESSION PERFORMANCE
+            セッション別成績
           </p>
           <div className="space-y-1.5">
             {Object.entries(r.sessionStats).map(([sess, stat]) => {
@@ -548,7 +548,7 @@ function BacktestTab({ strategyId, onJobIdChange }: {
       {/* Run panel */}
       <div className="p-4 rounded" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}>
         <p className="text-[8px] font-black tracking-[0.22em] mb-3" style={{ color: CYAN }}>
-          RUN BACKTEST
+          バックテスト実行
         </p>
 
         {/* Period selector */}
@@ -571,7 +571,7 @@ function BacktestTab({ strategyId, onJobIdChange }: {
         {/* Balance input */}
         <div className="flex items-center gap-3 mb-4">
           <span className="text-[8px] font-mono tracking-widest shrink-0" style={{ color: "#334155" }}>
-            INITIAL BALANCE
+            初期残高
           </span>
           <div className="relative flex-1 max-w-[160px]">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-mono" style={{ color: "#475569" }}>$</span>
@@ -604,8 +604,8 @@ function BacktestTab({ strategyId, onJobIdChange }: {
             cursor: state === "running" ? "not-allowed" : "pointer",
           }}>
           {state === "running"
-            ? "◌ BACKTESTING..."
-            : result ? "↺ RE-RUN BACKTEST" : "▶ RUN BACKTEST"}
+            ? "◌ バックテスト実行中..."
+            : result ? "↺ 再実行" : "▶ バックテスト実行"}
         </button>
 
         {errMsg && (
@@ -669,7 +669,7 @@ function TradesTab({ jobId }: { jobId: string | null }) {
     return (
       <div className="p-5 flex items-center justify-center h-48">
         <p className="text-[9px] font-mono tracking-widest" style={{ color: "#334155" }}>
-          ◌ Loading trades...
+          ◌ 取引データ読み込み中...
         </p>
       </div>
     );
@@ -693,19 +693,19 @@ function TradesTab({ jobId }: { jobId: string | null }) {
           ))}
         </div>
         <span className="text-[8px] font-mono" style={{ color: "#334155" }}>
-          {filtered.length} trades
+          {filtered.length} 件
         </span>
       </div>
 
       {/* Table */}
       {paged.length === 0 ? (
-        <p className="text-[9px] font-mono text-center py-8" style={{ color: "#334155" }}>No trades</p>
+        <p className="text-[9px] font-mono text-center py-8" style={{ color: "#334155" }}>取引データなし</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full" style={{ borderCollapse: "separate", borderSpacing: "0 2px" }}>
             <thead>
               <tr>
-                {["TIME", "DIR", "ENTRY", "EXIT", "PIPS", "RESULT", "SESSION", "REASON"].map(h => (
+                {["時刻", "方向", "エントリー", "決済", "PIPS", "結果", "セッション", "理由"].map(h => (
                   <th key={h} className="text-left px-2 pb-1.5 text-[7px] font-mono tracking-widest"
                     style={{ color: "#334155" }}>
                     {h}
@@ -761,7 +761,7 @@ function TradesTab({ jobId }: { jobId: string | null }) {
           <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
             className="px-2 py-1 rounded text-[8px] font-mono transition-opacity"
             style={{ color: "#475569", opacity: page === 0 ? 0.3 : 1 }}>
-            ← PREV
+            ← 前
           </button>
           <span className="text-[8px] font-mono" style={{ color: "#334155" }}>
             {page + 1} / {totalPages}
@@ -769,7 +769,7 @@ function TradesTab({ jobId }: { jobId: string | null }) {
           <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}
             className="px-2 py-1 rounded text-[8px] font-mono transition-opacity"
             style={{ color: "#475569", opacity: page === totalPages - 1 ? 0.3 : 1 }}>
-            NEXT →
+            次 →
           </button>
         </div>
       )}
@@ -902,8 +902,8 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
               cursor:  state === "running" ? "not-allowed" : "pointer",
             }}>
             {state === "running"
-              ? "◌ ANALYZING..."
-              : analysis ? "↺ RE-ANALYZE WITH AI" : "⬡ ANALYZE WITH AI"}
+              ? "◌ AI分析中..."
+              : analysis ? "↺ AI再分析" : "⬡ AIで分析する"}
           </button>
           {errMsg && <p className="text-[9px] font-mono" style={{ color: RED }}>{errMsg}</p>}
         </div>
@@ -912,7 +912,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
       {!hasBacktest && !analysis && (
         <div className="flex items-center justify-center h-32">
           <p className="text-[9px] font-mono tracking-widest" style={{ color: "#334155" }}>
-            Run a Backtest first to enable AI Analysis.
+            バックテストを実行してからAI分析が使用できます。
           </p>
         </div>
       )}
@@ -927,7 +927,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
             <div className="flex items-start justify-between gap-4 mb-2">
               <p className="text-[8px] font-black tracking-[0.25em]" style={{ color: PURPLE }}>AI ANALYSIS</p>
               <div className="flex items-center gap-2 shrink-0">
-                <p className="text-[7px] font-mono tracking-widest" style={{ color: "#334155" }}>CONFIDENCE</p>
+                <p className="text-[7px] font-mono tracking-widest" style={{ color: "#334155" }}>信頼度</p>
                 <p className="text-sm font-black font-mono" style={{ color: confColor(analysis.confidence) }}>
                   {analysis.confidence}
                 </p>
@@ -945,7 +945,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
 
           {/* FACTS */}
           {analysis.facts.length > 0 && (
-            <Section title="FACTS — CONFIRMED FROM BACKTEST DATA" color={CYAN}>
+            <Section title="ファクト — バックテストデータから確認済み" color={CYAN}>
               {analysis.facts.map((f, i) => (
                 <div key={i} className="flex items-start gap-2 px-3 py-2 rounded"
                   style={{ background: `${CYAN}06`, border: `1px solid ${CYAN}15` }}>
@@ -969,7 +969,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
 
           {/* OBSERVATIONS */}
           {analysis.observations.length > 0 && (
-            <Section title="OBSERVATIONS — INFERRED PATTERNS" color={AMBER}>
+            <Section title="観察 — 推測されたパターン" color={AMBER}>
               {analysis.observations.map((o, i) => (
                 <div key={i} className="flex items-start gap-2 px-3 py-2 rounded"
                   style={{ background: `${AMBER}06`, border: `1px solid ${AMBER}15` }}>
@@ -977,7 +977,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
                   <div className="flex-1 min-w-0">
                     <p className="text-[9px] font-mono leading-relaxed" style={{ color: "#94a3b8" }}>{o.observation}</p>
                     <p className="text-[8px] font-mono mt-1 leading-relaxed" style={{ color: "#475569" }}>
-                      Based on: {o.basis}
+                      根拠: {o.basis}
                     </p>
                   </div>
                   {o.confidence && (
@@ -993,11 +993,11 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
 
           {/* HYPOTHESES — clearly labeled as speculative */}
           {analysis.hypotheses.length > 0 && (
-            <Section title="HYPOTHESES — POSSIBLE CAUSES (NOT CONFIRMED)" color={PURPLE}>
+            <Section title="仮説 — 考えられる要因（未確認）" color={PURPLE}>
               <div className="px-3 py-1.5 rounded mb-2"
                 style={{ background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.20)" }}>
                 <p className="text-[7px] font-mono" style={{ color: PURPLE }}>
-                  ⚠ The following are unconfirmed hypotheses. They represent possible causes, not established facts.
+                  ⚠ 以下は未確認の仮説です。確立された事実ではなく、考えられる要因を示しています。
                 </p>
               </div>
               {analysis.hypotheses.map((h, i) => (
@@ -1025,7 +1025,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
 
           {/* STRENGTHS */}
           {analysis.strengths.length > 0 && (
-            <Section title="STRENGTHS" color={NG}>
+            <Section title="強み" color={NG}>
               {analysis.strengths.map((s, i) => (
                 <div key={i} className="flex items-start gap-2 px-3 py-2 rounded"
                   style={{ background: `${NG_r}0.04)`, border: `1px solid ${NG_r}0.12)` }}>
@@ -1041,7 +1041,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
 
           {/* WEAKNESSES */}
           {analysis.weaknesses.length > 0 && (
-            <Section title="WEAKNESSES" color={RED}>
+            <Section title="弱み" color={RED}>
               {analysis.weaknesses.map((w, i) => (
                 <div key={i} className="flex items-start gap-2 px-3 py-2 rounded"
                   style={{ background: `${RED}06`, border: `1px solid ${RED}18` }}>
@@ -1057,7 +1057,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
 
           {/* SESSION ANALYSIS */}
           {analysis.session_analysis.length > 0 && (
-            <Section title="SESSION ANALYSIS" color="#64748b">
+            <Section title="セッション分析" color="#64748b">
               {analysis.session_analysis.map((s, i) => (
                 <div key={i} className="px-3 py-2 rounded"
                   style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1076,7 +1076,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
           )}
 
           {/* RISK ANALYSIS */}
-          <Section title="RISK ANALYSIS" color={AMBER}>
+          <Section title="リスク分析" color={AMBER}>
             <div className="px-3 py-3 rounded space-y-2"
               style={{ background: `${AMBER}06`, border: `1px solid ${AMBER}18` }}>
               {([
@@ -1095,7 +1095,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
 
           {/* RECOMMENDATIONS */}
           {analysis.recommendations.length > 0 && (
-            <Section title="RECOMMENDATIONS" color={CYAN}>
+            <Section title="推奨事項" color={CYAN}>
               {analysis.recommendations.map((r, i) => (
                 <div key={i} className="flex items-start gap-2 px-3 py-2 rounded"
                   style={{ background: `${CYAN}05`, border: `1px solid ${CYAN}15` }}>
@@ -1252,8 +1252,8 @@ function ImprovementSection({ strategyId, analysisId, requiresMoreData }: {
             cursor:  state === "generating" ? "not-allowed" : "pointer",
           }}>
           {state === "generating"
-            ? "◌ GENERATING..."
-            : improvement ? "↺ RE-GENERATE" : "⬡ GENERATE IMPROVEMENT"}
+            ? "◌ 生成中..."
+            : improvement ? "↺ 再生成" : "⬡ 改善提案を生成"}
         </button>
       </div>
 
@@ -1263,7 +1263,7 @@ function ImprovementSection({ strategyId, analysisId, requiresMoreData }: {
 
       {state === "rejected" && (
         <p className="text-[9px] font-mono" style={{ color: "#475569" }}>
-          Proposal rejected. Generate a new one to try again.
+          提案を却下しました。新しい提案を生成してください。
         </p>
       )}
 
@@ -1278,10 +1278,10 @@ function ImprovementSection({ strategyId, analysisId, requiresMoreData }: {
               <span style={{ color: AMBER }}>⚠</span>
               <div>
                 <p className="text-[8px] font-black tracking-widest" style={{ color: AMBER }}>
-                  INSUFFICIENT SAMPLE SIZE
+                  サンプル数不足
                 </p>
                 <p className="text-[8px] font-mono mt-0.5" style={{ color: "#64748b" }}>
-                  Statistical basis is weak. These changes are hypotheses only — not proven improvements.
+                  統計的根拠が弱い状態です。これらの変更はあくまで仮説であり、改善が保証されるものではありません。
                 </p>
               </div>
             </div>
@@ -1290,7 +1290,7 @@ function ImprovementSection({ strategyId, analysisId, requiresMoreData }: {
           {/* Proposed Changes */}
           <div>
             <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: PURPLE }}>
-              PROPOSED CHANGES ({improvement.changes.length})
+              提案された変更 ({improvement.changes.length}件)
             </p>
             <div className="space-y-2">
               {improvement.changes.map((c, i) => (
@@ -1336,7 +1336,7 @@ function ImprovementSection({ strategyId, analysisId, requiresMoreData }: {
           <div className="px-3 py-3 rounded"
             style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
             <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: "#64748b" }}>
-              EXPECTED EFFECT (HYPOTHESIS)
+              期待される効果（仮説）
             </p>
             <p className="text-[9px] font-mono leading-relaxed italic mb-2" style={{ color: "#94a3b8" }}>
               {improvement.expected_effects.hypothesis}
@@ -1372,7 +1372,7 @@ function ImprovementSection({ strategyId, analysisId, requiresMoreData }: {
           {/* Confidence */}
           <div className="flex items-center gap-3">
             <p className="text-[7px] font-mono tracking-widest" style={{ color: "#334155" }}>
-              PROPOSAL CONFIDENCE
+              提案の信頼度
             </p>
             <div className="flex-1 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
               <div className="h-full rounded-full"
@@ -1395,7 +1395,7 @@ function ImprovementSection({ strategyId, analysisId, requiresMoreData }: {
                   border:     "1px solid rgba(255,255,255,0.06)",
                   color:      "#334155",
                 }}>
-                APPLY & BACKTEST
+                適用 & バックテスト
               </button>
               <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[6px] font-black px-1 rounded whitespace-nowrap"
                 style={{ background: "#1e1b4b", color: PURPLE, border: "1px solid rgba(167,139,250,0.30)" }}>
@@ -1559,19 +1559,19 @@ function CrossPhaseInterpretationSection({ strategyId }: { strategyId: string })
           </span>
           {r?.integrity_violations && r.integrity_violations.length > 0 && (
             <span className="text-[7px] font-mono px-1.5 py-0.5 rounded" style={{ background: `${AMBER}15`, color: AMBER }}>
-              {r.integrity_violations.length} integrity warning{r.integrity_violations.length > 1 ? "s" : ""}
+              {r.integrity_violations.length} 整合性警告
             </span>
           )}
         </div>
         {r?.confidence !== undefined && (
           <span className="text-[9px] font-black font-mono" style={{ color: confColor(r.confidence) }}>
-            {r.confidence}% confidence
+            {r.confidence}% 信頼度
           </span>
         )}
       </div>
 
       <p className="text-[7px] font-mono mb-3" style={{ color: "#475569" }}>
-        AI synthesis across all validation phases. Not a prediction engine. No trade signals.
+        全検証フェーズのAI統合分析。予測エンジンではありません。売買シグナルではありません。
       </p>
 
       {/* Phase indicators */}
@@ -1604,7 +1604,7 @@ function CrossPhaseInterpretationSection({ strategyId }: { strategyId: string })
           color:      P4D_COLOR,
           opacity:    state === "running" ? 0.5 : 1,
         }}>
-        {state === "running" ? "◌ INTERPRETING..." : state === "done" ? "↺ RE-INTERPRET" : "▶ INTERPRET"}
+        {state === "running" ? "◌ 解釈中..." : state === "done" ? "↺ 再解釈" : "▶ 解釈実行"}
       </button>
 
       {errMsg && (
@@ -1617,7 +1617,7 @@ function CrossPhaseInterpretationSection({ strategyId }: { strategyId: string })
           {/* Overall Assessment */}
           {r.overall_assessment && (
             <div>
-              <p className="text-[8px] font-black tracking-widest mb-1" style={{ color: "#64748b" }}>OVERALL ASSESSMENT</p>
+              <p className="text-[8px] font-black tracking-widest mb-1" style={{ color: "#64748b" }}>総合評価</p>
               <p className="text-[9px] font-mono leading-relaxed" style={{ color: "#94a3b8" }}>{r.overall_assessment}</p>
             </div>
           )}
@@ -1625,7 +1625,7 @@ function CrossPhaseInterpretationSection({ strategyId }: { strategyId: string })
           {/* Phase Observations */}
           {r.phase_observations && r.phase_observations.length > 0 && (
             <div>
-              <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>PHASE OBSERVATIONS</p>
+              <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>フェーズ別観察</p>
               <div className="space-y-2">
                 {r.phase_observations.map((obs, i) => (
                   <div key={i} className="p-2 rounded" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
@@ -1645,7 +1645,7 @@ function CrossPhaseInterpretationSection({ strategyId }: { strategyId: string })
           {/* Cross-Phase Synthesis */}
           {r.cross_phase_synthesis && r.cross_phase_synthesis.length > 0 && (
             <div>
-              <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>CROSS-PHASE SYNTHESIS</p>
+              <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>クロスフェーズ統合</p>
               <div className="space-y-2">
                 {r.cross_phase_synthesis.map((syn, i) => (
                   <div key={i} className="flex items-start gap-2">
@@ -1663,7 +1663,7 @@ function CrossPhaseInterpretationSection({ strategyId }: { strategyId: string })
           {/* Risk Dimensions */}
           {r.risk_dimensions && r.risk_dimensions.length > 0 && (
             <div>
-              <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>RISK DIMENSIONS</p>
+              <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>リスク分析</p>
               <div className="space-y-1.5">
                 {r.risk_dimensions.map((rd, i) => (
                   <div key={i} className="p-2 rounded" style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
@@ -1680,7 +1680,7 @@ function CrossPhaseInterpretationSection({ strategyId }: { strategyId: string })
           {/* Limitations */}
           {r.limitations && r.limitations.length > 0 && (
             <div>
-              <p className="text-[8px] font-black tracking-widest mb-1" style={{ color: "#64748b" }}>LIMITATIONS</p>
+              <p className="text-[8px] font-black tracking-widest mb-1" style={{ color: "#64748b" }}>制限事項</p>
               <div className="space-y-1">
                 {r.limitations.map((lim, i) => (
                   <div key={i} className="flex items-start gap-1.5">
@@ -2025,11 +2025,11 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-[8px] font-black tracking-[0.25em]" style={{ color: GOLD }}>
-          PARAMETER OPTIMIZATION
+          パラメーター最適化
         </p>
         <span className="text-[7px] font-mono px-2 py-0.5 rounded"
           style={{ background: `${GOLD_r}0.08)`, border: `1px solid ${GOLD_r}0.20)`, color: GOLD }}>
-          GRID SEARCH · DETERMINISTIC
+          グリッドサーチ · 決定論的
         </span>
       </div>
 
@@ -2046,7 +2046,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
           {/* Parameter selection */}
           <div className="space-y-2">
             <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>
-              PARAMETER SELECTION
+              パラメーター選択
             </p>
             {ranges.map((r, idx) => {
               const label = detectedParams[idx]?.label ?? r.field;
@@ -2092,7 +2092,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
           {/* Settings row */}
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-[8px] font-mono tracking-widest" style={{ color: "#334155" }}>IN-SAMPLE RATIO</span>
+              <span className="text-[8px] font-mono tracking-widest" style={{ color: "#334155" }}>サンプル内比率</span>
               <input
                 type="number" value={inSampleRatio} onChange={e => setInSampleRatio(e.target.value)}
                 min="0.5" max="0.95" step="0.05"
@@ -2101,7 +2101,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
               />
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[7px] font-mono" style={{ color: "#334155" }}>COMBOS</span>
+              <span className="text-[7px] font-mono" style={{ color: "#334155" }}>組み合わせ数</span>
               <span className="text-[10px] font-black font-mono"
                 style={{ color: comboCount > 5000 ? RED : comboCount > 1000 ? AMBER : NG }}>
                 {comboCount.toLocaleString()}
@@ -2123,7 +2123,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
               color:   state === "running" ? "#334155" : GOLD,
               cursor:  (state === "running" || comboCount === 0) ? "not-allowed" : "pointer",
             }}>
-            {state === "running" ? "◌ OPTIMIZING..." : state === "done" ? "↺ RE-RUN OPTIMIZATION" : "▶ RUN OPTIMIZATION"}
+            {state === "running" ? "◌ 最適化中..." : state === "done" ? "↺ 再実行" : "▶ 最適化実行"}
           </button>
 
           {errMsg && (
@@ -2146,7 +2146,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
                 </p>
               </div>
               <div>
-                <p className="text-[7px] font-mono" style={{ color: "#334155" }}>STABLE ZONE</p>
+                <p className="text-[7px] font-mono" style={{ color: "#334155" }}>安定ゾーン</p>
                 <p className="text-[10px] font-black font-mono" style={{ color: GOLD }}>
                   {jobData.summary.stableZoneCount}
                 </p>
@@ -2158,7 +2158,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
                 </p>
               </div>
               <div className="ml-auto text-right">
-                <p className="text-[7px] font-mono" style={{ color: "#334155" }}>IS BARS</p>
+                <p className="text-[7px] font-mono" style={{ color: "#334155" }}>ISバー数</p>
                 <p className="text-[9px] font-mono" style={{ color: "#475569" }}>
                   {(jobData.in_sample_bars ?? 0).toLocaleString()} / {((jobData.in_sample_bars ?? 0) + (jobData.out_sample_bars ?? 0)).toLocaleString()}
                 </p>
@@ -2167,7 +2167,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
           )}
 
           <p className="text-[8px] font-black tracking-[0.22em]" style={{ color: GOLD }}>
-            TOP CANDIDATES
+            上位候補
           </p>
 
           {applyMsg && (
@@ -2180,12 +2180,12 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
           {/* Column headers */}
           <div className="grid text-[7px] font-mono tracking-widest px-3"
             style={{ gridTemplateColumns: "40px 1fr 80px 80px 50px 70px", color: "#1e293b" }}>
-            <span>RANK</span>
-            <span>PARAMS</span>
-            <span className="text-center">IS METRICS</span>
-            <span className="text-center">OOS METRICS</span>
-            <span className="text-center">STAB</span>
-            <span className="text-right">ACTION</span>
+            <span>順位</span>
+            <span>パラメーター</span>
+            <span className="text-center">IS指標</span>
+            <span className="text-center">OOS指標</span>
+            <span className="text-center">安定性</span>
+            <span className="text-right">操作</span>
           </div>
 
           {/* Candidate rows */}
@@ -2270,9 +2270,9 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
                     {/* Action */}
                     <div className="text-right">
                       {c.adopted ? (
-                        <span className="text-[7px] font-black" style={{ color: NG }}>APPLIED</span>
+                        <span className="text-[7px] font-black" style={{ color: NG }}>適用済み</span>
                       ) : c.sample_status === "INSUFFICIENT" ? (
-                        <span className="text-[7px] font-mono" style={{ color: "#334155" }}>OOS LOW</span>
+                        <span className="text-[7px] font-mono" style={{ color: "#334155" }}>OOS不足</span>
                       ) : (
                         <button
                           onClick={() => apply(c.rank)}
@@ -2284,7 +2284,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
                             color:      isApply ? "#334155" : GOLD,
                             cursor:     isApply || applying !== null ? "not-allowed" : "pointer",
                           }}>
-                          {isApply ? "..." : "APPLY"}
+                          {isApply ? "..." : "適用"}
                         </button>
                       )}
                     </div>
@@ -2293,7 +2293,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
                   {/* Insufficient warning */}
                   {c.sample_status === "INSUFFICIENT" && (
                     <div className="px-3 pb-2 text-[7px] font-mono" style={{ color: RED }}>
-                      ⚠ OOS {c.oos_total_trades} trades — INSUFFICIENT DATA (min 15 required). APPLY 不可。
+                      ⚠ OOS {c.oos_total_trades}件 — データ不足（最低15件必要）。適用不可。
                     </div>
                   )}
                   {c.sample_status === "LOW_SAMPLE" && (
@@ -2307,7 +2307,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
           </div>
 
           <p className="text-[7px] font-mono" style={{ color: "#1e293b" }}>
-            Showing top {candidates.length} of {(jobData?.total_combinations ?? candidates.length).toLocaleString()} candidates · IS = In-Sample · OOS = Out-of-Sample · Degradation = OOS/IS pips ratio
+            上位{candidates.length}件 / 全{(jobData?.total_combinations ?? candidates.length).toLocaleString()}候補 · IS = サンプル内 · OOS = サンプル外 · 劣化率 = OOS/IS PIPS比
           </p>
         </div>
       )}
@@ -2450,7 +2450,7 @@ function WalkForwardSection({
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-[8px] font-black tracking-[0.25em]" style={{ color: WF_BLUE }}>
-          WALK FORWARD VALIDATION
+          ウォークフォワード検証
         </p>
         <span className="text-[7px] font-mono px-2 py-0.5 rounded"
           style={{ background: `${WF_BLUE_r}0.08)`, border: `1px solid ${WF_BLUE_r}0.20)`, color: WF_BLUE }}>
@@ -2492,7 +2492,7 @@ function WalkForwardSection({
           color:   state === "running" ? "#334155" : WF_BLUE,
           cursor:  state === "running" ? "not-allowed" : "pointer",
         }}>
-        {state === "running" ? "◌ RUNNING WALK FORWARD..." : state === "done" ? "↺ RE-RUN WALK FORWARD" : "▶ RUN WALK FORWARD"}
+        {state === "running" ? "◌ 実行中..." : state === "done" ? "↺ 再実行" : "▶ ウォークフォワード実行"}
       </button>
 
       {errMsg && <p className="text-[9px] font-mono" style={{ color: RED }}>{errMsg}</p>}
@@ -2505,13 +2505,13 @@ function WalkForwardSection({
             style={{ background: `${verdictColorWF(result.verdict)}08`, border: `1px solid ${verdictColorWF(result.verdict)}30` }}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[7px] font-mono tracking-widest mb-1" style={{ color: "#334155" }}>VERDICT</p>
+                <p className="text-[7px] font-mono tracking-widest mb-1" style={{ color: "#334155" }}>判定</p>
                 <p className="text-lg font-black tracking-widest" style={{ color: verdictColorWF(result.verdict) }}>
                   {result.verdict}
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-[7px] font-mono tracking-widest mb-1" style={{ color: "#334155" }}>CONSISTENCY</p>
+                <p className="text-[7px] font-mono tracking-widest mb-1" style={{ color: "#334155" }}>一貫性スコア</p>
                 <p className="text-base font-black font-mono" style={{ color: result.consistencyScore === null ? "#334155" : result.consistencyScore >= 0.7 ? NG : result.consistencyScore >= 0.5 ? AMBER : RED }}>
                   {result.consistencyScore === null ? "N/A" : (result.consistencyScore * 100).toFixed(0) + "%"}
                 </p>
@@ -2535,10 +2535,10 @@ function WalkForwardSection({
           {/* Stats row */}
           <div className="grid grid-cols-4 gap-1.5">
             {[
-              { label: "WINDOWS",  val: String(result.totalWindowCount) },
-              { label: "VALID",    val: String(result.validWindowCount) },
-              { label: "POSITIVE", val: String(result.positiveWindowCount) },
-              { label: "SKIPPED",  val: String(result.skippedWindowCount),
+              { label: "ウィンドウ数", val: String(result.totalWindowCount) },
+              { label: "有効",        val: String(result.validWindowCount) },
+              { label: "プラス",      val: String(result.positiveWindowCount) },
+              { label: "スキップ",    val: String(result.skippedWindowCount),
                 color: result.skippedWindowCount > 0 ? AMBER : "#334155" },
             ].map(({ label, val, color }) => (
               <div key={label} className="px-2 py-2 rounded"
@@ -2553,7 +2553,7 @@ function WalkForwardSection({
           {Object.keys(result.parameterStability).length > 0 && (
             <div>
               <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>
-                PARAMETER STABILITY
+                パラメーター安定性
               </p>
               <div className="space-y-1.5">
                 {Object.entries(result.parameterStability).map(([field, stab]) => {
@@ -2583,10 +2583,10 @@ function WalkForwardSection({
             <div className="px-3 py-3 rounded"
               style={{ background: `${WF_BLUE_r}0.04)`, border: `1px solid ${WF_BLUE_r}0.15)` }}>
               <p className="text-[7px] font-black tracking-widest mb-1.5" style={{ color: WF_BLUE }}>
-                RECOMMENDED PARAMS
+                推奨パラメーター
               </p>
               <p className="text-[7px] font-mono mb-2" style={{ color: "#475569" }}>
-                Mode per field — this combination may not have been the best candidate in any single window.
+                各フィールドの最頻値 — この組み合わせが各ウィンドウで最良とは限りません。
               </p>
               <div className="space-y-1">
                 {Object.entries(result.recommendedParams).map(([field, val]) => {
@@ -2619,7 +2619,7 @@ function WalkForwardSection({
                 onClick={() => setShowWindows(v => !v)}
                 className="text-[8px] font-mono tracking-widest transition-opacity hover:opacity-70"
                 style={{ color: "#475569" }}>
-                {showWindows ? "▲ HIDE WINDOWS" : `▼ SHOW ${result.windows.length} WINDOWS`}
+                {showWindows ? "▲ ウィンドウを隠す" : `▼ ${result.windows.length}件のウィンドウを表示`}
               </button>
 
               {showWindows && (
@@ -2645,7 +2645,7 @@ function WalkForwardSection({
                             </span>
                           </div>
                           <span className="text-[7px] font-black" style={{ color: col }}>
-                            {w.skipped ? "SKIP" : passed ? "PASS" : "FAIL"}
+                            {w.skipped ? "スキップ" : passed ? "合格" : "不合格"}
                           </span>
                         </div>
                         {!w.skipped && (
@@ -2661,7 +2661,7 @@ function WalkForwardSection({
                         )}
                         {w.skipped && (
                           <p className="text-[7px] font-mono mt-1" style={{ color: "#334155" }}>
-                            TRAIN-OOS INSUFFICIENT → skipped
+                            学習データ不足のためスキップ
                           </p>
                         )}
                       </div>
@@ -2673,8 +2673,8 @@ function WalkForwardSection({
           )}
 
           <p className="text-[7px] font-mono" style={{ color: "#1e293b" }}>
-            WF Verdict: ROBUST(≥0.7+stable) / CONDITIONAL(≥0.5) / OVERFIT(&lt;0.5) / INCONCLUSIVE(data insufficient)
-            · Auto-apply disabled: use Phase 4-A APPLY to adopt recommended params.
+            WF判定: 堅牢(≥0.7+安定) / 条件付(≥0.5) / 過学習(&lt;0.5) / 判定不能(データ不足)
+            · 自動適用無効: 推奨パラメーターの適用はPhase 4-AのAPPLYを使用してください。
           </p>
         </div>
       )}
@@ -2870,7 +2870,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
         <div className="flex items-center gap-2">
           <div className="w-1 h-4 rounded-full" style={{ background: MC_VIOLET }} />
           <span className="text-[10px] font-black tracking-widest" style={{ color: MC_VIOLET }}>
-            MONTE CARLO SIMULATION
+            モンテカルロ シミュレーション
           </span>
         </div>
         {result && (
@@ -2881,14 +2881,14 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
       </div>
 
       <p className="text-[7px] font-mono mb-3" style={{ color: "#475569" }}>
-        Shows the distribution of trade-order permutations.
-        This is not a statistical confidence interval.
+        取引順序の入れ替えシミュレーション結果分布を表示します。
+        統計的信頼区間ではありません。
       </p>
 
       {/* Settings */}
       <div className="flex flex-wrap gap-3 mb-3">
         <div className="flex flex-col gap-1">
-          <span className="text-[7px] font-mono" style={{ color: "#64748b" }}>ITERATIONS</span>
+          <span className="text-[7px] font-mono" style={{ color: "#64748b" }}>試行回数</span>
           <input
             type="number" min={100} max={50000} value={iterations}
             onChange={e => setIterations(e.target.value)}
@@ -2898,7 +2898,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-[7px] font-mono" style={{ color: "#64748b" }}>DD THRESHOLD (%)</span>
+          <span className="text-[7px] font-mono" style={{ color: "#64748b" }}>DD閾値 (%)</span>
           <input
             type="number" min={1} max={100} step={1} value={ddThreshold}
             onChange={e => setDdThreshold(e.target.value)}
@@ -2908,7 +2908,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-[7px] font-mono" style={{ color: "#64748b" }}>SEED (optional)</span>
+          <span className="text-[7px] font-mono" style={{ color: "#64748b" }}>シード（任意）</span>
           <input
             type="text" placeholder="auto" value={seedInput}
             onChange={e => setSeedInput(e.target.value)}
@@ -2930,7 +2930,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
           color:      MC_VIOLET,
           opacity:    state === "running" ? 0.5 : 1,
         }}>
-        {state === "running" ? "◌ RUNNING..." : state === "done" ? "↺ RE-RUN MONTE CARLO" : "▶ RUN MONTE CARLO"}
+        {state === "running" ? "◌ 実行中..." : state === "done" ? "↺ 再実行" : "▶ モンテカルロ実行"}
       </button>
 
       {errMsg && (
@@ -2943,15 +2943,15 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
 
           {/* Original Backtest */}
           <div>
-            <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>ORIGINAL BACKTEST</p>
+            <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>元のバックテスト</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {[
-                { label: "Final Pips",   value: `${result.originalMetrics.finalPips > 0 ? "+" : ""}${result.originalMetrics.finalPips.toFixed(1)}` },
-                { label: "Max DD",       value: `${result.originalMetrics.maxDrawdownPct.toFixed(1)}%` },
-                { label: "Win Rate",     value: `${result.originalMetrics.winRate.toFixed(1)}%` },
-                { label: "PF",           value: fmtPF(result.originalMetrics.profitFactor) },
-                { label: "Max L Streak", value: String(result.originalMetrics.maxConsecutiveLosses) },
-                { label: "Seed",         value: result.seed.toString() },
+                { label: "合計PIPS",    value: `${result.originalMetrics.finalPips > 0 ? "+" : ""}${result.originalMetrics.finalPips.toFixed(1)}` },
+                { label: "最大DD",     value: `${result.originalMetrics.maxDrawdownPct.toFixed(1)}%` },
+                { label: "勝率",       value: `${result.originalMetrics.winRate.toFixed(1)}%` },
+                { label: "PF",         value: fmtPF(result.originalMetrics.profitFactor) },
+                { label: "最大連敗",   value: String(result.originalMetrics.maxConsecutiveLosses) },
+                { label: "シード",     value: result.seed.toString() },
               ].map(({ label, value }) => (
                 <div key={label} className="p-2 rounded" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
                   <p className="text-[7px] font-mono mb-0.5" style={{ color: "#475569" }}>{label}</p>
@@ -2964,7 +2964,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
           {/* Simulation Percentiles */}
           <div>
             <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>
-              SIMULATION PERCENTILES
+              シミュレーションパーセンタイル
             </p>
             <div className="overflow-x-auto">
               <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "0 3px" }}>
@@ -2979,7 +2979,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
                   {/* Final Pips row */}
                   {pset && (
                     <tr>
-                      <td className="text-[7px] font-mono pr-3 py-1" style={{ color: "#64748b" }}>Final Pips</td>
+                      <td className="text-[7px] font-mono pr-3 py-1" style={{ color: "#64748b" }}>合計PIPS</td>
                       {([pset.p5, pset.p25, pset.p50, pset.p75, pset.p95] as number[]).map((v, i) => {
                         const col = v < 0 ? RED : v > 0 ? NG : "#94a3b8";
                         return (
@@ -2995,7 +2995,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
                   {/* Max DD row */}
                   {ddset && (
                     <tr>
-                      <td className="text-[7px] font-mono pr-3 py-1" style={{ color: "#64748b" }}>Max DD %</td>
+                      <td className="text-[7px] font-mono pr-3 py-1" style={{ color: "#64748b" }}>最大DD %</td>
                       {([ddset.p5, ddset.p25, ddset.p50, ddset.p75, ddset.p95] as number[]).map((v, i) => {
                         const thresh = result.drawdownThresholdPct;
                         const col = v >= thresh ? RED : v >= thresh * 0.7 ? AMBER : "#94a3b8";
@@ -3016,16 +3016,16 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
 
           {/* Key Probabilities */}
           <div>
-            <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>KEY PROBABILITIES</p>
+            <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>主要確率</p>
             <div className="flex flex-wrap gap-3">
               <div className="p-2 rounded flex-1" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", minWidth: 140 }}>
-                <p className="text-[7px] font-mono mb-0.5" style={{ color: "#475569" }}>P(Final Pips &lt; 0)</p>
+                <p className="text-[7px] font-mono mb-0.5" style={{ color: "#475569" }}>損失確率（合計PIPS&lt;0）</p>
                 <p className="text-[13px] font-black font-mono" style={{ color: result.probabilityOfLoss > 0.3 ? RED : result.probabilityOfLoss > 0.15 ? AMBER : NG }}>
                   {fmtPct(result.probabilityOfLoss)}
                 </p>
               </div>
               <div className="p-2 rounded flex-1" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", minWidth: 140 }}>
-                <p className="text-[7px] font-mono mb-0.5" style={{ color: "#475569" }}>P(DD ≥ {result.drawdownThresholdPct}%)</p>
+                <p className="text-[7px] font-mono mb-0.5" style={{ color: "#475569" }}>DD超過確率（DD≥{result.drawdownThresholdPct}%）</p>
                 <p className="text-[13px] font-black font-mono" style={{ color: result.probabilityOfDrawdownThreshold > 0.2 ? RED : result.probabilityOfDrawdownThreshold > 0.1 ? AMBER : NG }}>
                   {fmtPct(result.probabilityOfDrawdownThreshold)}
                 </p>
@@ -3035,22 +3035,22 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
 
           {/* Original Position */}
           <div>
-            <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>ORIGINAL POSITION</p>
+            <p className="text-[8px] font-black tracking-widest mb-2" style={{ color: "#64748b" }}>元の順序の位置</p>
             <div className="p-2 rounded inline-flex items-center gap-2" style={{ background: `${MC_VIOLET_r}0.08)`, border: `1px solid ${MC_VIOLET_r}0.2)` }}>
-              <span className="text-[9px] font-mono" style={{ color: "#94a3b8" }}>Original Sequence:</span>
+              <span className="text-[9px] font-mono" style={{ color: "#94a3b8" }}>元の順序:</span>
               <span className="text-[13px] font-black font-mono" style={{ color: MC_VIOLET }}>
                 P{Math.round(result.originalPercentileRank)}
               </span>
               <span className="text-[7px] font-mono" style={{ color: "#475569" }}>
-                ({result.originalPercentileRank.toFixed(1)}th percentile of {result.iterations.toLocaleString()} simulations)
+                ({result.originalPercentileRank.toFixed(1)}パーセンタイル / {result.iterations.toLocaleString()}シミュレーション中)
               </span>
             </div>
           </div>
 
           {/* Footer */}
           <p className="text-[7px] font-mono" style={{ color: "#1e293b" }}>
-            Method: Trade Order Shuffle · Seed: {result.seed} · Simulations: {result.iterations.toLocaleString()}
-            · Percentiles are simulation statistics, not confidence intervals.
+            手法: 取引順序シャッフル · シード: {result.seed} · シミュレーション数: {result.iterations.toLocaleString()}
+            · パーセンタイルはシミュレーション統計であり、信頼区間ではありません。
           </p>
         </div>
       )}
@@ -3175,7 +3175,7 @@ function VersionsTab({ strategyId, onApplyDone }: {
   if (loading) {
     return (
       <div className="p-5 flex items-center justify-center h-48">
-        <p className="text-[9px] font-mono tracking-widest" style={{ color: "#334155" }}>◌ Loading versions...</p>
+        <p className="text-[9px] font-mono tracking-widest" style={{ color: "#334155" }}>◌ バージョン読み込み中...</p>
       </div>
     );
   }
@@ -3184,7 +3184,7 @@ function VersionsTab({ strategyId, onApplyDone }: {
     return (
       <div className="p-5 flex items-center justify-center h-48">
         <p className="text-[9px] font-mono tracking-widest" style={{ color: "#334155" }}>
-          No versions yet. Run a Backtest and use Apply to create a new version.
+          バージョンがありません。バックテストを実行して適用するとバージョンが作成されます。
         </p>
       </div>
     );
@@ -3194,7 +3194,7 @@ function VersionsTab({ strategyId, onApplyDone }: {
     <div className="p-5 space-y-3 overflow-y-auto">
       <div className="flex items-center justify-between mb-1">
         <p className="text-[8px] font-black tracking-[0.25em]" style={{ color: PURPLE }}>
-          VERSION HISTORY ({versions.length})
+          バージョン履歴 ({versions.length}件)
         </p>
         {restoreErr && <p className="text-[8px] font-mono" style={{ color: RED }}>{restoreErr}</p>}
       </div>
@@ -3223,7 +3223,7 @@ function VersionsTab({ strategyId, onApplyDone }: {
                   {v.isActive && (
                     <span className="text-[6px] font-black px-1.5 py-0.5 rounded"
                       style={{ background: `${NG}15`, border: `1px solid ${NG}30`, color: NG }}>
-                      ACTIVE
+                      有効
                     </span>
                   )}
                   <span className="text-[7px] font-mono px-1.5 py-0.5 rounded"
@@ -3257,7 +3257,7 @@ function VersionsTab({ strategyId, onApplyDone }: {
                   <span>PF {v.backtest.profit_factor !== null && v.backtest.profit_factor !== undefined
                     ? v.backtest.profit_factor.toFixed(2) : "∞"}</span>
                   <span>DD {(v.backtest.max_drawdown_pct ?? 0).toFixed(1)}%</span>
-                  {v.backtest.sample_size_warning && <span style={{ color: AMBER }}>⚠ small</span>}
+                  {v.backtest.sample_size_warning && <span style={{ color: AMBER }}>⚠ 少</span>}
                 </div>
               )}
 
@@ -3279,7 +3279,7 @@ function VersionsTab({ strategyId, onApplyDone }: {
                 {comparison && !detailLoading && (
                   <div>
                     <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: PURPLE }}>
-                      v{v.parent_version} → v{v.version} COMPARISON
+                      v{v.parent_version} → v{v.version} 比較
                     </p>
                     <div className="px-3 py-2 rounded mb-2"
                       style={{ background: `${verdictColor2(comparison.verdict)}08`, border: `1px solid ${verdictColor2(comparison.verdict)}20` }}>
@@ -3324,7 +3324,7 @@ function VersionsTab({ strategyId, onApplyDone }: {
                 {detail && !detailLoading && (
                   <div>
                     <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: "#64748b" }}>
-                      SPEC SNAPSHOT
+                      仕様スナップショット
                     </p>
                     <div className="text-[7px] font-mono space-y-0.5" style={{ color: "#334155" }}>
                       {(() => {
@@ -3358,7 +3358,7 @@ function VersionsTab({ strategyId, onApplyDone }: {
                       color:      restoring ? "#334155" : "#64748b",
                       cursor:     restoring ? "not-allowed" : "pointer",
                     }}>
-                    {restoring ? "◌ RESTORING..." : `↩ RESTORE TO v${v.version}`}
+                    {restoring ? "◌ 復元中..." : `↩ v${v.version}に戻す`}
                   </button>
                 )}
               </div>
@@ -3457,7 +3457,7 @@ export function StrategyDetailModal({
                 borderBottom: tab === t ? `2px solid ${col}` : "2px solid transparent",
                 marginBottom: "-1px",
               }}>
-              {t}
+              {labelOf(TAB_LABELS, t)}
             </button>
           ))}
         </div>

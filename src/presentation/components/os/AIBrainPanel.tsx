@@ -17,11 +17,11 @@ import type { TradeProposal, RiskDecision, MarketSnapshot } from "@/domain/tradi
 // ステップバー
 // -----------------------------------------------------------------
 const STEPS: { id: BrainStep; label: string }[] = [
-  { id: "snapshot", label: "SNAPSHOT" },
-  { id: "decision", label: "AI DECISION" },
-  { id: "risk",     label: "RISK ENGINE" },
-  { id: "dryrun",   label: "DRY RUN" },
-  { id: "complete", label: "COMPLETE" },
+  { id: "snapshot", label: "スナップショット" },
+  { id: "decision", label: "AI判断" },
+  { id: "risk",     label: "リスク検証" },
+  { id: "dryrun",   label: "シミュレーション" },
+  { id: "complete", label: "完了" },
 ];
 const STEP_ORDER: BrainStep[] = ["idle","snapshot","decision","risk","dryrun","executing","complete","error"];
 function stepIndex(s: BrainStep) { return STEP_ORDER.indexOf(s); }
@@ -60,44 +60,44 @@ function SnapshotSummary({ snap }: { snap: MarketSnapshot }) {
   const h4 = snap.indicators.H4;
   return (
     <div className="border border-[#0d1520] p-2 space-y-1 text-[7.5px] font-mono">
-      <p className="text-[7px] text-cyan-400/50 tracking-wider mb-1.5">MARKET SNAPSHOT</p>
+      <p className="text-[7px] text-cyan-400/50 tracking-wider mb-1.5">市場スナップショット</p>
       <div className="grid grid-cols-3 gap-1">
         <div>
-          <p className="text-gray-700">SOURCE</p>
+          <p className="text-gray-700">ソース</p>
           <p className={cn("font-semibold", snap.overallSource === "MT5_LIVE" ? "text-green-400" : "text-yellow-400")}>
             {snap.overallSource}
           </p>
         </div>
         <div>
-          <p className="text-gray-700">SPREAD</p>
+          <p className="text-gray-700">スプレッド</p>
           <p className={cn("font-semibold", snap.spread > 3 ? "text-red-400" : "text-cyan-300")}>
             {snap.spread.toFixed(1)}p
           </p>
         </div>
         <div>
-          <p className="text-gray-700">NEWS RISK</p>
+          <p className="text-gray-700">ニュースリスク</p>
           <p className={cn("font-semibold",
             snap.newsRisk === "HIGH" ? "text-red-400" :
             snap.newsRisk === "MEDIUM" ? "text-yellow-400" : "text-green-400"
           )}>{snap.newsRisk}</p>
         </div>
         <div>
-          <p className="text-gray-700">DOW THEORY</p>
+          <p className="text-gray-700">ダウ理論</p>
           <p className={cn("font-semibold",
             snap.dowTheory.trend === "UPTREND" ? "text-green-400" :
             snap.dowTheory.trend === "DOWNTREND" ? "text-red-400" : "text-gray-400"
           )}>{snap.dowTheory.trend}</p>
         </div>
         <div>
-          <p className="text-gray-700">MULTI-TF</p>
+          <p className="text-gray-700">マルチTF</p>
           <p className={cn("font-semibold",
             snap.multiTF.direction === "BUY" ? "text-green-400" :
             snap.multiTF.direction === "SELL" ? "text-red-400" : "text-gray-400"
           )}>{snap.multiTF.direction} ({snap.multiTF.alignedCount}/{snap.multiTF.totalCount})</p>
         </div>
         <div>
-          <p className="text-gray-700">SESSION</p>
-          <p className="text-cyan-300">{snap.session.join("+") || "OFF"}</p>
+          <p className="text-gray-700">セッション</p>
+          <p className="text-cyan-300">{snap.session.join("+") || "時間外"}</p>
         </div>
       </div>
       {h4 && (
@@ -124,7 +124,7 @@ function ProposalCard({ p }: { p: TradeProposal }) {
       isBuy  ? "border-green-700/40 bg-green-950/10" : "border-red-700/40 bg-red-950/10"
     )}>
       <div className="flex items-center justify-between mb-1">
-        <p className="text-[7px] text-purple-400/50 tracking-wider">AI DECISION</p>
+        <p className="text-[7px] text-purple-400/50 tracking-wider">AI判断</p>
         <div className="flex items-center gap-2">
           <span className={cn("text-[9px] font-bold px-2 py-0.5 border",
             isWait ? "border-gray-700/40 text-gray-500" :
@@ -141,9 +141,9 @@ function ProposalCard({ p }: { p: TradeProposal }) {
         <>
           <div className="grid grid-cols-3 gap-1">
             {[
-              ["ENTRY", p.entry.toFixed(5), "text-white"],
-              ["SL",    p.stop_loss.toFixed(5), "text-red-400"],
-              ["TP",    p.take_profit.toFixed(5), "text-green-400"],
+              ["エントリー", p.entry.toFixed(5), "text-white"],
+              ["損切り",    p.stop_loss.toFixed(5), "text-red-400"],
+              ["利確",    p.take_profit.toFixed(5), "text-green-400"],
             ].map(([l, v, c]) => (
               <div key={l} className="border border-[#0d1520] p-1 text-center">
                 <p className="text-[6.5px] text-gray-700">{l}</p>
@@ -153,11 +153,11 @@ function ProposalCard({ p }: { p: TradeProposal }) {
           </div>
           <div className="flex gap-3 text-[7px]">
             <span className="text-gray-600">RR: <span className="text-cyan-400">{p.risk_reward.toFixed(2)}</span></span>
-            <span className="text-gray-600">EV: <span className={p.expected_value >= 0 ? "text-green-400" : "text-red-400"}>{p.expected_value.toFixed(2)}</span></span>
-            <span className="text-gray-600">WinP: <span className="text-yellow-400">{p.win_probability.toFixed(0)}%</span></span>
+            <span className="text-gray-600">期待値: <span className={p.expected_value >= 0 ? "text-green-400" : "text-red-400"}>{p.expected_value.toFixed(2)}</span></span>
+            <span className="text-gray-600">勝率: <span className="text-yellow-400">{p.win_probability.toFixed(0)}%</span></span>
           </div>
           <div className="text-[6.5px] text-gray-600 leading-relaxed">
-            <span className="text-gray-500">Setup: </span>{p.setup_type} | {p.time_horizon}
+            <span className="text-gray-500">セットアップ: </span>{p.setup_type} | {p.time_horizon}
           </div>
         </>
       )}
@@ -191,7 +191,7 @@ function RiskCard({ r }: { r: RiskDecision }) {
       isMod ? "border-yellow-700/40 bg-yellow-950/10" : "border-red-700/40 bg-red-950/10"
     )}>
       <div className="flex items-center justify-between mb-1">
-        <p className="text-[7px] text-orange-400/50 tracking-wider">RISK ENGINE</p>
+        <p className="text-[7px] text-orange-400/50 tracking-wider">リスク検証</p>
         <div className="flex items-center gap-2">
           {isOk  && <CheckCircle size={10} className="text-green-400"/>}
           {isMod && <AlertCircle size={10} className="text-yellow-400"/>}
@@ -204,10 +204,10 @@ function RiskCard({ r }: { r: RiskDecision }) {
 
       <div className="grid grid-cols-4 gap-1 text-[7px]">
         {[
-          ["LOT",   r.lot.toFixed(2), "text-cyan-300"],
-          ["RISK",  `${r.riskPct.toFixed(2)}%`, r.riskPct < 1 ? "text-green-400" : "text-yellow-400"],
-          ["CHECKS",`${passedChecks}/${totalChecks}`, passedChecks===totalChecks?"text-green-400":"text-yellow-400"],
-          ["LIVE",  r.proposal.decision !== "WAIT" && !isRej ? "DRY RUN" : "—", "text-gray-500"],
+          ["LOT",    r.lot.toFixed(2), "text-cyan-300"],
+          ["リスク",  `${r.riskPct.toFixed(2)}%`, r.riskPct < 1 ? "text-green-400" : "text-yellow-400"],
+          ["チェック",`${passedChecks}/${totalChecks}`, passedChecks===totalChecks?"text-green-400":"text-yellow-400"],
+          ["ライブ",  r.proposal.decision !== "WAIT" && !isRej ? "シミュ" : "—", "text-gray-500"],
         ].map(([l, v, c]) => (
           <div key={l} className="border border-[#0d1520] p-1 text-center">
             <p className="text-[6px] text-gray-700">{l}</p>
@@ -271,7 +271,7 @@ export function AIBrainPanel({ state, onRun, onReset, symbol }: AIBrainPanelProp
         <div className="flex gap-1.5">
           <button onClick={onReset} disabled={isRunning}
             className="flex items-center gap-1 px-2 py-1 text-[7px] font-mono border border-[#0d1520] text-gray-600 hover:text-gray-400 disabled:opacity-30">
-            <RotateCcw size={8}/> RESET
+            <RotateCcw size={8}/> リセット
           </button>
           <button onClick={() => onRun(symbol)} disabled={isRunning}
             className={cn("flex items-center gap-1 px-3 py-1 text-[8px] font-mono border transition-all",
@@ -281,7 +281,7 @@ export function AIBrainPanel({ state, onRun, onReset, symbol }: AIBrainPanelProp
             )}>
             {isRunning
               ? <><Brain size={9} className="animate-pulse"/> {step.toUpperCase()}...</>
-              : <><Play size={9}/> ANALYZE {symbol}</>}
+              : <><Play size={9}/> {symbol} 分析</>}
           </button>
         </div>
       </div>
@@ -311,7 +311,7 @@ export function AIBrainPanel({ state, onRun, onReset, symbol }: AIBrainPanelProp
             <span className="text-[8px] font-mono text-gray-500">{symbol}</span>
           </div>
           <div className="flex items-center gap-3 text-[7.5px] font-mono">
-            <span className="text-gray-600">conf: <span className="text-white">{proposal.confidence}%</span></span>
+            <span className="text-gray-600">確信度: <span className="text-white">{proposal.confidence}%</span></span>
             {riskResult && <span className={cn(
               riskResult.status === "APPROVED" ? "text-green-400" :
               riskResult.status === "MODIFIED" ? "text-yellow-400" : "text-red-400"
@@ -337,8 +337,8 @@ export function AIBrainPanel({ state, onRun, onReset, symbol }: AIBrainPanelProp
         <div className="flex flex-col items-center justify-center py-8 gap-2">
           <Shield size={24} className="text-gray-800"/>
           <p className="text-[8px] text-gray-700 font-mono text-center">
-            ANALYZE ボタンで AI Brain を起動<br/>
-            MarketSnapshot → Decision → Risk Engine
+            分析ボタンで AI Brain を起動<br/>
+            市場データ取得 → AI判断 → リスク検証
           </p>
         </div>
       )}
@@ -347,7 +347,7 @@ export function AIBrainPanel({ state, onRun, onReset, symbol }: AIBrainPanelProp
       <div className="border border-yellow-900/20 bg-yellow-950/10 p-2">
         <div className="flex items-center gap-1.5 mb-0.5">
           <Activity size={8} className="text-yellow-500/60"/>
-          <p className="text-[7px] font-mono text-yellow-500/60 tracking-wider">SAFETY NOTICE</p>
+          <p className="text-[7px] font-mono text-yellow-500/60 tracking-wider">安全通知</p>
         </div>
         <p className="text-[6.5px] font-mono text-gray-700 leading-relaxed">
           DRY RUN モード有効。実際の注文は送信されません。<br/>

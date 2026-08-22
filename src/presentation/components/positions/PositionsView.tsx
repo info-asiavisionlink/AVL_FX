@@ -30,7 +30,7 @@ export function PositionsView() {
         <div className="w-0.5 h-4 bg-cyan-500/60" />
         <span className="text-[9px] text-cyan-500/70 font-mono tracking-widest">POSITIONS</span>
         <span className={cn("text-[8px] font-mono ml-auto", positions.length > 0 ? "text-green-400" : "text-gray-700")}>
-          {positions.length} OPEN
+          {positions.length} 件オープン
         </span>
       </div>
 
@@ -38,10 +38,10 @@ export function PositionsView() {
       {account && (
         <div className="grid grid-cols-4 gap-2 mb-4 shrink-0">
           {[
-            { label: "Balance",    value: `${account.currency} ${account.balance.toLocaleString("en", { minimumFractionDigits: 2 })}`, color: "text-white" },
-            { label: "Equity",     value: `${account.currency} ${account.equity.toLocaleString("en", { minimumFractionDigits: 2 })}`, color: account.equity >= account.balance ? "text-green-400" : "text-red-400" },
-            { label: "Unrealized", value: `${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(2)}`, color: totalPL >= 0 ? "text-green-400" : "text-red-400" },
-            { label: "Free Margin",value: `${account.currency} ${account.freeMargin.toFixed(2)}`, color: "text-cyan-400" },
+            { label: "残高",         value: `${account.currency} ${account.balance.toLocaleString("en", { minimumFractionDigits: 2 })}`, color: "text-white" },
+            { label: "有効証拠金",   value: `${account.currency} ${account.equity.toLocaleString("en", { minimumFractionDigits: 2 })}`, color: account.equity >= account.balance ? "text-green-400" : "text-red-400" },
+            { label: "含み損益",     value: `${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(2)}`, color: totalPL >= 0 ? "text-green-400" : "text-red-400" },
+            { label: "余剰証拠金",   value: `${account.currency} ${account.freeMargin.toFixed(2)}`, color: "text-cyan-400" },
           ].map(({ label, value, color }) => (
             <div key={label} className="border border-[#0d1520] bg-[#060a12] p-2">
               <div className="text-[7px] text-gray-700 font-mono">{label}</div>
@@ -79,24 +79,24 @@ export function PositionsView() {
               </div>
               <div className="grid grid-cols-4 gap-2 text-[8px] font-mono">
                 <div>
-                  <span className="text-gray-700">Open</span>
+                  <span className="text-gray-700">エントリー</span>
                   <p className="text-white">{pos.openPrice.toFixed(5)}</p>
                 </div>
                 <div>
-                  <span className="text-gray-700">Current</span>
+                  <span className="text-gray-700">現在値</span>
                   <p className="text-white">{pos.currentPrice.toFixed(5)}</p>
                 </div>
                 <div>
-                  <span className="text-gray-700">SL</span>
+                  <span className="text-gray-700">損切り</span>
                   <p className={pos.sl > 0 ? "text-red-400" : "text-gray-700"}>{pos.sl > 0 ? pos.sl.toFixed(5) : "---"}</p>
                 </div>
                 <div>
-                  <span className="text-gray-700">TP</span>
+                  <span className="text-gray-700">利確</span>
                   <p className={pos.tp > 0 ? "text-green-400" : "text-gray-700"}>{pos.tp > 0 ? pos.tp.toFixed(5) : "---"}</p>
                 </div>
               </div>
               <div className="mt-1.5 text-[7px] text-gray-700 font-mono">
-                Open: {new Date(pos.openTime * 1000).toLocaleString("ja-JP")} · Swap: {pos.swap.toFixed(2)}
+                開始: {new Date(pos.openTime * 1000).toLocaleString("ja-JP")} · スワップ: {pos.swap.toFixed(2)}
               </div>
             </div>
           ))

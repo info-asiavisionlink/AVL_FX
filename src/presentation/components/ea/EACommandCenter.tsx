@@ -493,18 +493,18 @@ function StrategyDraftCard({
       <div className="px-4 py-3">
         <div className="flex items-center justify-between mb-2">
           <p className="text-[9px] font-mono font-semibold tracking-[0.18em]" style={{ color: "#475569" }}>
-            BACKTEST
+            バックテスト
           </p>
           {btData?.verdict && (
             <span
               className="text-[7px] font-black tracking-widest px-1.5 py-0.5 rounded"
               style={{ color: verdictColor, background: `${verdictColor}15`, border: `1px solid ${verdictColor}30` }}
             >
-              {btData.verdict}
+              {btData.verdict === "PASSED" ? "合格" : btData.verdict === "CONDITIONAL" ? "条件付" : "不合格"}
             </span>
           )}
           {bts === "NOT_TESTED" && (
-            <span className="text-[8px] font-mono" style={{ color: "#334155" }}>NOT TESTED</span>
+            <span className="text-[8px] font-mono" style={{ color: "#334155" }}>未検証</span>
           )}
         </div>
 
@@ -517,7 +517,7 @@ function StrategyDraftCard({
                 border:     `1px solid ${(btData.totalPips ?? 0) >= 0 ? NG : RED}20`,
               }}>
               <p className="text-[7px] font-mono tracking-widest mb-0.5" style={{ color: "#334155" }}>
-                TOTAL PIPS
+                合計 PIPS
               </p>
               <p className="text-[16px] font-mono font-black leading-none"
                 style={{ color: (btData.totalPips ?? 0) >= 0 ? NG : RED }}>
@@ -528,12 +528,12 @@ function StrategyDraftCard({
             {/* Stats grid */}
             <div className="grid grid-cols-3 gap-1">
               {[
-                { label: "WIN RATE",  value: `${(btData.winRate ?? 0).toFixed(0)}%`,
+                { label: "勝率",  value: `${(btData.winRate ?? 0).toFixed(0)}%`,
                   color: (btData.winRate ?? 0) >= 55 ? NG : (btData.winRate ?? 0) >= 50 ? AMBER : RED },
                 { label: "PF",
                   value: btData.profitFactor != null ? btData.profitFactor.toFixed(2) : "∞",
                   color: (btData.profitFactor ?? 0) >= 1.2 ? NG : (btData.profitFactor ?? 0) >= 1 ? AMBER : RED },
-                { label: "MAX DD",
+                { label: "最大DD",
                   value: `${(btData.maxDrawdownPct ?? 0).toFixed(1)}%`,
                   color: (btData.maxDrawdownPct ?? 0) < 10 ? NG : (btData.maxDrawdownPct ?? 0) < 20 ? AMBER : RED },
               ].map(({ label, value, color }) => (
@@ -560,10 +560,10 @@ function StrategyDraftCard({
       {/* ── LIVE PERFORMANCE ── */}
       <div className="px-4 py-3">
         <p className="text-[9px] font-mono font-semibold tracking-[0.18em] mb-2" style={{ color: "#475569" }}>
-          LIVE PERFORMANCE
+          ライブ運用成績
         </p>
         <p className="text-[8px] font-mono" style={{ color: "#334155" }}>
-          NO LIVE TRADES YET
+          まだライブ取引はありません
         </p>
       </div>
 
@@ -731,7 +731,7 @@ export function EACommandCenter() {
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <p className="text-[9px] font-black tracking-[0.22em]" style={{ color: NG }}>
-                MY STRATEGIES
+                マイ戦略
               </p>
               <span
                 className="text-[8px] px-1.5 py-0.5 rounded"
@@ -757,7 +757,7 @@ export function EACommandCenter() {
         <div className="flex flex-col gap-2">
           {strategies.length > 0 && (
             <p className="text-[9px] font-black tracking-[0.22em]" style={{ color: "#334155" }}>
-              SAMPLE — デモデータ
+              サンプル — デモデータ
             </p>
           )}
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
