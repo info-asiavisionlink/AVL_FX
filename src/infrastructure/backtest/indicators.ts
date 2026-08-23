@@ -30,7 +30,7 @@
 // =================================================================
 
 import type { Bar }           from "@/infrastructure/analysis/types";
-import type { MACDResult, ADXResult, BollingerResult } from "./types";
+import type { MACDResult, ADXResult, BollingerResult, IchimokuResult, DonchianResult, KeltnerResult, AroonResult } from "./types";
 
 // ------------------------------------------------------------------
 // 内部ユーティリティ
@@ -853,6 +853,662 @@ export function calculateStochastic(
 }
 
 // ------------------------------------------------------------------
+// HMA — Hull Moving Average
+// ------------------------------------------------------------------
+
+/**
+ * Hull Moving Average
+ * HMA = WMA(2×WMA(n/2) - WMA(n), sqrt(n))
+ *
+ * result[i]:
+ *   i < floor(sqrt(n)) + floor(n/2) - 1 → undefined
+ *   i >= ... → HMA 値
+ *
+ * @param closes  終値配列
+ * @param period  期間（デフォルト 14）
+ */
+export function calculateHMA(
+  closes: number[],
+  period: number,
+): (number | undefined)[] {
+  const n = closes.length;
+  if (period <= 0 || n === 0) return new Array(n).fill(undefined);
+
+  const halfPeriod = Math.floor(period / 2);
+  const sqrtPeriod = Math.floor(Math.sqrt(period));
+
+  const wmaHalf = calculateWMA(closes, halfPeriod);
+  const wmaFull = calculateWMA(closes, period);
+
+  // diff = 2×WMA(n/2) - WMA(n)
+  const diff: (number | undefined)[] = new Array(n).fill(undefined);
+  for (let i = 0; i < n; i++) {
+    const h = wmaHalf[i];
+    const f = wmaFull[i];
+    if (h !== undefined && f !== undefined) {
+      diff[i] = 2 * h - f;
+    }
+  }
+
+  // Extract valid diff values for WMA calculation
+  // We need to apply WMA(sqrtPeriod) to the diff array
+  // Build a dense array of diff values preserving indices
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+  const denominator = (sqrtPeriod * (sqrtPeriod + 1)) / 2;
+
+  for (let i = sqrtPeriod - 1; i < n; i++) {
+    let weightedSum = 0;
+    let valid = true;
+    for (let j = 0; j < sqrtPeriod; j++) {
+      const d = diff[i - sqrtPeriod + 1 + j];
+      if (d === undefined) { valid = false; break; }
+      weightedSum += d * (j + 1);
+    }
+    if (valid) result[i] = weightedSum / denominator;
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// DEMA — Double Exponential Moving Average
+// ------------------------------------------------------------------
+
+/**
+ * Double Exponential Moving Average
+ * DEMA = 2×EMA(n) - EMA(EMA(n))
+ *
+ * result[i]:
+ *   i < 2*(period-1) → undefined
+ *   i >= ... → DEMA 値
+ *
+ * @param closes  終値配列
+ * @param period  期間（デフォルト 14）
+ */
+export function calculateDEMA(
+  closes: number[],
+  period: number,
+): (number | undefined)[] {
+  const n = closes.length;
+  if (period <= 0 || n === 0) return new Array(n).fill(undefined);
+
+  const ema1 = calculateEMA(closes, period);
+
+  // EMA of EMA: extract valid EMA values
+  const ema1Valid: number[] = [];
+  const ema1StartIdx: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (ema1[i] !== undefined) {
+      ema1Valid.push(ema1[i]!);
+      ema1StartIdx.push(i);
+    }
+  }
+
+  if (ema1Valid.length < period) return new Array(n).fill(undefined);
+
+  // Calculate EMA of ema1Valid
+  const ema1Closes = ema1Valid;
+  const ema2Valid = calculateEMA(ema1Closes, period);
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+  for (let j = period - 1; j < ema2Valid.length; j++) {
+    const e2 = ema2Valid[j];
+    if (e2 === undefined) continue;
+    const origIdx = ema1StartIdx[j];
+    const e1 = ema1[origIdx];
+    if (e1 !== undefined) {
+      result[origIdx] = 2 * e1 - e2;
+    }
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// Ichimoku — 一目均衡表
+// ------------------------------------------------------------------
+
+/**
+ * 一目均衡表 (Ichimoku Cloud)
+ *
+ * Tenkan-sen  = (最高値[9期間] + 最安値[9期間]) / 2
+ * Kijun-sen   = (最高値[26期間] + 最安値[26期間]) / 2
+ * Senkou A    = (Tenkan + Kijun) / 2
+ * Senkou B    = (最高値[52期間] + 最安値[52期間]) / 2
+ * CloudTop    = max(Senkou A, Senkou B)
+ * CloudBottom = min(Senkou A, Senkou B)
+ *
+ * @param highs  高値配列
+ * @param lows   安値配列
+ */
+export function calculateIchimoku(
+  highs: number[],
+  lows:  number[],
+): IchimokuResult[] {
+  const n = highs.length;
+  const empty = (): IchimokuResult => ({
+    tenkan: undefined, kijun: undefined,
+    senkouA: undefined, senkouB: undefined,
+    cloudTop: undefined, cloudBottom: undefined,
+  });
+  const result: IchimokuResult[] = Array.from({ length: n }, empty);
+
+  function midpoint(arr_h: number[], arr_l: number[], i: number, period: number): number | undefined {
+    if (i < period - 1) return undefined;
+    let hh = -Infinity;
+    let ll =  Infinity;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (arr_h[j] > hh) hh = arr_h[j];
+      if (arr_l[j] < ll) ll = arr_l[j];
+    }
+    return (hh + ll) / 2;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const tenkan = midpoint(highs, lows, i, 9);
+    const kijun  = midpoint(highs, lows, i, 26);
+    const senkouB = midpoint(highs, lows, i, 52);
+
+    let senkouA: number | undefined;
+    if (tenkan !== undefined && kijun !== undefined) {
+      senkouA = (tenkan + kijun) / 2;
+    }
+
+    let cloudTop: number | undefined;
+    let cloudBottom: number | undefined;
+    if (senkouA !== undefined && senkouB !== undefined) {
+      cloudTop    = Math.max(senkouA, senkouB);
+      cloudBottom = Math.min(senkouA, senkouB);
+    }
+
+    result[i] = { tenkan, kijun, senkouA, senkouB, cloudTop, cloudBottom };
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// Donchian Channel
+// ------------------------------------------------------------------
+
+/**
+ * Donchian Channel
+ *
+ * Upper  = max(High[period])
+ * Lower  = min(Low[period])
+ * Middle = (Upper + Lower) / 2
+ *
+ * @param highs   高値配列
+ * @param lows    安値配列
+ * @param period  期間（デフォルト 20）
+ */
+export function calculateDonchian(
+  highs:  number[],
+  lows:   number[],
+  period: number,
+): DonchianResult[] {
+  const n = highs.length;
+  const empty = (): DonchianResult => ({ upper: undefined, lower: undefined, middle: undefined });
+  const result: DonchianResult[] = Array.from({ length: n }, empty);
+
+  for (let i = period - 1; i < n; i++) {
+    let upper = -Infinity;
+    let lower =  Infinity;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (highs[j] > upper) upper = highs[j];
+      if (lows[j]  < lower) lower = lows[j];
+    }
+    result[i] = { upper, lower, middle: (upper + lower) / 2 };
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// Keltner Channel
+// ------------------------------------------------------------------
+
+/**
+ * Keltner Channel
+ *
+ * Middle = EMA(close, period)
+ * Upper  = Middle + multiplier × ATR(atrPeriod)
+ * Lower  = Middle - multiplier × ATR(atrPeriod)
+ *
+ * @param bars        OHLCバー配列
+ * @param emaPeriod   EMA 期間（デフォルト 20）
+ * @param atrPeriod   ATR 期間（デフォルト 10）
+ * @param multiplier  ATR 乗数（デフォルト 2.0）
+ */
+export function calculateKeltner(
+  bars:       Bar[],
+  emaPeriod:  number,
+  atrPeriod:  number,
+  multiplier: number,
+): KeltnerResult[] {
+  const n = bars.length;
+  const empty = (): KeltnerResult => ({ upper: undefined, lower: undefined, middle: undefined });
+  const result: KeltnerResult[] = Array.from({ length: n }, empty);
+
+  const closes = bars.map(b => b.close);
+  const ema    = calculateEMA(closes, emaPeriod);
+  const atr    = calculateATR(bars, atrPeriod);
+
+  for (let i = 0; i < n; i++) {
+    const mid = ema[i];
+    const a   = atr[i];
+    if (mid === undefined || a === undefined) continue;
+    result[i] = {
+      middle: mid,
+      upper:  mid + multiplier * a,
+      lower:  mid - multiplier * a,
+    };
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// Stochastic RSI
+// ------------------------------------------------------------------
+
+/**
+ * Stochastic RSI
+ *
+ * RSI      = calculateRSI(closes, rsiPeriod)
+ * StochRSI = (RSI - min(RSI[stochPeriod])) / (max(RSI[stochPeriod]) - min(RSI[stochPeriod]))
+ * 値域: 0〜1
+ *
+ * @param bars        OHLCバー配列
+ * @param rsiPeriod   RSI 期間（デフォルト 14）
+ * @param stochPeriod Stochastic 期間（デフォルト 14）
+ */
+export function calculateStochRSI(
+  bars:        Bar[],
+  rsiPeriod:   number,
+  stochPeriod: number,
+): (number | undefined)[] {
+  const n = bars.length;
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+
+  const rsi = calculateRSI(bars, rsiPeriod);
+
+  for (let i = stochPeriod - 1; i < n; i++) {
+    let minRSI = Infinity;
+    let maxRSI = -Infinity;
+    let valid = true;
+    for (let j = i - stochPeriod + 1; j <= i; j++) {
+      const r = rsi[j];
+      if (r === undefined) { valid = false; break; }
+      if (r < minRSI) minRSI = r;
+      if (r > maxRSI) maxRSI = r;
+    }
+    if (!valid) continue;
+    const currRSI = rsi[i];
+    if (currRSI === undefined) continue;
+    const denom = maxRSI - minRSI;
+    result[i] = denom === 0 ? 0 : (currRSI - minRSI) / denom;
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// ROC — Rate of Change
+// ------------------------------------------------------------------
+
+/**
+ * Rate of Change
+ * ROC[i] = ((Close[i] - Close[i-period]) / Close[i-period]) × 100
+ *
+ * @param closes  終値配列
+ * @param period  期間（デフォルト 14）
+ */
+export function calculateROC(
+  closes: number[],
+  period: number,
+): (number | undefined)[] {
+  const n = closes.length;
+  if (period <= 0 || n === 0) return new Array(n).fill(undefined);
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+
+  for (let i = period; i < n; i++) {
+    const prev = closes[i - period];
+    if (prev !== 0) {
+      result[i] = ((closes[i] - prev) / prev) * 100;
+    }
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// AO — Awesome Oscillator (Bill Williams)
+// ------------------------------------------------------------------
+
+/**
+ * Awesome Oscillator
+ * Midpoint = (High + Low) / 2
+ * AO = SMA(Midpoint, 5) - SMA(Midpoint, 34)
+ *
+ * @param highs  高値配列
+ * @param lows   安値配列
+ */
+export function calculateAO(
+  highs: number[],
+  lows:  number[],
+): (number | undefined)[] {
+  const n = highs.length;
+  if (n === 0) return [];
+
+  const midpoints = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    midpoints[i] = (highs[i] + lows[i]) / 2;
+  }
+
+  const sma5  = calculateSMA(midpoints, 5);
+  const sma34 = calculateSMA(midpoints, 34);
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+  for (let i = 0; i < n; i++) {
+    const s5  = sma5[i];
+    const s34 = sma34[i];
+    if (s5 !== undefined && s34 !== undefined) {
+      result[i] = s5 - s34;
+    }
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// Aroon
+// ------------------------------------------------------------------
+
+/**
+ * Aroon Indicator
+ *
+ * AroonUp   = ((period - periods since highest high) / period) × 100
+ * AroonDown = ((period - periods since lowest low)  / period) × 100
+ * Oscillator = AroonUp - AroonDown (値域 -100〜+100)
+ *
+ * @param highs   高値配列
+ * @param lows    安値配列
+ * @param period  期間（デフォルト 14）
+ */
+export function calculateAroon(
+  highs:  number[],
+  lows:   number[],
+  period: number,
+): AroonResult[] {
+  const n = highs.length;
+  const empty = (): AroonResult => ({ up: undefined, down: undefined, oscillator: undefined });
+  const result: AroonResult[] = Array.from({ length: n }, empty);
+
+  for (let i = period; i < n; i++) {
+    let highestIdx = i;
+    let lowestIdx  = i;
+    for (let j = i - period; j <= i; j++) {
+      if (highs[j] >= highs[highestIdx]) highestIdx = j;
+      if (lows[j]  <= lows[lowestIdx])   lowestIdx  = j;
+    }
+    const periodsSinceHigh = i - highestIdx;
+    const periodsSinceLow  = i - lowestIdx;
+    const up   = ((period - periodsSinceHigh) / period) * 100;
+    const down = ((period - periodsSinceLow)  / period) * 100;
+    result[i] = { up, down, oscillator: up - down };
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// Force Index
+// ------------------------------------------------------------------
+
+/**
+ * Force Index (Elder)
+ *
+ * Force[i]       = (Close[i] - Close[i-1]) × Volume[i]
+ * ForceEMA[i]    = EMA(Force, period)
+ *
+ * @param closes   終値配列
+ * @param volumes  ボリューム配列
+ * @param period   平滑化期間（デフォルト 13）
+ */
+export function calculateForceIndex(
+  closes:  number[],
+  volumes: number[],
+  period:  number,
+): (number | undefined)[] {
+  const n = closes.length;
+  if (period <= 0 || n === 0) return new Array(n).fill(undefined);
+
+  // Raw force (index 1 から有効)
+  const force: (number | undefined)[] = new Array(n).fill(undefined);
+  for (let i = 1; i < n; i++) {
+    force[i] = (closes[i] - closes[i - 1]) * volumes[i];
+  }
+
+  // EMA of force — extract valid values from index 1
+  if (n < period + 1) return new Array(n).fill(undefined);
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+  const k = emaK(period);
+
+  // Initial EMA = SMA(force[1..period])
+  let ema = 0;
+  for (let i = 1; i <= period; i++) {
+    ema += force[i]!;
+  }
+  ema /= period;
+  result[period] = ema;
+
+  for (let i = period + 1; i < n; i++) {
+    const f = force[i];
+    if (f !== undefined) {
+      ema = f * k + ema * (1 - k);
+      result[i] = ema;
+    }
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// MFI — Money Flow Index
+// ------------------------------------------------------------------
+
+/**
+ * Money Flow Index
+ *
+ * TypicalPrice = (High + Low + Close) / 3
+ * MoneyFlow    = TypicalPrice × Volume
+ * MFI          = 100 - (100 / (1 + PositiveMF / NegativeMF))
+ * 値域: 0〜100
+ *
+ * @param highs   高値配列
+ * @param lows    安値配列
+ * @param closes  終値配列
+ * @param volumes ボリューム配列
+ * @param period  期間（デフォルト 14）
+ */
+export function calculateMFI(
+  highs:   number[],
+  lows:    number[],
+  closes:  number[],
+  volumes: number[],
+  period:  number,
+): (number | undefined)[] {
+  const n = closes.length;
+  if (period <= 0 || n === 0) return new Array(n).fill(undefined);
+
+  // Typical Prices and Money Flows
+  const tp = new Array<number>(n);
+  const mf = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    tp[i] = (highs[i] + lows[i] + closes[i]) / 3;
+    mf[i] = tp[i] * volumes[i];
+  }
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+
+  for (let i = period; i < n; i++) {
+    let posMF = 0;
+    let negMF = 0;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (tp[j] > tp[j - 1])      posMF += mf[j];
+      else if (tp[j] < tp[j - 1]) negMF += mf[j];
+      // 変化なし: 中立として扱う
+    }
+    if (negMF === 0) {
+      result[i] = posMF > 0 ? 100 : 50;
+    } else {
+      result[i] = 100 - 100 / (1 + posMF / negMF);
+    }
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// CMF — Chaikin Money Flow
+// ------------------------------------------------------------------
+
+/**
+ * Chaikin Money Flow
+ *
+ * MoneyFlowMultiplier = ((Close - Low) - (High - Close)) / (High - Low)
+ * MoneyFlowVolume     = MFM × Volume
+ * CMF = Σ MFV[period] / Σ Volume[period]
+ * 値域: -1〜+1
+ *
+ * @param highs   高値配列
+ * @param lows    安値配列
+ * @param closes  終値配列
+ * @param volumes ボリューム配列
+ * @param period  期間（デフォルト 20）
+ */
+export function calculateCMF(
+  highs:   number[],
+  lows:    number[],
+  closes:  number[],
+  volumes: number[],
+  period:  number,
+): (number | undefined)[] {
+  const n = closes.length;
+  if (period <= 0 || n === 0) return new Array(n).fill(undefined);
+
+  const mfv = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    const hl = highs[i] - lows[i];
+    if (hl === 0) {
+      mfv[i] = 0;
+    } else {
+      const mfm = ((closes[i] - lows[i]) - (highs[i] - closes[i])) / hl;
+      mfv[i] = mfm * volumes[i];
+    }
+  }
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+
+  for (let i = period - 1; i < n; i++) {
+    let sumMFV = 0;
+    let sumVol = 0;
+    for (let j = i - period + 1; j <= i; j++) {
+      sumMFV += mfv[j];
+      sumVol += volumes[j];
+    }
+    result[i] = sumVol > 0 ? sumMFV / sumVol : 0;
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// Parabolic SAR
+// ------------------------------------------------------------------
+
+/**
+ * Parabolic SAR (標準 MT5 実装に準拠)
+ *
+ * SAR[i] = SAR[i-1] + AF × (EP - SAR[i-1])
+ * EP     = 期間中の最高値（上昇）または最安値（下降）
+ * AF     = 加速係数（初期 step、最大 max、EP 更新ごとに step 加算）
+ *
+ * @param highs  高値配列
+ * @param lows   安値配列
+ * @param step   加速係数の刻み（デフォルト 0.02）
+ * @param maxAF  加速係数の最大値（デフォルト 0.2）
+ */
+export function calculatePSAR(
+  highs: number[],
+  lows:  number[],
+  step:  number,
+  maxAF: number,
+): (number | undefined)[] {
+  const n = highs.length;
+  if (n < 2) return new Array(n).fill(undefined);
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+
+  // 最初のトレンド方向を決定
+  let isLong = highs[1] > highs[0];
+  let af     = step;
+  let ep     = isLong ? highs[0] : lows[0];
+  let sar    = isLong ? lows[0]  : highs[0];
+
+  result[0] = sar;
+
+  for (let i = 1; i < n; i++) {
+    // SAR 更新
+    let newSar = sar + af * (ep - sar);
+
+    if (isLong) {
+      // 上昇トレンド: SAR は前2本の安値より下
+      newSar = Math.min(newSar, lows[i - 1]);
+      if (i >= 2) newSar = Math.min(newSar, lows[i - 2]);
+
+      if (lows[i] < newSar) {
+        // トレンド転換: 下降へ
+        isLong = false;
+        newSar = ep; // SAR = 直前 EP (最高値)
+        ep     = lows[i];
+        af     = step;
+      } else {
+        if (highs[i] > ep) {
+          ep = highs[i];
+          af = Math.min(af + step, maxAF);
+        }
+      }
+    } else {
+      // 下降トレンド: SAR は前2本の高値より上
+      newSar = Math.max(newSar, highs[i - 1]);
+      if (i >= 2) newSar = Math.max(newSar, highs[i - 2]);
+
+      if (highs[i] > newSar) {
+        // トレンド転換: 上昇へ
+        isLong = true;
+        newSar = ep; // SAR = 直前 EP (最安値)
+        ep     = highs[i];
+        af     = step;
+      } else {
+        if (lows[i] < ep) {
+          ep = lows[i];
+          af = Math.min(af + step, maxAF);
+        }
+      }
+    }
+
+    sar = newSar;
+    result[i] = sar;
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
 // PrecomputedIndicators — バー配列に対する全指標の事前計算
 // ------------------------------------------------------------------
 
@@ -865,24 +1521,40 @@ export function calculateStochastic(
  * params は省略可能。省略時は標準パラメーターを使用する。
  */
 export interface PrecomputeParams {
-  ema1Period?:       number;  // 短期 EMA (デフォルト 21)
-  ema2Period?:       number;  // 長期 EMA (デフォルト 200)
-  smaPeriod?:        number;  // SMA (デフォルト 50)
-  atrPeriod?:        number;  // ATR (デフォルト 14)
-  rsiPeriod?:        number;  // RSI (デフォルト 14)
-  macdFast?:         number;  // MACD fast (デフォルト 12)
-  macdSlow?:         number;  // MACD slow (デフォルト 26)
-  macdSignal?:       number;  // MACD signal (デフォルト 9)
-  adxPeriod?:        number;  // ADX (デフォルト 14)
-  bbPeriod?:         number;  // BB period (デフォルト 20)
-  bbDeviation?:      number;  // BB deviation (デフォルト 2.0)
-  stochPeriod?:      number;  // Stochastic (デフォルト 14)
-  wmaPeriod?:        number;  // WMA (デフォルト 14)
-  vwmaPeriod?:       number;  // VWMA (デフォルト 14)
-  cciPeriod?:        number;  // CCI (デフォルト 14)
-  williamsRPeriod?:  number;  // Williams %R (デフォルト 14)
-  momentumPeriod?:   number;  // Momentum (デフォルト 10)
-  volumeRatioPeriod?: number; // Volume Ratio (デフォルト 20)
+  ema1Period?:         number;  // 短期 EMA (デフォルト 21)
+  ema2Period?:         number;  // 長期 EMA (デフォルト 200)
+  smaPeriod?:          number;  // SMA (デフォルト 50)
+  atrPeriod?:          number;  // ATR (デフォルト 14)
+  rsiPeriod?:          number;  // RSI (デフォルト 14)
+  macdFast?:           number;  // MACD fast (デフォルト 12)
+  macdSlow?:           number;  // MACD slow (デフォルト 26)
+  macdSignal?:         number;  // MACD signal (デフォルト 9)
+  adxPeriod?:          number;  // ADX (デフォルト 14)
+  bbPeriod?:           number;  // BB period (デフォルト 20)
+  bbDeviation?:        number;  // BB deviation (デフォルト 2.0)
+  stochPeriod?:        number;  // Stochastic (デフォルト 14)
+  wmaPeriod?:          number;  // WMA (デフォルト 14)
+  vwmaPeriod?:         number;  // VWMA (デフォルト 14)
+  cciPeriod?:          number;  // CCI (デフォルト 14)
+  williamsRPeriod?:    number;  // Williams %R (デフォルト 14)
+  momentumPeriod?:     number;  // Momentum (デフォルト 10)
+  volumeRatioPeriod?:  number;  // Volume Ratio (デフォルト 20)
+  // New indicators
+  hmaPeriod?:          number;  // HMA (デフォルト 14)
+  demaPeriod?:         number;  // DEMA (デフォルト 14)
+  donchianPeriod?:     number;  // Donchian Channel (デフォルト 20)
+  keltnerPeriod?:      number;  // Keltner EMA 期間 (デフォルト 20)
+  keltnerAtrPeriod?:   number;  // Keltner ATR 期間 (デフォルト 10)
+  keltnerMultiplier?:  number;  // Keltner ATR 乗数 (デフォルト 2.0)
+  stochRsiRsiPeriod?:  number;  // StochRSI の RSI 期間 (デフォルト 14)
+  stochRsiPeriod?:     number;  // StochRSI の Stoch 期間 (デフォルト 14)
+  rocPeriod?:          number;  // ROC 期間 (デフォルト 14)
+  aroonPeriod?:        number;  // Aroon 期間 (デフォルト 14)
+  forceIndexPeriod?:   number;  // Force Index EMA 期間 (デフォルト 13)
+  mfiPeriod?:          number;  // MFI 期間 (デフォルト 14)
+  cmfPeriod?:          number;  // CMF 期間 (デフォルト 20)
+  psarStep?:           number;  // PSAR 加速係数刻み (デフォルト 0.02)
+  psarMax?:            number;  // PSAR 加速係数最大値 (デフォルト 0.2)
 }
 
 export interface PrecomputedIndicators {
@@ -902,6 +1574,20 @@ export interface PrecomputedIndicators {
   momentum:    (number | undefined)[];
   obv:         (number | undefined)[];
   volumeRatio: (number | undefined)[];
+  // New indicators
+  hma:         (number | undefined)[];
+  dema:        (number | undefined)[];
+  ichimoku:    IchimokuResult[];
+  donchian:    DonchianResult[];
+  keltner:     KeltnerResult[];
+  stochRsi:    (number | undefined)[];
+  roc:         (number | undefined)[];
+  ao:          (number | undefined)[];
+  aroon:       AroonResult[];
+  forceIndex:  (number | undefined)[];
+  mfi:         (number | undefined)[];
+  cmf:         (number | undefined)[];
+  psar:        (number | undefined)[];
   params:      Required<PrecomputeParams>;
 }
 
@@ -910,24 +1596,39 @@ export function precomputeIndicators(
   p: PrecomputeParams = {},
 ): PrecomputedIndicators {
   const params: Required<PrecomputeParams> = {
-    ema1Period:        p.ema1Period        ?? 21,
-    ema2Period:        p.ema2Period        ?? 200,
-    smaPeriod:         p.smaPeriod         ?? 50,
-    atrPeriod:         p.atrPeriod         ?? 14,
-    rsiPeriod:         p.rsiPeriod         ?? 14,
-    macdFast:          p.macdFast          ?? 12,
-    macdSlow:          p.macdSlow          ?? 26,
-    macdSignal:        p.macdSignal        ?? 9,
-    adxPeriod:         p.adxPeriod         ?? 14,
-    bbPeriod:          p.bbPeriod          ?? 20,
-    bbDeviation:       p.bbDeviation       ?? 2.0,
-    stochPeriod:       p.stochPeriod       ?? 14,
-    wmaPeriod:         p.wmaPeriod         ?? 14,
-    vwmaPeriod:        p.vwmaPeriod        ?? 14,
-    cciPeriod:         p.cciPeriod         ?? 14,
-    williamsRPeriod:   p.williamsRPeriod   ?? 14,
-    momentumPeriod:    p.momentumPeriod    ?? 10,
-    volumeRatioPeriod: p.volumeRatioPeriod ?? 20,
+    ema1Period:          p.ema1Period          ?? 21,
+    ema2Period:          p.ema2Period          ?? 200,
+    smaPeriod:           p.smaPeriod           ?? 50,
+    atrPeriod:           p.atrPeriod           ?? 14,
+    rsiPeriod:           p.rsiPeriod           ?? 14,
+    macdFast:            p.macdFast            ?? 12,
+    macdSlow:            p.macdSlow            ?? 26,
+    macdSignal:          p.macdSignal          ?? 9,
+    adxPeriod:           p.adxPeriod           ?? 14,
+    bbPeriod:            p.bbPeriod            ?? 20,
+    bbDeviation:         p.bbDeviation         ?? 2.0,
+    stochPeriod:         p.stochPeriod         ?? 14,
+    wmaPeriod:           p.wmaPeriod           ?? 14,
+    vwmaPeriod:          p.vwmaPeriod          ?? 14,
+    cciPeriod:           p.cciPeriod           ?? 14,
+    williamsRPeriod:     p.williamsRPeriod     ?? 14,
+    momentumPeriod:      p.momentumPeriod      ?? 10,
+    volumeRatioPeriod:   p.volumeRatioPeriod   ?? 20,
+    hmaPeriod:           p.hmaPeriod           ?? 14,
+    demaPeriod:          p.demaPeriod          ?? 14,
+    donchianPeriod:      p.donchianPeriod      ?? 20,
+    keltnerPeriod:       p.keltnerPeriod       ?? 20,
+    keltnerAtrPeriod:    p.keltnerAtrPeriod    ?? 10,
+    keltnerMultiplier:   p.keltnerMultiplier   ?? 2.0,
+    stochRsiRsiPeriod:   p.stochRsiRsiPeriod   ?? 14,
+    stochRsiPeriod:      p.stochRsiPeriod      ?? 14,
+    rocPeriod:           p.rocPeriod           ?? 14,
+    aroonPeriod:         p.aroonPeriod         ?? 14,
+    forceIndexPeriod:    p.forceIndexPeriod    ?? 13,
+    mfiPeriod:           p.mfiPeriod           ?? 14,
+    cmfPeriod:           p.cmfPeriod           ?? 20,
+    psarStep:            p.psarStep            ?? 0.02,
+    psarMax:             p.psarMax             ?? 0.2,
   };
 
   const closes  = bars.map(b => b.close);
@@ -952,6 +1653,19 @@ export function precomputeIndicators(
     momentum:    calculateMomentum(closes, params.momentumPeriod),
     obv:         calculateOBV(closes, volumes),
     volumeRatio: calculateVolumeRatio(volumes, params.volumeRatioPeriod),
+    hma:         calculateHMA(closes, params.hmaPeriod),
+    dema:        calculateDEMA(closes, params.demaPeriod),
+    ichimoku:    calculateIchimoku(highs, lows),
+    donchian:    calculateDonchian(highs, lows, params.donchianPeriod),
+    keltner:     calculateKeltner(bars, params.keltnerPeriod, params.keltnerAtrPeriod, params.keltnerMultiplier),
+    stochRsi:    calculateStochRSI(bars, params.stochRsiRsiPeriod, params.stochRsiPeriod),
+    roc:         calculateROC(closes, params.rocPeriod),
+    ao:          calculateAO(highs, lows),
+    aroon:       calculateAroon(highs, lows, params.aroonPeriod),
+    forceIndex:  calculateForceIndex(closes, volumes, params.forceIndexPeriod),
+    mfi:         calculateMFI(highs, lows, closes, volumes, params.mfiPeriod),
+    cmf:         calculateCMF(highs, lows, closes, volumes, params.cmfPeriod),
+    psar:        calculatePSAR(highs, lows, params.psarStep, params.psarMax),
     params,
   };
 }

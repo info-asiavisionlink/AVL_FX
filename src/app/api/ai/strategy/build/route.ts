@@ -208,6 +208,68 @@ VOLUME_RATIO (Volume / SMA(Volume, period) — high volume confirmation):
   Example: "高ボリューム確認" → { indicator: "VOLUME_RATIO", operator: "ABOVE", threshold: 1.5, period: 20 }
   VOLUME_RATIO is direction-neutral — combine with directional indicators.
 
+HMA (Hull Moving Average — fastest smooth trend indicator):
+  Operators: PRICE_ABOVE (bullish), PRICE_BELOW (bearish)
+  Example: "HMA14より価格が上" → { indicator: "HMA", operator: "PRICE_ABOVE", period: 14 }
+
+DEMA (Double Exponential MA — reduces EMA lag):
+  Operators: PRICE_ABOVE (bullish), PRICE_BELOW (bearish)
+  Example: "DEMA21より価格が上" → { indicator: "DEMA", operator: "PRICE_ABOVE", period: 21 }
+
+ICHIMOKU (一目均衡表):
+  Operators: PRICE_ABOVE_CLOUD (雲の上), PRICE_BELOW_CLOUD (雲の下), BULLISH_CROSS (TKクロス買い), BEARISH_CROSS (TKクロス売り), PRICE_ABOVE (基準線より上), PRICE_BELOW (基準線より下)
+  Example: "雲の上にいる" → { indicator: "ICHIMOKU", operator: "PRICE_ABOVE_CLOUD" }
+  Example: "転換線が基準線を上抜け(TKクロス)" → { indicator: "ICHIMOKU", operator: "BULLISH_CROSS" }
+
+DONCHIAN (ドンチャンチャネル — breakout detection):
+  Operators: PRICE_ABOVE (upper channel break = BUY breakout), PRICE_BELOW (lower break = SELL breakdown)
+  Example: "ドンチャン20のブレイクアウト" → { indicator: "DONCHIAN", operator: "PRICE_ABOVE", period: 20 }
+
+KELTNER (ケルトナーチャネル — ATR-based volatility channel):
+  Operators: PRICE_ABOVE (overbought/strong trend), PRICE_BELOW (oversold)
+  Example: "ケルトナー上限超え" → { indicator: "KELTNER", operator: "PRICE_ABOVE", period: 20 }
+
+STOCH_RSI (Stochastic RSI — faster RSI oscillator):
+  値域 0〜1。0.8以上=オーバーボート、0.2以下=オーバーソールド
+  Operators: ABOVE (>threshold), BELOW (<threshold), REVERSAL
+  Example: "StochRSIが0.2以下から反転" → { indicator: "STOCH_RSI", operator: "REVERSAL", threshold: 0.2 }
+
+ROC (Rate of Change — momentum %):
+  Operators: ABOVE (>0 = 上昇), BELOW (<0 = 下降), CROSS_UP (ゼロクロスアップ), CROSS_DOWN
+  Example: "ROCがゼロを上向きクロス" → { indicator: "ROC", operator: "CROSS_UP", threshold: 0, period: 14 }
+
+AO (Awesome Oscillator — Bill Williams):
+  Operators: ABOVE (>0 = 上昇), BELOW (<0 = 下降), CROSS_UP (ゼロクロス), CROSS_DOWN
+  Example: "AOがプラス" → { indicator: "AO", operator: "ABOVE", threshold: 0 }
+
+AROON (Aroon Oscillator — trend direction/strength):
+  値域 -100〜+100。正=上昇トレンド、負=下降トレンド
+  Operators: ABOVE (>threshold), BELOW (<threshold), CROSS_UP, CROSS_DOWN
+  Example: "AroonOscillatorがプラス" → { indicator: "AROON", operator: "ABOVE", threshold: 0, period: 14 }
+
+FORCE_INDEX (Force Index — price × volume momentum):
+  Operators: ABOVE (>0 = 買い力), BELOW (<0 = 売り力), CROSS_UP, CROSS_DOWN
+  Example: "Force Indexがプラス" → { indicator: "FORCE_INDEX", operator: "ABOVE", threshold: 0, period: 13 }
+
+MFI (Money Flow Index — volume-weighted RSI):
+  値域 0〜100。80以上=オーバーボート、20以下=オーバーソールド
+  Operators: ABOVE (>threshold), BELOW (<threshold), REVERSAL
+  Example: "MFIが20以下から反転" → { indicator: "MFI", operator: "REVERSAL", threshold: 20 }
+
+CMF (Chaikin Money Flow — buy/sell pressure):
+  値域 -1〜+1。0.2以上=買い圧力、-0.2以下=売り圧力
+  Operators: ABOVE (>threshold), BELOW (<threshold), CROSS_UP (ゼロクロス), CROSS_DOWN
+  Example: "CMFがゼロを上クロス" → { indicator: "CMF", operator: "CROSS_UP", threshold: 0 }
+
+ATR (Average True Range — volatility filter as entry condition):
+  Operators: ABOVE (高ボラティリティ環境フィルター), BELOW (低ボラティリティ)
+  Example: "ATR14が0.001以上（高ボラ）" → { indicator: "ATR", operator: "ABOVE", threshold: 0.001, period: 14 }
+  ATR is direction-neutral — combine with directional indicators.
+
+PSAR (Parabolic SAR — directional reversal indicator):
+  Operators: PRICE_ABOVE (price > SAR = uptrend BUY), PRICE_BELOW (price < SAR = downtrend SELL)
+  Example: "PSARの上にいる(上昇トレンド)" → { indicator: "PSAR", operator: "PRICE_ABOVE" }
+
 ## ABSOLUTE PROHIBITIONS
 
 - DO NOT output: javascript, typescript, mql5, python, eval, exec, function, require, import
@@ -281,6 +343,19 @@ WILLIAMS_R: range -100 to 0. Oversold BELOW -80, overbought ABOVE -20. Operators
 MOMENTUM: ABOVE(>0)/BELOW(<0)/CROSS_UP/CROSS_DOWN. period default 10.
 OBV: ABOVE(>0)/BELOW(<0)/CROSS_UP. Direction neutral — combine with directional indicators.
 VOLUME_RATIO: ABOVE (default threshold 1.5 = high volume) / BELOW. period default 20.
+HMA/DEMA: PRICE_ABOVE (bullish), PRICE_BELOW (bearish).
+ICHIMOKU: PRICE_ABOVE_CLOUD/PRICE_BELOW_CLOUD/BULLISH_CROSS/BEARISH_CROSS/PRICE_ABOVE/PRICE_BELOW.
+DONCHIAN: PRICE_ABOVE (upper break = BUY), PRICE_BELOW (lower break = SELL). period default 20.
+KELTNER: PRICE_ABOVE (overbought), PRICE_BELOW (oversold). period default 20.
+STOCH_RSI: range 0-1. ABOVE/BELOW/REVERSAL. default thresholds 0.8/0.2.
+ROC: ABOVE(>0)/BELOW(<0)/CROSS_UP/CROSS_DOWN. period default 14.
+AO: ABOVE(>0)/BELOW(<0)/CROSS_UP/CROSS_DOWN. Fixed 5/34 periods.
+AROON: oscillator range -100 to +100. ABOVE/BELOW/CROSS_UP/CROSS_DOWN. period default 14.
+FORCE_INDEX: ABOVE(>0)/BELOW(<0)/CROSS_UP/CROSS_DOWN. period default 13.
+MFI: range 0-100. ABOVE/BELOW/REVERSAL. default thresholds 80/20. period default 14.
+CMF: range -1 to +1. ABOVE/BELOW/CROSS_UP/CROSS_DOWN. period default 20.
+ATR: ABOVE/BELOW (volatility filter, direction-neutral). threshold = raw price value (e.g. 0.001 for EURUSD).
+PSAR: PRICE_ABOVE (uptrend BUY), PRICE_BELOW (downtrend SELL).
 
 ## ABSOLUTE PROHIBITIONS
 - DO NOT include: javascript, typescript, mql5, python, code, function, eval, exec, require, import

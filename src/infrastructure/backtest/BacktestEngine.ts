@@ -118,6 +118,19 @@ function computeWarmup(spec: StrategySpec): number {
       case "MOMENTUM":       warmup = Math.max(warmup, WARMUP_BARS.momentum(10)); break;
       case "OBV":            warmup = Math.max(warmup, WARMUP_BARS.obv()); break;
       case "VOLUME_RATIO":   warmup = Math.max(warmup, WARMUP_BARS.volumeRatio(20)); break;
+      case "HMA":            warmup = Math.max(warmup, WARMUP_BARS.hma(14)); break;
+      case "DEMA":           warmup = Math.max(warmup, WARMUP_BARS.dema(14)); break;
+      case "ICHIMOKU":       warmup = Math.max(warmup, WARMUP_BARS.ichimoku()); break;
+      case "DONCHIAN":       warmup = Math.max(warmup, WARMUP_BARS.donchian(20)); break;
+      case "KELTNER":        warmup = Math.max(warmup, WARMUP_BARS.keltner(20, 10)); break;
+      case "STOCH_RSI":      warmup = Math.max(warmup, WARMUP_BARS.stochRsi(14, 14)); break;
+      case "ROC":            warmup = Math.max(warmup, WARMUP_BARS.roc(14)); break;
+      case "AO":             warmup = Math.max(warmup, WARMUP_BARS.ao()); break;
+      case "AROON":          warmup = Math.max(warmup, WARMUP_BARS.aroon(14)); break;
+      case "FORCE_INDEX":    warmup = Math.max(warmup, WARMUP_BARS.forceIndex(13)); break;
+      case "MFI":            warmup = Math.max(warmup, WARMUP_BARS.mfi(14)); break;
+      case "CMF":            warmup = Math.max(warmup, WARMUP_BARS.cmf(20)); break;
+      case "PSAR":           warmup = Math.max(warmup, WARMUP_BARS.psar()); break;
     }
   }
 

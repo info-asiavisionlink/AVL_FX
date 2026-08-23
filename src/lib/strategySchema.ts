@@ -30,6 +30,21 @@ export const ALLOWED_INDICATORS = [
   "MOMENTUM",
   "OBV",
   "VOLUME_RATIO",
+  // New indicators
+  "HMA",
+  "DEMA",
+  "ICHIMOKU",
+  "DONCHIAN",
+  "KELTNER",
+  "STOCH_RSI",
+  "ROC",
+  "AO",
+  "AROON",
+  "FORCE_INDEX",
+  "MFI",
+  "CMF",
+  "PSAR",
+  // Pattern indicators
   "PRICE_ACTION",
   "MARKET_STRUCTURE",
   "SUPPORT_RESISTANCE",
@@ -59,6 +74,7 @@ export const ALLOWED_SYMBOLS = [
 export const ALLOWED_OPERATORS = [
   "BELOW", "ABOVE", "CROSS_UP", "CROSS_DOWN",
   "PRICE_ABOVE", "PRICE_BELOW",
+  "PRICE_ABOVE_CLOUD", "PRICE_BELOW_CLOUD",
   "BULLISH_CROSS", "BEARISH_CROSS",
   "ABOVE_SIGNAL", "BELOW_SIGNAL",
   "HISTOGRAM_POSITIVE", "HISTOGRAM_NEGATIVE",
@@ -308,6 +324,87 @@ export function conditionToJapanese(cond: z.infer<typeof IndicatorConditionSchem
     }
     case "PRICE_ACTION": {
       return `${tf} プライスアクション`;
+    }
+    case "HMA": {
+      if (op === "PRICE_ABOVE") return `${tf} HMA${p} より価格が上`;
+      if (op === "PRICE_BELOW") return `${tf} HMA${p} より価格が下`;
+      return `${tf} HMA${p}`;
+    }
+    case "DEMA": {
+      if (op === "PRICE_ABOVE") return `${tf} DEMA${p} より価格が上`;
+      if (op === "PRICE_BELOW") return `${tf} DEMA${p} より価格が下`;
+      return `${tf} DEMA${p}`;
+    }
+    case "ICHIMOKU": {
+      if (op === "PRICE_ABOVE_CLOUD") return `${tf} 一目均衡表 雲の上`;
+      if (op === "PRICE_BELOW_CLOUD") return `${tf} 一目均衡表 雲の下`;
+      if (op === "BULLISH_CROSS")     return `${tf} 一目均衡表 TKクロス (買い)`;
+      if (op === "BEARISH_CROSS")     return `${tf} 一目均衡表 TKクロス (売り)`;
+      if (op === "PRICE_ABOVE")       return `${tf} 一目均衡表 基準線より上`;
+      if (op === "PRICE_BELOW")       return `${tf} 一目均衡表 基準線より下`;
+      return `${tf} 一目均衡表`;
+    }
+    case "DONCHIAN": {
+      if (op === "PRICE_ABOVE") return `${tf} ドンチャン${p} 上限ブレイクアウト`;
+      if (op === "PRICE_BELOW") return `${tf} ドンチャン${p} 下限ブレイクダウン`;
+      return `${tf} ドンチャンチャネル${p}`;
+    }
+    case "KELTNER": {
+      if (op === "PRICE_ABOVE") return `${tf} ケルトナー${p} 上限超え (高ボラ)`;
+      if (op === "PRICE_BELOW") return `${tf} ケルトナー${p} 下限割れ (売られ過ぎ)`;
+      return `${tf} ケルトナーチャネル${p}`;
+    }
+    case "STOCH_RSI": {
+      if (op === "ABOVE" && th !== undefined) return `${tf} StochRSI${p} > ${th}`;
+      if (op === "BELOW" && th !== undefined) return `${tf} StochRSI${p} < ${th}`;
+      if (op === "REVERSAL")                  return `${tf} StochRSI${p} 反転`;
+      return `${tf} StochRSI${p}`;
+    }
+    case "ROC": {
+      if (op === "ABOVE" && th !== undefined) return `${tf} ROC${p} > ${th}`;
+      if (op === "BELOW" && th !== undefined) return `${tf} ROC${p} < ${th}`;
+      if (op === "CROSS_UP")   return `${tf} ROC${p} ゼロ上抜け`;
+      if (op === "CROSS_DOWN") return `${tf} ROC${p} ゼロ下抜け`;
+      return `${tf} ROC${p}`;
+    }
+    case "AO": {
+      if (op === "ABOVE")      return `${tf} AO > 0 (上昇モメンタム)`;
+      if (op === "BELOW")      return `${tf} AO < 0 (下降モメンタム)`;
+      if (op === "CROSS_UP")   return `${tf} AO ゼロ上抜け`;
+      if (op === "CROSS_DOWN") return `${tf} AO ゼロ下抜け`;
+      return `${tf} Awesome Oscillator`;
+    }
+    case "AROON": {
+      if (op === "ABOVE" && th !== undefined) return `${tf} Aroon Osc${p} > ${th}`;
+      if (op === "BELOW" && th !== undefined) return `${tf} Aroon Osc${p} < ${th}`;
+      if (op === "CROSS_UP")   return `${tf} Aroon Osc${p} ゼロ上抜け`;
+      if (op === "CROSS_DOWN") return `${tf} Aroon Osc${p} ゼロ下抜け`;
+      return `${tf} Aroon${p}`;
+    }
+    case "FORCE_INDEX": {
+      if (op === "ABOVE")      return `${tf} Force Index${p} > 0 (買い力)`;
+      if (op === "BELOW")      return `${tf} Force Index${p} < 0 (売り力)`;
+      if (op === "CROSS_UP")   return `${tf} Force Index${p} ゼロ上抜け`;
+      if (op === "CROSS_DOWN") return `${tf} Force Index${p} ゼロ下抜け`;
+      return `${tf} Force Index${p}`;
+    }
+    case "MFI": {
+      if (op === "ABOVE" && th !== undefined) return `${tf} MFI${p} > ${th}`;
+      if (op === "BELOW" && th !== undefined) return `${tf} MFI${p} < ${th}`;
+      if (op === "REVERSAL")                  return `${tf} MFI${p} 反転`;
+      return `${tf} MFI${p}`;
+    }
+    case "CMF": {
+      if (op === "ABOVE" && th !== undefined) return `${tf} CMF${p} > ${th}`;
+      if (op === "BELOW" && th !== undefined) return `${tf} CMF${p} < ${th}`;
+      if (op === "CROSS_UP")   return `${tf} CMF${p} ゼロ上抜け`;
+      if (op === "CROSS_DOWN") return `${tf} CMF${p} ゼロ下抜け`;
+      return `${tf} CMF${p}`;
+    }
+    case "PSAR": {
+      if (op === "PRICE_ABOVE") return `${tf} PSAR より価格が上 (上昇トレンド)`;
+      if (op === "PRICE_BELOW") return `${tf} PSAR より価格が下 (下降トレンド)`;
+      return `${tf} パラボリックSAR`;
     }
     default:
       return `${tf} ${ind}${p}`;

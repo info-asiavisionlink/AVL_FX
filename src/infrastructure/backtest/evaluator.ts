@@ -12,7 +12,7 @@
 // =================================================================
 
 import type { Bar }                   from "@/infrastructure/analysis/types";
-import type { MACDResult, ADXResult, BollingerResult } from "./types";
+import type { MACDResult, ADXResult, BollingerResult, IchimokuResult, DonchianResult, KeltnerResult, AroonResult } from "./types";
 import type { PrecomputedIndicators } from "./indicators";
 import type { StrategySpec }          from "@/lib/strategySchema";
 import { getLastConfirmedBarIndex, isWithinSessions } from "./timeframe";
@@ -111,6 +111,53 @@ function inferDirectionFromConditions(
         if (op === "ABOVE" || op === "CROSS_UP") buy++;
         if (op === "BELOW")                      sell++;
         break;
+      case "HMA":
+      case "DEMA":
+        if (op === "PRICE_ABOVE") buy++;
+        if (op === "PRICE_BELOW") sell++;
+        break;
+      case "ICHIMOKU":
+        if (op === "PRICE_ABOVE_CLOUD" || op === "BULLISH_CROSS" || op === "PRICE_ABOVE") buy++;
+        if (op === "PRICE_BELOW_CLOUD" || op === "BEARISH_CROSS" || op === "PRICE_BELOW") sell++;
+        break;
+      case "DONCHIAN":
+        if (op === "PRICE_ABOVE") buy++;
+        if (op === "PRICE_BELOW") sell++;
+        break;
+      case "KELTNER":
+        // PRICE_ABOVE = overbought → sell signal; PRICE_BELOW = oversold → buy signal
+        if (op === "PRICE_ABOVE") sell++;
+        if (op === "PRICE_BELOW") buy++;
+        break;
+      case "STOCH_RSI":
+        if (op === "ABOVE" && thr >= 0.5)  sell++;
+        if (op === "BELOW" && thr <= 0.5)  buy++;
+        if (op === "REVERSAL") { thr <= 0.5 ? buy++ : sell++; }
+        break;
+      case "ROC":
+      case "AO":
+      case "FORCE_INDEX":
+        if (op === "ABOVE" || op === "CROSS_UP")   buy++;
+        if (op === "BELOW" || op === "CROSS_DOWN") sell++;
+        break;
+      case "AROON":
+        if (op === "ABOVE" || op === "CROSS_UP")   buy++;
+        if (op === "BELOW" || op === "CROSS_DOWN") sell++;
+        break;
+      case "MFI":
+        if (op === "ABOVE" && thr >= 50)  sell++;
+        if (op === "BELOW" && thr <= 50)  buy++;
+        if (op === "REVERSAL") { thr <= 50 ? buy++ : sell++; }
+        break;
+      case "CMF":
+        if (op === "ABOVE" || op === "CROSS_UP")   buy++;
+        if (op === "BELOW" || op === "CROSS_DOWN") sell++;
+        break;
+      case "PSAR":
+        if (op === "PRICE_ABOVE") buy++;
+        if (op === "PRICE_BELOW") sell++;
+        break;
+      // ATR は方向中立
       // VOLUME_RATIO, ADX, PRICE_ACTION, MARKET_STRUCTURE 等は方向中立
     }
   }
@@ -216,7 +263,56 @@ function getConditionDirection(c: StrategySpec["entry_conditions"]["conditions"]
       if (op === "BELOW")                      return "SELL";
       return "NEUTRAL";
 
-    // VOLUME_RATIO, ADX, PRICE_ACTION, MARKET_STRUCTURE 等は方向中立
+    case "HMA":
+    case "DEMA":
+      if (op === "PRICE_ABOVE") return "BUY";
+      if (op === "PRICE_BELOW") return "SELL";
+      return "NEUTRAL";
+
+    case "ICHIMOKU":
+      if (op === "PRICE_ABOVE_CLOUD" || op === "BULLISH_CROSS" || op === "PRICE_ABOVE") return "BUY";
+      if (op === "PRICE_BELOW_CLOUD" || op === "BEARISH_CROSS" || op === "PRICE_BELOW") return "SELL";
+      return "NEUTRAL";
+
+    case "DONCHIAN":
+      if (op === "PRICE_ABOVE") return "BUY";
+      if (op === "PRICE_BELOW") return "SELL";
+      return "NEUTRAL";
+
+    case "KELTNER":
+      if (op === "PRICE_ABOVE") return "SELL";  // overbought
+      if (op === "PRICE_BELOW") return "BUY";   // oversold
+      return "NEUTRAL";
+
+    case "STOCH_RSI":
+      if (op === "CROSS_UP")  return "BUY";
+      if (op === "CROSS_DOWN") return "SELL";
+      if (op === "ABOVE") return thr <= 0.5 ? "BUY" : "SELL";
+      if (op === "BELOW") return thr >= 0.5 ? "SELL" : "BUY";
+      if (op === "REVERSAL") return thr <= 0.5 ? "BUY" : "SELL";
+      return "NEUTRAL";
+
+    case "ROC":
+    case "AO":
+    case "FORCE_INDEX":
+    case "AROON":
+    case "CMF":
+      if (op === "ABOVE" || op === "CROSS_UP")   return "BUY";
+      if (op === "BELOW" || op === "CROSS_DOWN") return "SELL";
+      return "NEUTRAL";
+
+    case "MFI":
+      if (op === "ABOVE") return thr <= 50 ? "BUY" : "SELL";
+      if (op === "BELOW") return thr >= 50 ? "SELL" : "BUY";
+      if (op === "REVERSAL") return thr <= 50 ? "BUY" : "SELL";
+      return "NEUTRAL";
+
+    case "PSAR":
+      if (op === "PRICE_ABOVE") return "BUY";
+      if (op === "PRICE_BELOW") return "SELL";
+      return "NEUTRAL";
+
+    // ATR, VOLUME_RATIO, ADX, PRICE_ACTION, MARKET_STRUCTURE 等は方向中立
     default:
       return "NEUTRAL";
   }
@@ -757,6 +853,392 @@ function evalStochastic(
   }
 }
 
+function evalHMA(
+  bars: Bar[],
+  hma:  (number | undefined)[],
+  idx:  number,
+  op:   string | undefined,
+): boolean {
+  const close  = bars[idx].close;
+  const hmaVal = hma[idx];
+  if (hmaVal === undefined) return false;
+
+  switch (op) {
+    case "PRICE_ABOVE": return close > hmaVal;
+    case "PRICE_BELOW": return close < hmaVal;
+    default:            return false;
+  }
+}
+
+function evalDEMA(
+  bars: Bar[],
+  dema: (number | undefined)[],
+  idx:  number,
+  op:   string | undefined,
+): boolean {
+  const close   = bars[idx].close;
+  const demaVal = dema[idx];
+  if (demaVal === undefined) return false;
+
+  switch (op) {
+    case "PRICE_ABOVE": return close > demaVal;
+    case "PRICE_BELOW": return close < demaVal;
+    default:            return false;
+  }
+}
+
+function evalIchimoku(
+  bars:     Bar[],
+  ichimoku: IchimokuResult[],
+  idx:      number,
+  op:       string | undefined,
+): boolean {
+  const close = bars[idx].close;
+  const ich   = ichimoku[idx];
+  if (!ich) return false;
+
+  switch (op) {
+    case "PRICE_ABOVE_CLOUD":
+      return ich.cloudTop !== undefined && close > ich.cloudTop;
+    case "PRICE_BELOW_CLOUD":
+      return ich.cloudBottom !== undefined && close < ich.cloudBottom;
+    case "PRICE_ABOVE":
+      return ich.kijun !== undefined && close > ich.kijun;
+    case "PRICE_BELOW":
+      return ich.kijun !== undefined && close < ich.kijun;
+    case "BULLISH_CROSS": {
+      if (idx < 1) return false;
+      const prev = ichimoku[idx - 1];
+      if (!prev || ich.tenkan === undefined || ich.kijun === undefined ||
+          prev.tenkan === undefined || prev.kijun === undefined) return false;
+      return prev.tenkan < prev.kijun && ich.tenkan >= ich.kijun;
+    }
+    case "BEARISH_CROSS": {
+      if (idx < 1) return false;
+      const prev = ichimoku[idx - 1];
+      if (!prev || ich.tenkan === undefined || ich.kijun === undefined ||
+          prev.tenkan === undefined || prev.kijun === undefined) return false;
+      return prev.tenkan > prev.kijun && ich.tenkan <= ich.kijun;
+    }
+    default:
+      return false;
+  }
+}
+
+function evalDonchian(
+  bars:     Bar[],
+  donchian: DonchianResult[],
+  idx:      number,
+  op:       string | undefined,
+): boolean {
+  const close = bars[idx].close;
+  const d     = donchian[idx];
+  if (!d || d.upper === undefined || d.lower === undefined) return false;
+
+  switch (op) {
+    case "PRICE_ABOVE": return close > d.upper;
+    case "PRICE_BELOW": return close < d.lower;
+    default:            return false;
+  }
+}
+
+function evalKeltner(
+  bars:    Bar[],
+  keltner: KeltnerResult[],
+  idx:     number,
+  op:      string | undefined,
+): boolean {
+  const close = bars[idx].close;
+  const k     = keltner[idx];
+  if (!k || k.upper === undefined || k.lower === undefined) return false;
+
+  switch (op) {
+    case "PRICE_ABOVE": return close > k.upper;
+    case "PRICE_BELOW": return close < k.lower;
+    default:            return false;
+  }
+}
+
+function evalStochRSI(
+  stochRsi:  (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+  direction: "BUY" | "SELL",
+): boolean {
+  const curr = stochRsi[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return curr > (threshold ?? 0.8);
+    case "BELOW":
+      return curr < (threshold ?? 0.2);
+
+    case "REVERSAL": {
+      if (idx < 1) return false;
+      const prev = stochRsi[idx - 1];
+      if (prev === undefined) return false;
+      if (direction === "BUY") {
+        const thr = threshold ?? 0.2;
+        return prev <= thr && curr > prev;
+      } else {
+        const thr = threshold ?? 0.8;
+        return prev >= thr && curr < prev;
+      }
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalROC(
+  roc:       (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const curr = roc[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return curr > (threshold ?? 0);
+    case "BELOW":
+      return curr < (threshold ?? 0);
+
+    case "CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = roc[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev < thr && curr >= thr;
+    }
+    case "CROSS_DOWN": {
+      if (idx < 1) return false;
+      const prev = roc[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev > thr && curr <= thr;
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalAO(
+  ao:        (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const curr = ao[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return curr > (threshold ?? 0);
+    case "BELOW":
+      return curr < (threshold ?? 0);
+
+    case "CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = ao[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev < thr && curr >= thr;
+    }
+    case "CROSS_DOWN": {
+      if (idx < 1) return false;
+      const prev = ao[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev > thr && curr <= thr;
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalAroon(
+  aroon:     AroonResult[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const a    = aroon[idx];
+  const curr = a?.oscillator;
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return curr > (threshold ?? 0);
+    case "BELOW":
+      return curr < (threshold ?? 0);
+
+    case "CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = aroon[idx - 1]?.oscillator;
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev < thr && curr >= thr;
+    }
+    case "CROSS_DOWN": {
+      if (idx < 1) return false;
+      const prev = aroon[idx - 1]?.oscillator;
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev > thr && curr <= thr;
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalForceIndex(
+  fi:        (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const curr = fi[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return curr > (threshold ?? 0);
+    case "BELOW":
+      return curr < (threshold ?? 0);
+
+    case "CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = fi[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev < thr && curr >= thr;
+    }
+    case "CROSS_DOWN": {
+      if (idx < 1) return false;
+      const prev = fi[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev > thr && curr <= thr;
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalMFI(
+  mfi:       (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+  direction: "BUY" | "SELL",
+): boolean {
+  const curr = mfi[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return curr > (threshold ?? 80);
+    case "BELOW":
+      return curr < (threshold ?? 20);
+
+    case "REVERSAL": {
+      if (idx < 1) return false;
+      const prev = mfi[idx - 1];
+      if (prev === undefined) return false;
+      if (direction === "BUY") {
+        const thr = threshold ?? 20;
+        return prev <= thr && curr > prev;
+      } else {
+        const thr = threshold ?? 80;
+        return prev >= thr && curr < prev;
+      }
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalCMF(
+  cmf:       (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const curr = cmf[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return curr > (threshold ?? 0);
+    case "BELOW":
+      return curr < (threshold ?? 0);
+
+    case "CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = cmf[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev < thr && curr >= thr;
+    }
+    case "CROSS_DOWN": {
+      if (idx < 1) return false;
+      const prev = cmf[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev > thr && curr <= thr;
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalATRCondition(
+  atr:       (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const curr = atr[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return threshold !== undefined && curr > threshold;
+    case "BELOW":
+      return threshold !== undefined && curr < threshold;
+    default:
+      return false;
+  }
+}
+
+function evalPSAR(
+  bars: Bar[],
+  psar: (number | undefined)[],
+  idx:  number,
+  op:   string | undefined,
+): boolean {
+  const close   = bars[idx].close;
+  const psarVal = psar[idx];
+  if (psarVal === undefined) return false;
+
+  switch (op) {
+    case "PRICE_ABOVE": return close > psarVal;
+    case "PRICE_BELOW": return close < psarVal;
+    default:            return false;
+  }
+}
+
 // ------------------------------------------------------------------
 // Single condition dispatcher
 // ------------------------------------------------------------------
@@ -818,6 +1300,34 @@ function evalCondition(
       return evalOBV(inds.obv, idx, cond.operator, cond.threshold);
     case "VOLUME_RATIO":
       return evalVolumeRatio(inds.volumeRatio, idx, cond.operator, cond.threshold);
+    case "HMA":
+      return evalHMA(bars, inds.hma, idx, cond.operator);
+    case "DEMA":
+      return evalDEMA(bars, inds.dema, idx, cond.operator);
+    case "ICHIMOKU":
+      return evalIchimoku(bars, inds.ichimoku, idx, cond.operator);
+    case "DONCHIAN":
+      return evalDonchian(bars, inds.donchian, idx, cond.operator);
+    case "KELTNER":
+      return evalKeltner(bars, inds.keltner, idx, cond.operator);
+    case "STOCH_RSI":
+      return evalStochRSI(inds.stochRsi, idx, cond.operator, cond.threshold, dir);
+    case "ROC":
+      return evalROC(inds.roc, idx, cond.operator, cond.threshold);
+    case "AO":
+      return evalAO(inds.ao, idx, cond.operator, cond.threshold);
+    case "AROON":
+      return evalAroon(inds.aroon, idx, cond.operator, cond.threshold);
+    case "FORCE_INDEX":
+      return evalForceIndex(inds.forceIndex, idx, cond.operator, cond.threshold);
+    case "MFI":
+      return evalMFI(inds.mfi, idx, cond.operator, cond.threshold, dir);
+    case "CMF":
+      return evalCMF(inds.cmf, idx, cond.operator, cond.threshold);
+    case "ATR":
+      return evalATRCondition(inds.atr, idx, cond.operator, cond.threshold);
+    case "PSAR":
+      return evalPSAR(bars, inds.psar, idx, cond.operator);
     default:
       return false; // PRICE_ACTION, MARKET_STRUCTURE 等は Phase 2-B 対象外
   }

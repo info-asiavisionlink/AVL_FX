@@ -44,6 +44,37 @@ export interface BollingerResult {
   width:  number | undefined;
 }
 
+/** 一目均衡表の1バー分の計算結果 */
+export interface IchimokuResult {
+  tenkan:      number | undefined;
+  kijun:       number | undefined;
+  senkouA:     number | undefined;
+  senkouB:     number | undefined;
+  cloudTop:    number | undefined;
+  cloudBottom: number | undefined;
+}
+
+/** ドンチャンチャネルの1バー分の計算結果 */
+export interface DonchianResult {
+  upper:  number | undefined;
+  lower:  number | undefined;
+  middle: number | undefined;
+}
+
+/** ケルトナーチャネルの1バー分の計算結果 */
+export interface KeltnerResult {
+  upper:  number | undefined;
+  lower:  number | undefined;
+  middle: number | undefined;
+}
+
+/** Aroonの1バー分の計算結果 */
+export interface AroonResult {
+  up:         number | undefined;
+  down:       number | undefined;
+  oscillator: number | undefined;
+}
+
 // ------------------------------------------------------------------
 // Warm-up 期間定数
 //
@@ -81,6 +112,19 @@ export const WARMUP_BARS = {
   momentum:    (period: number): number => period,
   obv:         (): number => 0,
   volumeRatio: (period: number): number => period - 1,
+  hma:         (period: number): number => period,
+  dema:        (period: number): number => 2 * period - 2,
+  ichimoku:    (): number => 51, // 52期間 - 1
+  donchian:    (period: number): number => period - 1,
+  keltner:     (emaPeriod: number, atrPeriod: number): number => Math.max(emaPeriod - 1, atrPeriod - 1),
+  stochRsi:    (rsiPeriod: number, stochPeriod: number): number => rsiPeriod + stochPeriod,
+  roc:         (period: number): number => period,
+  ao:          (): number => 33, // SMA(34) - 1
+  aroon:       (period: number): number => period,
+  forceIndex:  (period: number): number => period,
+  mfi:         (period: number): number => period,
+  cmf:         (period: number): number => period - 1,
+  psar:        (): number => 9, // 初期値計算に必要
 } as const;
 
 // ------------------------------------------------------------------
