@@ -326,74 +326,183 @@ function EquityCurve({ trades }: { trades: DBTrade[] }) {
 }
 
 // ------------------------------------------------------------------
-// PeriodBreakdown — 期間別成績（直近3ヶ月・6ヶ月・1年）
+// BacktestSummaryCard — 分析期間・全期間・直近3ヶ月を一目で表示
 // ------------------------------------------------------------------
 
-function PeriodBreakdown({ trades }: { trades: DBTrade[] }) {
-  if (trades.length === 0) return null;
+function fmtDateJP(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`;
+}
 
-  const times    = trades.map(t => new Date(t.entry_time).getTime());
-  const maxTime  = Math.max(...times);
+function periodText(days: number): string {
+  const years  = Math.floor(days / 365);
+  const months = Math.floor((days % 365) / 30);
+  if (years > 0 && months > 0) return `${years}年${months}ヶ月`;
+  if (years > 0)               return `${years}年`;
+  if (months > 0)              return `${months}ヶ月`;
+  return `${days}日`;
+}
 
-  function statsFor(days: number | null) {
-    const cut  = days ? maxTime - days * 86_400_000 : 0;
-    const list = days ? trades.filter(t => new Date(t.entry_time).getTime() >= cut) : trades;
-    if (list.length === 0) return null;
-    const wins     = list.filter(t => t.result === "WIN").length;
-    const total    = list.length;
-    const wRate    = total ? (wins / total) * 100 : 0;
-    const tPips    = list.reduce((s, t) => s + t.pips, 0);
-    const winPips  = list.filter(t => t.pips > 0).reduce((s, t) => s + t.pips, 0);
-    const lossPips = Math.abs(list.filter(t => t.pips < 0).reduce((s, t) => s + t.pips, 0));
-    const pf       = lossPips > 0 ? winPips / lossPips : winPips > 0 ? Infinity : 0;
-    return { count: total, wins, wRate, tPips, pf };
-  }
+interface PeriodStats {
+  wins:      number;
+  losses:    number;
+  total:     number;
+  winRate:   number;
+  totalPips: number;
+  winPips:   number;
+  lossPips:  number;
+  pf:        number;
+}
 
-  const rows: { label: string; days: number | null }[] = [
-    { label: "全期間",   days: null },
-    { label: "直近1年",  days: 365 },
-    { label: "直近6ヶ月", days: 180 },
-    { label: "直近3ヶ月", days: 90 },
-  ];
+function calcStats(list: DBTrade[]): PeriodStats | null {
+  if (!list.length) return null;
+  const wins      = list.filter(t => t.result === "WIN").length;
+  const losses    = list.filter(t => t.result === "LOSS").length;
+  const total     = list.length;
+  const totalPips = list.reduce((s, t) => s + t.pips, 0);
+  const winRate   = total ? (wins / total) * 100 : 0;
+  const winPips   = list.filter(t => t.pips > 0).reduce((s, t) => s + t.pips, 0);
+  const lossPips  = Math.abs(list.filter(t => t.pips < 0).reduce((s, t) => s + t.pips, 0));
+  const pf        = lossPips > 0 ? winPips / lossPips : winPips > 0 ? Infinity : 0;
+  return { wins, losses, total, winRate, totalPips, winPips, lossPips, pf };
+}
+
+function WinLossBlock({ stats, label }: { stats: PeriodStats; label: string }) {
+  const wrCol  = stats.winRate >= 50 ? NG : stats.winRate >= 33 ? AMBER : RED;
+  const ppCol  = stats.totalPips >= 0 ? NG : RED;
+  const pfCol  = stats.pf >= 1.3 ? NG : stats.pf >= 1 ? AMBER : RED;
+  const pfDisp = stats.pf === Infinity ? "∞" : stats.pf.toFixed(2);
 
   return (
-    <div>
-      <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: "#334155" }}>
-        期間別成績
-      </p>
-      <div className="rounded overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        {/* header */}
-        <div className="grid grid-cols-5 px-2 py-1.5"
-          style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          {["期間","取引数","勝率","PF","合計PIPS"].map(h => (
-            <p key={h} className="text-[7px] font-mono tracking-widest text-center" style={{ color: "#475569" }}>{h}</p>
-          ))}
+    <div className="rounded-lg p-4" style={{
+      background: "rgba(255,255,255,0.02)",
+      border: "1px solid rgba(255,255,255,0.07)",
+    }}>
+      <p className="text-[8px] font-black tracking-[0.22em] mb-3" style={{ color: "#475569" }}>{label}</p>
+
+      {/* 勝敗カウント */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-1 text-center">
+          <p className="text-[32px] font-black leading-none" style={{ color: NG }}>{stats.wins}</p>
+          <p className="text-[9px] font-mono mt-1" style={{ color: NG }}>勝ち</p>
         </div>
-        {rows.map(({ label, days }) => {
-          const s = statsFor(days);
-          if (!s) return null;
-          const isAll  = days === null;
-          const pfDisp = s.pf === Infinity ? "∞" : s.pf.toFixed(2);
-          const pfCol  = s.pf >= 1.3 ? NG : s.pf >= 1 ? AMBER : RED;
-          const wrCol  = s.wRate >= 50 ? NG : s.wRate >= 35 ? AMBER : RED;
-          const ppCol  = s.tPips >= 0 ? NG : RED;
-          return (
-            <div key={label} className="grid grid-cols-5 px-2 py-2 items-center"
-              style={{
-                background: isAll ? "rgba(0,229,255,0.03)" : "rgba(255,255,255,0.01)",
-                borderBottom: "1px solid rgba(255,255,255,0.04)",
-              }}>
-              <p className="text-[8px] font-mono font-bold" style={{ color: isAll ? CYAN : "#64748b" }}>{label}</p>
-              <p className="text-[9px] font-mono text-center" style={{ color: "#94a3b8" }}>{s.count}</p>
-              <p className="text-[9px] font-mono font-bold text-center" style={{ color: wrCol }}>{s.wRate.toFixed(1)}%</p>
-              <p className="text-[9px] font-mono font-bold text-center" style={{ color: pfCol }}>{pfDisp}</p>
-              <p className="text-[9px] font-mono font-bold text-center" style={{ color: ppCol }}>
-                {s.tPips >= 0 ? "+" : ""}{s.tPips.toFixed(1)}
-              </p>
-            </div>
-          );
-        })}
+        <p className="text-[20px] font-black" style={{ color: "#1e293b" }}>vs</p>
+        <div className="flex-1 text-center">
+          <p className="text-[32px] font-black leading-none" style={{ color: RED }}>{stats.losses}</p>
+          <p className="text-[9px] font-mono mt-1" style={{ color: RED }}>負け</p>
+        </div>
       </div>
+
+      {/* 勝率・PF */}
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <div className="text-center px-2 py-2 rounded" style={{ background: `${wrCol}10`, border: `1px solid ${wrCol}25` }}>
+          <p className="text-[7px] font-mono tracking-widest mb-0.5" style={{ color: "#475569" }}>勝率</p>
+          <p className="text-[20px] font-black leading-none" style={{ color: wrCol }}>{stats.winRate.toFixed(1)}%</p>
+        </div>
+        <div className="text-center px-2 py-2 rounded" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <p className="text-[7px] font-mono tracking-widest mb-0.5" style={{ color: "#475569" }}>プロフィットファクター</p>
+          <p className="text-[20px] font-black leading-none" style={{ color: pfCol }}>{pfDisp}</p>
+        </div>
+      </div>
+
+      {/* PIPS内訳（利益・損失・合計） */}
+      <div className="rounded px-3 py-2.5" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <p className="text-[7px] font-black tracking-[0.2em] mb-2" style={{ color: "#334155" }}>PIPS 内訳</p>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-mono" style={{ color: NG }}>利益PIPS（勝ちトレード合計）</span>
+            <span className="text-[11px] font-black font-mono" style={{ color: NG }}>+{stats.winPips.toFixed(1)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-mono" style={{ color: RED }}>損失PIPS（負けトレード合計）</span>
+            <span className="text-[11px] font-black font-mono" style={{ color: RED }}>−{stats.lossPips.toFixed(1)}</span>
+          </div>
+          <div className="h-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-black font-mono" style={{ color: ppCol }}>合計獲得PIPS</span>
+            <span className="text-[15px] font-black font-mono" style={{ color: ppCol }}>
+              {stats.totalPips >= 0 ? "+" : ""}{stats.totalPips.toFixed(1)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BacktestSummaryCard({
+  result,
+  trades,
+}: {
+  result:  DisplayResult;
+  trades:  DBTrade[];
+}) {
+  // 日付範囲計算（tradeデータから）
+  const times    = trades.map(t => new Date(t.entry_time).getTime());
+  const minTime  = trades.length ? Math.min(...times) : 0;
+  const maxTime  = trades.length ? Math.max(...times) : 0;
+
+  // 全期間統計（tradeデータ）
+  const allStats = calcStats(trades);
+
+  // 直近3ヶ月
+  const cut3m     = maxTime - 90 * 86_400_000;
+  const trades3m  = trades.filter(t => new Date(t.entry_time).getTime() >= cut3m);
+  const stats3m   = calcStats(trades3m);
+
+  // 直近6ヶ月
+  const cut6m     = maxTime - 180 * 86_400_000;
+  const trades6m  = trades.filter(t => new Date(t.entry_time).getTime() >= cut6m);
+  const stats6m   = calcStats(trades6m);
+
+  return (
+    <div className="space-y-4">
+
+      {/* ── 分析データ期間 ───────────────────────────── */}
+      <div className="px-4 py-3 rounded-lg"
+        style={{ background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.15)" }}>
+        <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: CYAN }}>
+          分析データ期間
+        </p>
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <p className="text-[13px] font-black font-mono" style={{ color: "#e2e8f0" }}>
+            {trades.length
+              ? `${fmtDateJP(minTime)} 〜 ${fmtDateJP(maxTime)}`
+              : `${result.dataCoverageDays.toFixed(0)}日間のデータ`}
+          </p>
+        </div>
+        <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+          <span className="text-[11px] font-black" style={{ color: CYAN }}>
+            {periodText(result.dataCoverageDays)}分のデータ
+          </span>
+          <span className="text-[9px] font-mono" style={{ color: "#334155" }}>
+            （{result.dataCoverageDays.toFixed(0)}日 / {result.barCount.toLocaleString()}本のバー）
+          </span>
+        </div>
+      </div>
+
+      {/* ── 全期間成績 ───────────────────────────────── */}
+      {allStats && (
+        <WinLossBlock stats={allStats} label="全期間成績" />
+      )}
+
+      {/* ── 直近3ヶ月 ───────────────────────────────── */}
+      {stats3m && stats3m.total > 0 ? (
+        <WinLossBlock stats={stats3m} label="直近3ヶ月成績" />
+      ) : (
+        <div className="px-4 py-3 rounded-lg text-center"
+          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <p className="text-[9px] font-mono" style={{ color: "#334155" }}>
+            直近3ヶ月のトレードデータがありません
+          </p>
+        </div>
+      )}
+
+      {/* ── 直近6ヶ月（3ヶ月と全期間の間で参考に） ─── */}
+      {stats6m && stats6m.total > 0 && stats6m.total !== (allStats?.total ?? 0) && (
+        <WinLossBlock stats={stats6m} label="直近6ヶ月成績" />
+      )}
+
     </div>
   );
 }
@@ -689,9 +798,38 @@ function BacktestTab({ strategyId, onJobIdChange }: {
       {/* Result */}
       {result && (
         <>
-          <ResultDisplay r={result} />
-          {trades.length > 0 && <PeriodBreakdown trades={trades} />}
+          {/* ① 判定バナー（PASSED / CONDITIONAL / FAILED） */}
+          <div className="px-4 py-3 rounded"
+            style={{ background: `${verdictColor(result.verdict)}0a`, border: `1px solid ${verdictColor(result.verdict)}35` }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[8px] font-mono tracking-widest mb-0.5" style={{ color: "#475569" }}>判定</p>
+                <p className="text-2xl font-black tracking-widest"
+                  style={{ color: verdictColor(result.verdict), textShadow: `0 0 16px ${verdictColor(result.verdict)}60` }}>
+                  {labelOf(VERDICT_LABELS, result.verdict)}
+                </p>
+              </div>
+              {result.verdictReason && (
+                <p className="text-[9px] font-mono leading-relaxed max-w-[55%] text-right" style={{ color: "#64748b" }}>
+                  {result.verdictReason}
+                </p>
+              )}
+            </div>
+            {result.sampleSizeWarning && (
+              <p className="text-[9px] font-mono mt-2" style={{ color: AMBER }}>
+                ⚠ サンプル数不足（{result.totalTrades}件）— より多くのデータで再検証を推奨
+              </p>
+            )}
+          </div>
+
+          {/* ② メインサマリー: 分析期間・全期間成績・直近3ヶ月 */}
+          {trades.length > 0 && <BacktestSummaryCard result={result} trades={trades} />}
+
+          {/* ③ エクイティカーブ */}
           {trades.length > 0 && <EquityCurve trades={trades} />}
+
+          {/* ④ 詳細指標（PF・DD・セッション別等） */}
+          <ResultDisplay r={result} />
         </>
       )}
     </div>
