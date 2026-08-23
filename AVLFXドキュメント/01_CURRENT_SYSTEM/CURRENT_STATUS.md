@@ -1,6 +1,6 @@
 # CURRENT STATUS
 **Status:** REFERENCE — コードから直接検証済み  
-**Last Updated:** 2026-08-22 (BacktestEngine diagnostic params / UI日本語化)  
+**Last Updated:** 2026-08-23 (EA Command Center Production化 / テストEA削除)  
 **Source of Truth:** 実コード・Supabase migrations・実データ  
 
 > **このファイルはコードに基づいた事実のみを記載する。推測は書かない。**
@@ -127,8 +127,7 @@
 
 | 機能 | 状態 | 詳細 |
 |-----|------|------|
-| EA Command Center（下部） | `IMPLEMENTED` | strategy_registry実データ表示 |
-| EA Command Center（上部） | `MOCK` | MOCK_EA_PROFILES 5件ハードコード |
+| EA Command Center | `PRODUCTION_READY` | 全DB駆動・Empty State実装・モック完全削除 |
 | UI日本語ラベル管理 | `IMPLEMENTED` | src/lib/ui-labels.ts — 全enum値を日本語化（集中管理） |
 | Strategy Detail OVERVIEW | `PRODUCTION_READY` | Spec全項目表示（日本語UI） |
 | Strategy Detail BACKTEST | `PRODUCTION_READY` | Backtest実行・結果・チャート |
