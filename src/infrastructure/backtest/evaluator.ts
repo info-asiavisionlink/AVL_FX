@@ -84,7 +84,34 @@ function inferDirectionFromConditions(
         if (op === "ABOVE" && thr >= 50)                     sell++;
         if (op === "REVERSAL") { thr <= 50 ? buy++ : sell++; }
         break;
-      // ADX, PRICE_ACTION, MARKET_STRUCTURE 等は方向中立
+      case "WMA":
+      case "VWMA":
+        if (op === "PRICE_ABOVE") buy++;
+        if (op === "PRICE_BELOW") sell++;
+        break;
+      case "CCI":
+        // ABOVE 100 → オーバーボート = SELL, BELOW -100 → オーバーソールド = BUY
+        if (op === "ABOVE" && thr >= 0)   sell++;
+        if (op === "BELOW" && thr <= 0)   buy++;
+        if (op === "REVERSAL") { thr <= 0 ? buy++ : sell++; }
+        if (op === "CROSS_UP")  buy++;
+        if (op === "CROSS_DOWN") sell++;
+        break;
+      case "WILLIAMS_R":
+        // ABOVE -20 → オーバーボート = SELL, BELOW -80 → オーバーソールド = BUY
+        if (op === "ABOVE" && thr >= -50)  sell++;
+        if (op === "BELOW" && thr <= -50)  buy++;
+        if (op === "REVERSAL") { thr <= -50 ? buy++ : sell++; }
+        break;
+      case "MOMENTUM":
+        if (op === "ABOVE" || op === "CROSS_UP")    buy++;
+        if (op === "BELOW" || op === "CROSS_DOWN")  sell++;
+        break;
+      case "OBV":
+        if (op === "ABOVE" || op === "CROSS_UP") buy++;
+        if (op === "BELOW")                      sell++;
+        break;
+      // VOLUME_RATIO, ADX, PRICE_ACTION, MARKET_STRUCTURE 等は方向中立
     }
   }
 
@@ -157,8 +184,41 @@ function getConditionDirection(c: StrategySpec["entry_conditions"]["conditions"]
       if (op === "PRICE_ABOVE") return "SELL";  // above upper band = overbought
       return "NEUTRAL";
 
+    case "WMA":
+    case "VWMA":
+      if (op === "PRICE_ABOVE") return "BUY";
+      if (op === "PRICE_BELOW") return "SELL";
+      return "NEUTRAL";
+
+    case "CCI":
+      // Momentum semantics: ABOVE neutral (≤0) = bullish, ABOVE overbought (>0) = bearish
+      if (op === "CROSS_UP")   return "BUY";
+      if (op === "CROSS_DOWN") return "SELL";
+      if (op === "ABOVE") return thr <= 0 ? "BUY" : "SELL";
+      if (op === "BELOW") return thr >= 0 ? "SELL" : "BUY";
+      if (op === "REVERSAL") return thr <= 0 ? "BUY" : "SELL";
+      return "NEUTRAL";
+
+    case "WILLIAMS_R":
+      // %R range -100..0; ABOVE -50 = overbought territory = SELL, BELOW -50 = oversold = BUY
+      if (op === "ABOVE") return thr >= -50 ? "SELL" : "BUY";
+      if (op === "BELOW") return thr <= -50 ? "BUY" : "SELL";
+      if (op === "REVERSAL") return thr <= -50 ? "BUY" : "SELL";
+      return "NEUTRAL";
+
+    case "MOMENTUM":
+      if (op === "ABOVE" || op === "CROSS_UP")   return "BUY";
+      if (op === "BELOW" || op === "CROSS_DOWN") return "SELL";
+      return "NEUTRAL";
+
+    case "OBV":
+      if (op === "ABOVE" || op === "CROSS_UP") return "BUY";
+      if (op === "BELOW")                      return "SELL";
+      return "NEUTRAL";
+
+    // VOLUME_RATIO, ADX, PRICE_ACTION, MARKET_STRUCTURE 等は方向中立
     default:
-      return "NEUTRAL"; // ADX, PRICE_ACTION, MARKET_STRUCTURE 等
+      return "NEUTRAL";
   }
 }
 
@@ -442,6 +502,211 @@ function evalBB(
   }
 }
 
+function evalWMA(
+  bars: Bar[],
+  inds: PrecomputedIndicators,
+  idx:  number,
+  op:   string | undefined,
+): boolean {
+  const close   = bars[idx].close;
+  const wmaVal  = inds.wma[idx];
+  if (wmaVal === undefined) return false;
+
+  switch (op) {
+    case "PRICE_ABOVE": return close > wmaVal;
+    case "PRICE_BELOW": return close < wmaVal;
+    default:            return false;
+  }
+}
+
+function evalVWMA(
+  bars: Bar[],
+  inds: PrecomputedIndicators,
+  idx:  number,
+  op:   string | undefined,
+): boolean {
+  const close    = bars[idx].close;
+  const vwmaVal  = inds.vwma[idx];
+  if (vwmaVal === undefined) return false;
+
+  switch (op) {
+    case "PRICE_ABOVE": return close > vwmaVal;
+    case "PRICE_BELOW": return close < vwmaVal;
+    default:            return false;
+  }
+}
+
+function evalCCI(
+  cci:       (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+  direction: "BUY" | "SELL",
+): boolean {
+  const curr = cci[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return threshold !== undefined && curr > threshold;
+    case "BELOW":
+      return threshold !== undefined && curr < threshold;
+
+    case "CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = cci[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev < thr && curr >= thr;
+    }
+    case "CROSS_DOWN": {
+      if (idx < 1) return false;
+      const prev = cci[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev > thr && curr <= thr;
+    }
+
+    // REVERSAL:
+    //   BUY  → CCI が threshold(default -100) 以下に到達後、上昇転換
+    //   SELL → CCI が threshold(default +100) 以上に到達後、下落転換
+    case "REVERSAL": {
+      if (idx < 1) return false;
+      const prev = cci[idx - 1];
+      if (prev === undefined) return false;
+      if (direction === "BUY") {
+        const thr = threshold ?? -100;
+        return prev <= thr && curr > prev;
+      } else {
+        const thr = threshold ?? 100;
+        return prev >= thr && curr < prev;
+      }
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalWilliamsR(
+  wr:        (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+  direction: "BUY" | "SELL",
+): boolean {
+  const curr = wr[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return threshold !== undefined && curr > threshold;
+    case "BELOW":
+      return threshold !== undefined && curr < threshold;
+
+    // REVERSAL:
+    //   BUY  → %R が threshold(default -80) 以下に到達後、上昇転換
+    //   SELL → %R が threshold(default -20) 以上に到達後、下落転換
+    case "REVERSAL": {
+      if (idx < 1) return false;
+      const prev = wr[idx - 1];
+      if (prev === undefined) return false;
+      if (direction === "BUY") {
+        const thr = threshold ?? -80;
+        return prev <= thr && curr > prev;
+      } else {
+        const thr = threshold ?? -20;
+        return prev >= thr && curr < prev;
+      }
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalMomentum(
+  mom:       (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const curr = mom[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return threshold !== undefined ? curr > threshold : curr > 0;
+    case "BELOW":
+      return threshold !== undefined ? curr < threshold : curr < 0;
+
+    case "CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = mom[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev < thr && curr >= thr;
+    }
+    case "CROSS_DOWN": {
+      if (idx < 1) return false;
+      const prev = mom[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev > thr && curr <= thr;
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalOBV(
+  obv:       (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const curr = obv[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return curr > (threshold ?? 0);
+    case "BELOW":
+      return curr < (threshold ?? 0);
+
+    case "CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = obv[idx - 1];
+      if (prev === undefined) return false;
+      const thr = threshold ?? 0;
+      return prev < thr && curr >= thr;
+    }
+
+    default:
+      return false;
+  }
+}
+
+function evalVolumeRatio(
+  vr:        (number | undefined)[],
+  idx:       number,
+  op:        string | undefined,
+  threshold: number | undefined,
+): boolean {
+  const curr = vr[idx];
+  if (curr === undefined) return false;
+
+  switch (op) {
+    case "ABOVE":
+      return curr > (threshold ?? 1.5);
+    case "BELOW":
+      return curr < (threshold ?? 1.0);
+    default:
+      return false;
+  }
+}
+
 function evalStochastic(
   stoch:     (number | undefined)[],
   idx:       number,
@@ -539,6 +804,20 @@ function evalCondition(
       return evalBB(bars, inds.bb, idx, cond.operator);
     case "STOCHASTIC":
       return evalStochastic(inds.stoch, idx, cond.operator, cond.threshold, dir);
+    case "WMA":
+      return evalWMA(bars, inds, idx, cond.operator);
+    case "VWMA":
+      return evalVWMA(bars, inds, idx, cond.operator);
+    case "CCI":
+      return evalCCI(inds.cci, idx, cond.operator, cond.threshold, dir);
+    case "WILLIAMS_R":
+      return evalWilliamsR(inds.williamsR, idx, cond.operator, cond.threshold, dir);
+    case "MOMENTUM":
+      return evalMomentum(inds.momentum, idx, cond.operator, cond.threshold);
+    case "OBV":
+      return evalOBV(inds.obv, idx, cond.operator, cond.threshold);
+    case "VOLUME_RATIO":
+      return evalVolumeRatio(inds.volumeRatio, idx, cond.operator, cond.threshold);
     default:
       return false; // PRICE_ACTION, MARKET_STRUCTURE 等は Phase 2-B 対象外
   }

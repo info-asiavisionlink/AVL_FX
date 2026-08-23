@@ -169,6 +169,45 @@ Higher timeframe trend mentioned in ENTRY CONDITIONS:
 5. RSI period: 14 if not specified
 6. EMA common periods: 9, 21, 50, 100, 200
 
+## NEW INDICATOR USAGE GUIDE
+
+WMA (Weighted Moving Average):
+  Operators: PRICE_ABOVE (bullish), PRICE_BELOW (bearish)
+  Example: "WMAより価格が上" → { indicator: "WMA", operator: "PRICE_ABOVE", period: 14 }
+
+VWMA (Volume Weighted Moving Average — institutional price level):
+  Operators: PRICE_ABOVE (bullish), PRICE_BELOW (bearish)
+  Example: "VWMA14より上" → { indicator: "VWMA", operator: "PRICE_ABOVE", period: 14 }
+
+CCI (Commodity Channel Index — overbought/oversold ±100 standard):
+  Operators: ABOVE (>threshold), BELOW (<threshold), CROSS_UP, CROSS_DOWN, REVERSAL
+  Example: "CCIが-100以下から反転" → { indicator: "CCI", operator: "REVERSAL", threshold: -100 }
+  Example: "CCI > 100 (overbought)" → { indicator: "CCI", operator: "ABOVE", threshold: 100 }
+  REVERSAL BUY default threshold: -100. REVERSAL SELL default threshold: +100.
+
+WILLIAMS_R (Williams %R — range -100 to 0):
+  Oversold: below -80. Overbought: above -20.
+  Operators: ABOVE (>threshold), BELOW (<threshold), REVERSAL
+  Example: "Williams%Rが-80以下から反転(BUY)" → { indicator: "WILLIAMS_R", operator: "REVERSAL", threshold: -80 }
+  Example: "Williams%R > -20 (overbought)" → { indicator: "WILLIAMS_R", operator: "ABOVE", threshold: -20 }
+
+MOMENTUM (Price momentum = Close[i] - Close[i-period]):
+  Positive = upward momentum. Negative = downward momentum.
+  Operators: ABOVE (>0 by default), BELOW (<0 by default), CROSS_UP (zero cross up), CROSS_DOWN
+  Example: "モメンタムがプラス" → { indicator: "MOMENTUM", operator: "ABOVE", threshold: 0, period: 10 }
+  Example: "モメンタムがゼロをクロスアップ" → { indicator: "MOMENTUM", operator: "CROSS_UP", threshold: 0, period: 10 }
+
+OBV (On Balance Volume — cumulative volume direction):
+  Operators: ABOVE (OBV > threshold, default 0), BELOW, CROSS_UP (zero cross)
+  Example: "OBVが上昇" → { indicator: "OBV", operator: "ABOVE", threshold: 0 }
+  Note: OBV absolute value has no fixed meaning; use CROSS_UP for zero-cross confirmation.
+
+VOLUME_RATIO (Volume / SMA(Volume, period) — high volume confirmation):
+  1.0 = average. 1.5+ = high volume (significant move).
+  Operators: ABOVE (>threshold, default 1.5), BELOW (<threshold)
+  Example: "高ボリューム確認" → { indicator: "VOLUME_RATIO", operator: "ABOVE", threshold: 1.5, period: 20 }
+  VOLUME_RATIO is direction-neutral — combine with directional indicators.
+
 ## ABSOLUTE PROHIBITIONS
 
 - DO NOT output: javascript, typescript, mql5, python, eval, exec, function, require, import
@@ -234,6 +273,14 @@ TP methods: ATR, FIXED_PIPS, SWING_LOW, SWING_HIGH, RR_RATIO, PERCENTAGE
 3. risk_per_trade: 0.01 to 5.0
 4. ATR period typically 14, RSI period typically 14, EMA period 9/21/50/100/200
 5. If user mentions London/NY/Tokyo session: add to sessions array
+
+## NEW INDICATORS
+WMA/VWMA: PRICE_ABOVE (bullish), PRICE_BELOW (bearish)
+CCI: ABOVE/BELOW/CROSS_UP/CROSS_DOWN/REVERSAL. Standard overbought +100, oversold -100.
+WILLIAMS_R: range -100 to 0. Oversold BELOW -80, overbought ABOVE -20. Operators: ABOVE/BELOW/REVERSAL.
+MOMENTUM: ABOVE(>0)/BELOW(<0)/CROSS_UP/CROSS_DOWN. period default 10.
+OBV: ABOVE(>0)/BELOW(<0)/CROSS_UP. Direction neutral — combine with directional indicators.
+VOLUME_RATIO: ABOVE (default threshold 1.5 = high volume) / BELOW. period default 20.
 
 ## ABSOLUTE PROHIBITIONS
 - DO NOT include: javascript, typescript, mql5, python, code, function, eval, exec, require, import

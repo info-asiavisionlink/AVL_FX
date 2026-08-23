@@ -65,15 +65,22 @@ export interface BollingerResult {
 // ------------------------------------------------------------------
 
 export const WARMUP_BARS = {
-  sma:   (period: number): number => period - 1,
-  ema:   (period: number): number => period - 1,
-  atr:   (period: number): number => period - 1,
-  rsi:   (period: number): number => period,
-  macd:  (slowPeriod: number, signalPeriod: number): number =>
-           slowPeriod - 1 + signalPeriod - 1,
-  adx:   (period: number): number => 2 * period - 1,
-  bb:    (period: number): number => period - 1,
-  stoch: (period: number): number => period - 1,
+  sma:         (period: number): number => period - 1,
+  ema:         (period: number): number => period - 1,
+  atr:         (period: number): number => period - 1,
+  rsi:         (period: number): number => period,
+  macd:        (slowPeriod: number, signalPeriod: number): number =>
+                 slowPeriod - 1 + signalPeriod - 1,
+  adx:         (period: number): number => 2 * period - 1,
+  bb:          (period: number): number => period - 1,
+  stoch:       (period: number): number => period - 1,
+  wma:         (period: number): number => period - 1,
+  vwma:        (period: number): number => period - 1,
+  cci:         (period: number): number => period - 1,
+  williamsR:   (period: number): number => period - 1,
+  momentum:    (period: number): number => period,
+  obv:         (): number => 0,
+  volumeRatio: (period: number): number => period - 1,
 } as const;
 
 // ------------------------------------------------------------------

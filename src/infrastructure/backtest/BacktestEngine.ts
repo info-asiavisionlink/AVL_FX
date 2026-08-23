@@ -111,6 +111,13 @@ function computeWarmup(spec: StrategySpec): number {
       case "ADX":            warmup = Math.max(warmup, WARMUP_BARS.adx(14)); break;
       case "BOLLINGER_BANDS":warmup = Math.max(warmup, WARMUP_BARS.bb(20)); break;
       case "STOCHASTIC":     warmup = Math.max(warmup, WARMUP_BARS.stoch(14)); break;
+      case "WMA":            warmup = Math.max(warmup, WARMUP_BARS.wma(14)); break;
+      case "VWMA":           warmup = Math.max(warmup, WARMUP_BARS.vwma(14)); break;
+      case "CCI":            warmup = Math.max(warmup, WARMUP_BARS.cci(14)); break;
+      case "WILLIAMS_R":     warmup = Math.max(warmup, WARMUP_BARS.williamsR(14)); break;
+      case "MOMENTUM":       warmup = Math.max(warmup, WARMUP_BARS.momentum(10)); break;
+      case "OBV":            warmup = Math.max(warmup, WARMUP_BARS.obv()); break;
+      case "VOLUME_RATIO":   warmup = Math.max(warmup, WARMUP_BARS.volumeRatio(20)); break;
     }
   }
 

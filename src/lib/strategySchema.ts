@@ -23,6 +23,13 @@ export const ALLOWED_INDICATORS = [
   "ATR",
   "BOLLINGER_BANDS",
   "STOCHASTIC",
+  "WMA",
+  "VWMA",
+  "CCI",
+  "WILLIAMS_R",
+  "MOMENTUM",
+  "OBV",
+  "VOLUME_RATIO",
   "PRICE_ACTION",
   "MARKET_STRUCTURE",
   "SUPPORT_RESISTANCE",
@@ -246,6 +253,48 @@ export function conditionToJapanese(cond: z.infer<typeof IndicatorConditionSchem
       if (op === "CROSS_UP"  && th !== undefined) return `${tf} Stochastic${p} ${th}以下から上転換`;
       if (op === "CROSS_DOWN"&& th !== undefined) return `${tf} Stochastic${p} ${th}以上から下転換`;
       return `${tf} Stochastic${p}`;
+    }
+    case "WMA": {
+      if (op === "PRICE_ABOVE") return `${tf} WMA${p} より価格が上`;
+      if (op === "PRICE_BELOW") return `${tf} WMA${p} より価格が下`;
+      return `${tf} WMA${p}`;
+    }
+    case "VWMA": {
+      if (op === "PRICE_ABOVE") return `${tf} VWMA${p} より価格が上`;
+      if (op === "PRICE_BELOW") return `${tf} VWMA${p} より価格が下`;
+      return `${tf} VWMA${p}`;
+    }
+    case "CCI": {
+      if (op === "ABOVE" && th !== undefined) return `${tf} CCI${p} > ${th}`;
+      if (op === "BELOW" && th !== undefined) return `${tf} CCI${p} < ${th}`;
+      if (op === "CROSS_UP"  && th !== undefined) return `${tf} CCI${p} ${th}を上抜け`;
+      if (op === "CROSS_DOWN"&& th !== undefined) return `${tf} CCI${p} ${th}を下抜け`;
+      if (op === "REVERSAL")                      return `${tf} CCI${p} 反転`;
+      return `${tf} CCI${p}`;
+    }
+    case "WILLIAMS_R": {
+      if (op === "ABOVE" && th !== undefined) return `${tf} Williams %R${p} > ${th}`;
+      if (op === "BELOW" && th !== undefined) return `${tf} Williams %R${p} < ${th}`;
+      if (op === "REVERSAL")                  return `${tf} Williams %R${p} 反転`;
+      return `${tf} Williams %R${p}`;
+    }
+    case "MOMENTUM": {
+      if (op === "ABOVE" && th !== undefined) return `${tf} Momentum${p} > ${th}`;
+      if (op === "BELOW" && th !== undefined) return `${tf} Momentum${p} < ${th}`;
+      if (op === "CROSS_UP")   return `${tf} Momentum${p} 0上抜け`;
+      if (op === "CROSS_DOWN") return `${tf} Momentum${p} 0下抜け`;
+      return `${tf} Momentum${p}`;
+    }
+    case "OBV": {
+      if (op === "ABOVE")    return `${tf} OBV > 0 (上昇ボリューム優勢)`;
+      if (op === "BELOW")    return `${tf} OBV < 0 (下降ボリューム優勢)`;
+      if (op === "CROSS_UP") return `${tf} OBV 0上抜け`;
+      return `${tf} OBV`;
+    }
+    case "VOLUME_RATIO": {
+      if (op === "ABOVE" && th !== undefined) return `${tf} VolRatio${p} > ${th} (高ボリューム)`;
+      if (op === "BELOW" && th !== undefined) return `${tf} VolRatio${p} < ${th}`;
+      return `${tf} Volume Ratio${p}`;
     }
     case "MARKET_STRUCTURE": {
       if (op === "ABOVE") return `${tf} 上昇トレンド構造`;

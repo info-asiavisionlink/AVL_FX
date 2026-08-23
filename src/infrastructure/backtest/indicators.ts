@@ -501,6 +501,312 @@ export function calculateBollingerBands(
 }
 
 // ------------------------------------------------------------------
+// WMA — Weighted Moving Average
+// ------------------------------------------------------------------
+
+/**
+ * Weighted Moving Average
+ * 最近のバーに線形に大きなウェイトを与える移動平均。
+ *
+ * WMA[i] = Σ(close[j] × weight(j)) / Σ weight(j)
+ *   j = i-period+1 .. i
+ *   weight(j) = j - (i - period + 1) + 1  (1 から period)
+ *
+ * result[i]:
+ *   i < period-1  → undefined
+ *   i >= period-1 → WMA 値
+ *
+ * @param closes  終値配列
+ * @param period  期間（デフォルト 14）
+ */
+export function calculateWMA(
+  closes: number[],
+  period: number,
+): (number | undefined)[] {
+  if (period <= 0 || closes.length === 0) return new Array(closes.length).fill(undefined);
+
+  const result: (number | undefined)[] = new Array(closes.length).fill(undefined);
+  // 分母 = 1+2+...+period = period*(period+1)/2
+  const denominator = (period * (period + 1)) / 2;
+
+  for (let i = period - 1; i < closes.length; i++) {
+    let weightedSum = 0;
+    for (let j = 0; j < period; j++) {
+      // weight: 最古のバーが1、最新のバーが period
+      weightedSum += closes[i - period + 1 + j] * (j + 1);
+    }
+    result[i] = weightedSum / denominator;
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// VWMA — Volume Weighted Moving Average
+// ------------------------------------------------------------------
+
+/**
+ * Volume Weighted Moving Average
+ * ボリュームで加重した移動平均。
+ *
+ * VWMA[i] = Σ(close[j] × volume[j]) / Σ volume[j]
+ *   j = i-period+1 .. i
+ *
+ * result[i]:
+ *   i < period-1  → undefined
+ *   i >= period-1 → VWMA 値
+ *
+ * @param closes   終値配列
+ * @param volumes  ボリューム配列
+ * @param period   期間（デフォルト 14）
+ */
+export function calculateVWMA(
+  closes:  number[],
+  volumes: number[],
+  period:  number,
+): (number | undefined)[] {
+  if (period <= 0 || closes.length === 0) return new Array(closes.length).fill(undefined);
+  if (closes.length !== volumes.length) return new Array(closes.length).fill(undefined);
+
+  const result: (number | undefined)[] = new Array(closes.length).fill(undefined);
+
+  for (let i = period - 1; i < closes.length; i++) {
+    let pvSum   = 0; // Σ price × volume
+    let volSum  = 0; // Σ volume
+    for (let j = i - period + 1; j <= i; j++) {
+      pvSum  += closes[j] * volumes[j];
+      volSum += volumes[j];
+    }
+    result[i] = volSum > 0 ? pvSum / volSum : closes[i];
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// CCI — Commodity Channel Index
+// ------------------------------------------------------------------
+
+/**
+ * Commodity Channel Index
+ *
+ * TP[i]  = (high[i] + low[i] + close[i]) / 3
+ * SMA_TP = SMA(TP, period)
+ * MeanDev = Σ|TP[j] - SMA_TP| / period  (mean absolute deviation)
+ * CCI[i] = (TP[i] - SMA_TP) / (0.015 × MeanDev)
+ *
+ * 値域: 通常 -200 〜 +200 (±100 がオーバーソールド/オーバーボート基準)
+ *
+ * result[i]:
+ *   i < period-1  → undefined
+ *   i >= period-1 → CCI 値
+ *
+ * @param highs   高値配列
+ * @param lows    安値配列
+ * @param closes  終値配列
+ * @param period  期間（デフォルト 14）
+ */
+export function calculateCCI(
+  highs:  number[],
+  lows:   number[],
+  closes: number[],
+  period: number,
+): (number | undefined)[] {
+  const n = closes.length;
+  if (period <= 0 || n === 0) return new Array(n).fill(undefined);
+
+  // Typical Price
+  const tp = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    tp[i] = (highs[i] + lows[i] + closes[i]) / 3;
+  }
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+
+  for (let i = period - 1; i < n; i++) {
+    // SMA of TP over window
+    let tpSum = 0;
+    for (let j = i - period + 1; j <= i; j++) tpSum += tp[j];
+    const tpSMA = tpSum / period;
+
+    // Mean Absolute Deviation
+    let madSum = 0;
+    for (let j = i - period + 1; j <= i; j++) madSum += Math.abs(tp[j] - tpSMA);
+    const mad = madSum / period;
+
+    // CCI
+    result[i] = mad === 0 ? 0 : (tp[i] - tpSMA) / (0.015 * mad);
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// Williams %R
+// ------------------------------------------------------------------
+
+/**
+ * Williams %R
+ *
+ * %R[i] = -100 × (HH - Close[i]) / (HH - LL)
+ *   HH = HighestHigh(period)
+ *   LL = LowestLow(period)
+ *
+ * 値域: -100 〜 0
+ *   -80 以下: オーバーソールド
+ *   -20 以上: オーバーボート
+ *
+ * result[i]:
+ *   i < period-1  → undefined
+ *   i >= period-1 → Williams %R 値
+ *
+ * @param highs   高値配列
+ * @param lows    安値配列
+ * @param closes  終値配列
+ * @param period  期間（デフォルト 14）
+ */
+export function calculateWilliamsR(
+  highs:  number[],
+  lows:   number[],
+  closes: number[],
+  period: number,
+): (number | undefined)[] {
+  const n = closes.length;
+  if (period <= 0 || n === 0) return new Array(n).fill(undefined);
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+
+  for (let i = period - 1; i < n; i++) {
+    let hh = -Infinity;
+    let ll =  Infinity;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (highs[j] > hh) hh = highs[j];
+      if (lows[j]  < ll) ll = lows[j];
+    }
+    const denom = hh - ll;
+    result[i] = denom === 0 ? -50 : -100 * (hh - closes[i]) / denom;
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// Momentum
+// ------------------------------------------------------------------
+
+/**
+ * Momentum
+ *
+ * Momentum[i] = Close[i] - Close[i - period]
+ *
+ * 正値: 上昇モメンタム
+ * 負値: 下降モメンタム
+ *
+ * result[i]:
+ *   i < period  → undefined
+ *   i >= period → Momentum 値
+ *
+ * @param closes  終値配列
+ * @param period  期間（デフォルト 10）
+ */
+export function calculateMomentum(
+  closes: number[],
+  period: number,
+): (number | undefined)[] {
+  const n = closes.length;
+  if (period <= 0 || n === 0) return new Array(n).fill(undefined);
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+
+  for (let i = period; i < n; i++) {
+    result[i] = closes[i] - closes[i - period];
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// OBV — On Balance Volume
+// ------------------------------------------------------------------
+
+/**
+ * On Balance Volume
+ *
+ * OBV[0] = 0 (起点)
+ * OBV[i] = OBV[i-1] + volume[i]   if close[i] > close[i-1]
+ *         = OBV[i-1] - volume[i]   if close[i] < close[i-1]
+ *         = OBV[i-1]               if close[i] = close[i-1]
+ *
+ * OBV の累積方向でトレンドの方向性を判定する。
+ * 絶対値に意味はなく、傾向（増加/減少）が重要。
+ *
+ * result[i]: index 0 から全て有効（ウォームアップ不要）
+ *
+ * @param closes   終値配列
+ * @param volumes  ボリューム配列
+ */
+export function calculateOBV(
+  closes:  number[],
+  volumes: number[],
+): (number | undefined)[] {
+  const n = closes.length;
+  if (n === 0) return [];
+  if (closes.length !== volumes.length) return new Array(n).fill(undefined);
+
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+  let obv = 0;
+  result[0] = obv;
+
+  for (let i = 1; i < n; i++) {
+    if (closes[i] > closes[i - 1])      obv += volumes[i];
+    else if (closes[i] < closes[i - 1]) obv -= volumes[i];
+    // 変化なしの場合は OBV 維持
+    result[i] = obv;
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+// Volume Ratio — ボリューム÷SMA(ボリューム)
+// ------------------------------------------------------------------
+
+/**
+ * Volume SMA Ratio
+ *
+ * VolRatio[i] = Volume[i] / SMA(Volume, period)[i]
+ *
+ * 1.0 より大: 平均より高ボリューム（重要な動き）
+ * 1.5 以上:   高ボリューム確認
+ *
+ * result[i]:
+ *   i < period-1  → undefined
+ *   i >= period-1 → VolRatio 値 (>= 0)
+ *
+ * @param volumes  ボリューム配列
+ * @param period   期間（デフォルト 20）
+ */
+export function calculateVolumeRatio(
+  volumes: number[],
+  period:  number,
+): (number | undefined)[] {
+  const n = volumes.length;
+  if (period <= 0 || n === 0) return new Array(n).fill(undefined);
+
+  const volSMA = calculateSMA(volumes, period);
+  const result: (number | undefined)[] = new Array(n).fill(undefined);
+
+  for (let i = period - 1; i < n; i++) {
+    const sma = volSMA[i];
+    if (sma !== undefined && sma > 0) {
+      result[i] = volumes[i] / sma;
+    }
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
 // Stochastic %K — Fast Stochastic
 // ------------------------------------------------------------------
 
@@ -559,31 +865,44 @@ export function calculateStochastic(
  * params は省略可能。省略時は標準パラメーターを使用する。
  */
 export interface PrecomputeParams {
-  ema1Period?:    number;  // 短期 EMA (デフォルト 21)
-  ema2Period?:    number;  // 長期 EMA (デフォルト 200)
-  smaPeriod?:     number;  // SMA (デフォルト 50)
-  atrPeriod?:     number;  // ATR (デフォルト 14)
-  rsiPeriod?:     number;  // RSI (デフォルト 14)
-  macdFast?:      number;  // MACD fast (デフォルト 12)
-  macdSlow?:      number;  // MACD slow (デフォルト 26)
-  macdSignal?:    number;  // MACD signal (デフォルト 9)
-  adxPeriod?:     number;  // ADX (デフォルト 14)
-  bbPeriod?:      number;  // BB period (デフォルト 20)
-  bbDeviation?:   number;  // BB deviation (デフォルト 2.0)
-  stochPeriod?:   number;  // Stochastic (デフォルト 14)
+  ema1Period?:       number;  // 短期 EMA (デフォルト 21)
+  ema2Period?:       number;  // 長期 EMA (デフォルト 200)
+  smaPeriod?:        number;  // SMA (デフォルト 50)
+  atrPeriod?:        number;  // ATR (デフォルト 14)
+  rsiPeriod?:        number;  // RSI (デフォルト 14)
+  macdFast?:         number;  // MACD fast (デフォルト 12)
+  macdSlow?:         number;  // MACD slow (デフォルト 26)
+  macdSignal?:       number;  // MACD signal (デフォルト 9)
+  adxPeriod?:        number;  // ADX (デフォルト 14)
+  bbPeriod?:         number;  // BB period (デフォルト 20)
+  bbDeviation?:      number;  // BB deviation (デフォルト 2.0)
+  stochPeriod?:      number;  // Stochastic (デフォルト 14)
+  wmaPeriod?:        number;  // WMA (デフォルト 14)
+  vwmaPeriod?:       number;  // VWMA (デフォルト 14)
+  cciPeriod?:        number;  // CCI (デフォルト 14)
+  williamsRPeriod?:  number;  // Williams %R (デフォルト 14)
+  momentumPeriod?:   number;  // Momentum (デフォルト 10)
+  volumeRatioPeriod?: number; // Volume Ratio (デフォルト 20)
 }
 
 export interface PrecomputedIndicators {
-  ema1:    (number | undefined)[];
-  ema2:    (number | undefined)[];
-  sma:     (number | undefined)[];
-  atr:     (number | undefined)[];
-  rsi:     (number | undefined)[];
-  macd:    MACDResult[];
-  adx:     ADXResult[];
-  bb:      BollingerResult[];
-  stoch:   (number | undefined)[];
-  params:  Required<PrecomputeParams>;
+  ema1:        (number | undefined)[];
+  ema2:        (number | undefined)[];
+  sma:         (number | undefined)[];
+  atr:         (number | undefined)[];
+  rsi:         (number | undefined)[];
+  macd:        MACDResult[];
+  adx:         ADXResult[];
+  bb:          BollingerResult[];
+  stoch:       (number | undefined)[];
+  wma:         (number | undefined)[];
+  vwma:        (number | undefined)[];
+  cci:         (number | undefined)[];
+  williamsR:   (number | undefined)[];
+  momentum:    (number | undefined)[];
+  obv:         (number | undefined)[];
+  volumeRatio: (number | undefined)[];
+  params:      Required<PrecomputeParams>;
 }
 
 export function precomputeIndicators(
@@ -591,32 +910,48 @@ export function precomputeIndicators(
   p: PrecomputeParams = {},
 ): PrecomputedIndicators {
   const params: Required<PrecomputeParams> = {
-    ema1Period:   p.ema1Period   ?? 21,
-    ema2Period:   p.ema2Period   ?? 200,
-    smaPeriod:    p.smaPeriod    ?? 50,
-    atrPeriod:    p.atrPeriod    ?? 14,
-    rsiPeriod:    p.rsiPeriod    ?? 14,
-    macdFast:     p.macdFast     ?? 12,
-    macdSlow:     p.macdSlow     ?? 26,
-    macdSignal:   p.macdSignal   ?? 9,
-    adxPeriod:    p.adxPeriod    ?? 14,
-    bbPeriod:     p.bbPeriod     ?? 20,
-    bbDeviation:  p.bbDeviation  ?? 2.0,
-    stochPeriod:  p.stochPeriod  ?? 14,
+    ema1Period:        p.ema1Period        ?? 21,
+    ema2Period:        p.ema2Period        ?? 200,
+    smaPeriod:         p.smaPeriod         ?? 50,
+    atrPeriod:         p.atrPeriod         ?? 14,
+    rsiPeriod:         p.rsiPeriod         ?? 14,
+    macdFast:          p.macdFast          ?? 12,
+    macdSlow:          p.macdSlow          ?? 26,
+    macdSignal:        p.macdSignal        ?? 9,
+    adxPeriod:         p.adxPeriod         ?? 14,
+    bbPeriod:          p.bbPeriod          ?? 20,
+    bbDeviation:       p.bbDeviation       ?? 2.0,
+    stochPeriod:       p.stochPeriod       ?? 14,
+    wmaPeriod:         p.wmaPeriod         ?? 14,
+    vwmaPeriod:        p.vwmaPeriod        ?? 14,
+    cciPeriod:         p.cciPeriod         ?? 14,
+    williamsRPeriod:   p.williamsRPeriod   ?? 14,
+    momentumPeriod:    p.momentumPeriod    ?? 10,
+    volumeRatioPeriod: p.volumeRatioPeriod ?? 20,
   };
 
-  const closes = bars.map(b => b.close);
+  const closes  = bars.map(b => b.close);
+  const highs   = bars.map(b => b.high);
+  const lows    = bars.map(b => b.low);
+  const volumes = bars.map(b => b.volume ?? 0);
 
   return {
-    ema1:  calculateEMA(closes, params.ema1Period),
-    ema2:  calculateEMA(closes, params.ema2Period),
-    sma:   calculateSMA(closes, params.smaPeriod),
-    atr:   calculateATR(bars, params.atrPeriod),
-    rsi:   calculateRSI(bars, params.rsiPeriod),
-    macd:  calculateMACD(bars, params.macdFast, params.macdSlow, params.macdSignal),
-    adx:   calculateADX(bars, params.adxPeriod),
-    bb:    calculateBollingerBands(bars, params.bbPeriod, params.bbDeviation),
-    stoch: calculateStochastic(bars, params.stochPeriod),
+    ema1:        calculateEMA(closes, params.ema1Period),
+    ema2:        calculateEMA(closes, params.ema2Period),
+    sma:         calculateSMA(closes, params.smaPeriod),
+    atr:         calculateATR(bars, params.atrPeriod),
+    rsi:         calculateRSI(bars, params.rsiPeriod),
+    macd:        calculateMACD(bars, params.macdFast, params.macdSlow, params.macdSignal),
+    adx:         calculateADX(bars, params.adxPeriod),
+    bb:          calculateBollingerBands(bars, params.bbPeriod, params.bbDeviation),
+    stoch:       calculateStochastic(bars, params.stochPeriod),
+    wma:         calculateWMA(closes, params.wmaPeriod),
+    vwma:        calculateVWMA(closes, volumes, params.vwmaPeriod),
+    cci:         calculateCCI(highs, lows, closes, params.cciPeriod),
+    williamsR:   calculateWilliamsR(highs, lows, closes, params.williamsRPeriod),
+    momentum:    calculateMomentum(closes, params.momentumPeriod),
+    obv:         calculateOBV(closes, volumes),
+    volumeRatio: calculateVolumeRatio(volumes, params.volumeRatioPeriod),
     params,
   };
 }
