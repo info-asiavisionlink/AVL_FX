@@ -19,6 +19,7 @@ import {
   type StrategySpec,
   type StrategyRecord,
 } from "@/lib/strategySchema";
+import { StrategyResearchAssistant } from "./StrategyResearchAssistant";
 
 // ── カラー定数 ─────────────────────────────────────────────────────
 const NG      = "#00ff88";
@@ -194,14 +195,15 @@ function pipsColor(pips: number) { return pips >= 0 ? NG : RED; }
 // =================================================================
 
 export function AIEABuilder({ open, onClose, onSaved }: Props) {
-  const [step,             setStep]             = useState<Step>("input");
-  const [input,            setInput]            = useState<InputState>(EMPTY_INPUT);
-  const [spec,             setSpec]             = useState<StrategySpec | null>(null);
-  const [backtestResult,   setBacktestResult]   = useState<BacktestResultState | null>(null);
-  const [hasUnsupported,   setHasUnsupported]   = useState(false);
-  const [unsupportedList,  setUnsupportedList]  = useState<string[]>([]);
-  const [showFailedWarning, setShowFailedWarning] = useState(false);
-  const [error,            setError]            = useState<string | null>(null);
+  const [step,                  setStep]                  = useState<Step>("input");
+  const [input,                 setInput]                 = useState<InputState>(EMPTY_INPUT);
+  const [spec,                  setSpec]                  = useState<StrategySpec | null>(null);
+  const [backtestResult,        setBacktestResult]        = useState<BacktestResultState | null>(null);
+  const [hasUnsupported,        setHasUnsupported]        = useState(false);
+  const [unsupportedList,       setUnsupportedList]       = useState<string[]>([]);
+  const [showFailedWarning,     setShowFailedWarning]     = useState(false);
+  const [error,                 setError]                 = useState<string | null>(null);
+  const [showResearchAssistant, setShowResearchAssistant] = useState(false);
 
   if (!open) return null;
 
@@ -314,10 +316,12 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
     await handleFormalSave();
   }
 
-  // ── 正式保存（Backtest結果を昇格） ──────────────────────────────
+  // ── 正式保存（Backtest結果を昇格）─ パラメータ直接受取り版 ──────
 
-  async function handleFormalSave() {
-    if (!spec || !backtestResult) return;
+  async function handleFormalSaveWith(
+    saveSpec:   StrategySpec,
+    saveResult: BacktestResultState,
+  ) {
     setStep("saving");
     setShowFailedWarning(false);
 
@@ -328,12 +332,12 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
-          spec,
-          raw_prompt: rawPrompt,
+          spec:         saveSpec,
+          raw_prompt:   rawPrompt,
           previewBacktestData: {
-            report:   backtestResult.report,
-            trades:   backtestResult.trades,
-            barCount: backtestResult.barCount,
+            report:   saveResult.report,
+            trades:   saveResult.trades,
+            barCount: saveResult.barCount,
           },
         }),
       });
@@ -346,12 +350,19 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
       }
 
       setStep("done");
-      toast.success(`「${spec.name}」をEAに追加しました`);
+      toast.success(`「${saveSpec.name}」をEAに追加しました`);
       onSaved(data.strategy);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存エラー");
       setStep("result");
     }
+  }
+
+  // ── 正式保存（State から呼び出す版） ────────────────────────────
+
+  async function handleFormalSave() {
+    if (!spec || !backtestResult) return;
+    await handleFormalSaveWith(spec, backtestResult);
   }
 
   function handleClose() {
@@ -974,36 +985,53 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                   </span>
                 </div>
               ) : (
-                /* 通常: キャンセル / EAを追加する */
-                <div className="flex items-center justify-between gap-3">
-                  <button
-                    onClick={handleClose}
-                    className="text-[10px] tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-60"
-                    style={{ color: "#4b5563" }}
-                  >
-                    キャンセル
-                  </button>
-                  <div className="flex items-center gap-2">
+                /* 通常: キャンセル / AI分析 / EAを追加する */
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-3">
                     <button
-                      onClick={handleBack}
+                      onClick={handleClose}
                       className="text-[10px] tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-60"
-                      style={{ color: "#64748b", border: "1px solid #1e293b" }}
+                      style={{ color: "#4b5563" }}
                     >
-                      ← 修正する
+                      キャンセル
                     </button>
-                    <button
-                      onClick={handleEAAdd}
-                      className="text-[10px] font-black tracking-widest px-5 py-2 rounded transition-all hover:opacity-80"
-                      style={{
-                        background: `${NG_rgba}0.14)`,
-                        border:     `1px solid ${NG_rgba}0.35)`,
-                        color:      NG,
-                        boxShadow:  `0 0 12px ${NG_rgba}0.15)`,
-                      }}
-                    >
-                      EA を追加する
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleBack}
+                        className="text-[10px] tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-60"
+                        style={{ color: "#64748b", border: "1px solid #1e293b" }}
+                      >
+                        ← 修正する
+                      </button>
+                      <button
+                        onClick={handleEAAdd}
+                        className="text-[10px] font-black tracking-widest px-5 py-2 rounded transition-all hover:opacity-80"
+                        style={{
+                          background: `${NG_rgba}0.14)`,
+                          border:     `1px solid ${NG_rgba}0.35)`,
+                          color:      NG,
+                          boxShadow:  `0 0 12px ${NG_rgba}0.15)`,
+                        }}
+                      >
+                        EA を追加する
+                      </button>
+                    </div>
                   </div>
+                  {backtestResult && (
+                    <div className="flex justify-center">
+                      <button
+                        onClick={() => setShowResearchAssistant(true)}
+                        className="text-[9px] tracking-widest px-4 py-1.5 rounded transition-all hover:opacity-80"
+                        style={{
+                          background: "rgba(0,229,255,0.06)",
+                          border:     "1px solid rgba(0,229,255,0.18)",
+                          color:      CYAN,
+                        }}
+                      >
+                        AI戦略アシスタントで分析・改善
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             )}
@@ -1017,6 +1045,20 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
           50%       { opacity: 1;   transform: scale(1.2); }
         }
       `}</style>
+
+      {/* ── AI戦略アシスタント（フルスクリーンモーダル） ── */}
+      {showResearchAssistant && spec && backtestResult && (
+        <StrategyResearchAssistant
+          spec={spec}
+          initialBacktestResult={backtestResult}
+          onAddEA={(finalSpec, finalResult) => {
+            setShowResearchAssistant(false);
+            // 承認されたSpecとBacktestResultを直接パラメータとして正式保存
+            void handleFormalSaveWith(finalSpec as StrategySpec, finalResult);
+          }}
+          onDiscard={() => setShowResearchAssistant(false)}
+        />
+      )}
     </div>
   );
 }
