@@ -326,6 +326,79 @@ function EquityCurve({ trades }: { trades: DBTrade[] }) {
 }
 
 // ------------------------------------------------------------------
+// PeriodBreakdown — 期間別成績（直近3ヶ月・6ヶ月・1年）
+// ------------------------------------------------------------------
+
+function PeriodBreakdown({ trades }: { trades: DBTrade[] }) {
+  if (trades.length === 0) return null;
+
+  const times    = trades.map(t => new Date(t.entry_time).getTime());
+  const maxTime  = Math.max(...times);
+
+  function statsFor(days: number | null) {
+    const cut  = days ? maxTime - days * 86_400_000 : 0;
+    const list = days ? trades.filter(t => new Date(t.entry_time).getTime() >= cut) : trades;
+    if (list.length === 0) return null;
+    const wins     = list.filter(t => t.result === "WIN").length;
+    const total    = list.length;
+    const wRate    = total ? (wins / total) * 100 : 0;
+    const tPips    = list.reduce((s, t) => s + t.pips, 0);
+    const winPips  = list.filter(t => t.pips > 0).reduce((s, t) => s + t.pips, 0);
+    const lossPips = Math.abs(list.filter(t => t.pips < 0).reduce((s, t) => s + t.pips, 0));
+    const pf       = lossPips > 0 ? winPips / lossPips : winPips > 0 ? Infinity : 0;
+    return { count: total, wins, wRate, tPips, pf };
+  }
+
+  const rows: { label: string; days: number | null }[] = [
+    { label: "全期間",   days: null },
+    { label: "直近1年",  days: 365 },
+    { label: "直近6ヶ月", days: 180 },
+    { label: "直近3ヶ月", days: 90 },
+  ];
+
+  return (
+    <div>
+      <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: "#334155" }}>
+        期間別成績
+      </p>
+      <div className="rounded overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+        {/* header */}
+        <div className="grid grid-cols-5 px-2 py-1.5"
+          style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          {["期間","取引数","勝率","PF","合計PIPS"].map(h => (
+            <p key={h} className="text-[7px] font-mono tracking-widest text-center" style={{ color: "#475569" }}>{h}</p>
+          ))}
+        </div>
+        {rows.map(({ label, days }) => {
+          const s = statsFor(days);
+          if (!s) return null;
+          const isAll  = days === null;
+          const pfDisp = s.pf === Infinity ? "∞" : s.pf.toFixed(2);
+          const pfCol  = s.pf >= 1.3 ? NG : s.pf >= 1 ? AMBER : RED;
+          const wrCol  = s.wRate >= 50 ? NG : s.wRate >= 35 ? AMBER : RED;
+          const ppCol  = s.tPips >= 0 ? NG : RED;
+          return (
+            <div key={label} className="grid grid-cols-5 px-2 py-2 items-center"
+              style={{
+                background: isAll ? "rgba(0,229,255,0.03)" : "rgba(255,255,255,0.01)",
+                borderBottom: "1px solid rgba(255,255,255,0.04)",
+              }}>
+              <p className="text-[8px] font-mono font-bold" style={{ color: isAll ? CYAN : "#64748b" }}>{label}</p>
+              <p className="text-[9px] font-mono text-center" style={{ color: "#94a3b8" }}>{s.count}</p>
+              <p className="text-[9px] font-mono font-bold text-center" style={{ color: wrCol }}>{s.wRate.toFixed(1)}%</p>
+              <p className="text-[9px] font-mono font-bold text-center" style={{ color: pfCol }}>{pfDisp}</p>
+              <p className="text-[9px] font-mono font-bold text-center" style={{ color: ppCol }}>
+                {s.tPips >= 0 ? "+" : ""}{s.tPips.toFixed(1)}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
 // ResultDisplay — statistics grid + verdict
 // ------------------------------------------------------------------
 
@@ -617,6 +690,7 @@ function BacktestTab({ strategyId, onJobIdChange }: {
       {result && (
         <>
           <ResultDisplay r={result} />
+          {trades.length > 0 && <PeriodBreakdown trades={trades} />}
           {trades.length > 0 && <EquityCurve trades={trades} />}
         </>
       )}
