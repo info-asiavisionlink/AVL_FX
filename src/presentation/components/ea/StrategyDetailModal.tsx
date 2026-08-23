@@ -326,12 +326,21 @@ function EquityCurve({ trades }: { trades: DBTrade[] }) {
 }
 
 // ------------------------------------------------------------------
-// BacktestSummaryCard — 分析期間・全期間・直近3ヶ月を一目で表示
+// BacktestSummaryCard — 分析期間・全期間・月次内訳（ドロップダウン付き）
 // ------------------------------------------------------------------
 
 function fmtDateJP(ms: number): string {
   const d = new Date(ms);
   return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`;
+}
+
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso);
+  const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const da = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${d.getUTCFullYear()}/${mo}/${da} ${hh}:${mm}`;
 }
 
 function periodText(days: number): string {
@@ -367,6 +376,7 @@ function calcStats(list: DBTrade[]): PeriodStats | null {
   return { wins, losses, total, winRate, totalPips, winPips, lossPips, pf };
 }
 
+// 全期間の集計ブロック（大きく表示）
 function WinLossBlock({ stats, label }: { stats: PeriodStats; label: string }) {
   const wrCol  = stats.winRate >= 50 ? NG : stats.winRate >= 33 ? AMBER : RED;
   const ppCol  = stats.totalPips >= 0 ? NG : RED;
@@ -379,8 +389,6 @@ function WinLossBlock({ stats, label }: { stats: PeriodStats; label: string }) {
       border: "1px solid rgba(255,255,255,0.07)",
     }}>
       <p className="text-[8px] font-black tracking-[0.22em] mb-3" style={{ color: "#475569" }}>{label}</p>
-
-      {/* 勝敗カウント */}
       <div className="flex items-center gap-3 mb-3">
         <div className="flex-1 text-center">
           <p className="text-[32px] font-black leading-none" style={{ color: NG }}>{stats.wins}</p>
@@ -392,8 +400,6 @@ function WinLossBlock({ stats, label }: { stats: PeriodStats; label: string }) {
           <p className="text-[9px] font-mono mt-1" style={{ color: RED }}>負け</p>
         </div>
       </div>
-
-      {/* 勝率・PF */}
       <div className="grid grid-cols-2 gap-2 mb-2">
         <div className="text-center px-2 py-2 rounded" style={{ background: `${wrCol}10`, border: `1px solid ${wrCol}25` }}>
           <p className="text-[7px] font-mono tracking-widest mb-0.5" style={{ color: "#475569" }}>勝率</p>
@@ -404,8 +410,6 @@ function WinLossBlock({ stats, label }: { stats: PeriodStats; label: string }) {
           <p className="text-[20px] font-black leading-none" style={{ color: pfCol }}>{pfDisp}</p>
         </div>
       </div>
-
-      {/* PIPS内訳（利益・損失・合計） */}
       <div className="rounded px-3 py-2.5" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.06)" }}>
         <p className="text-[7px] font-black tracking-[0.2em] mb-2" style={{ color: "#334155" }}>PIPS 内訳</p>
         <div className="space-y-1.5">
@@ -430,6 +434,132 @@ function WinLossBlock({ stats, label }: { stats: PeriodStats; label: string }) {
   );
 }
 
+// 月次ドロップダウン行
+function MonthlyRow({ monthKey, trades }: { monthKey: string; trades: DBTrade[] }) {
+  const [open, setOpen] = useState(false);
+  const stats = calcStats(trades);
+  if (!stats) return null;
+
+  const [year, mon] = monthKey.split("-");
+  const label  = `${year}年${parseInt(mon)}月`;
+  const ppCol  = stats.totalPips >= 0 ? NG : RED;
+  const wrCol  = stats.winRate >= 50 ? NG : stats.winRate >= 33 ? AMBER : RED;
+  const pfDisp = stats.pf === Infinity ? "∞" : stats.pf.toFixed(2);
+
+  return (
+    <div className="rounded overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+      {/* ヘッダー行（クリックで展開） */}
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors"
+        style={{ background: open ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)" }}
+        onClick={() => setOpen(v => !v)}
+      >
+        {/* 展開矢印 */}
+        <span className="text-[8px] font-mono shrink-0 transition-transform"
+          style={{ color: "#475569", transform: open ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }}>
+          ▶
+        </span>
+
+        {/* 月ラベル */}
+        <span className="text-[10px] font-black font-mono w-24 shrink-0" style={{ color: "#94a3b8" }}>
+          {label}
+        </span>
+
+        {/* トレード数 */}
+        <span className="text-[9px] font-mono shrink-0" style={{ color: "#475569" }}>
+          {stats.total}件
+        </span>
+
+        {/* 勝/負 */}
+        <span className="text-[9px] font-mono shrink-0" style={{ color: NG }}>{stats.wins}勝</span>
+        <span className="text-[9px] font-mono shrink-0" style={{ color: RED }}>{stats.losses}負</span>
+
+        {/* 勝率 */}
+        <span className="text-[9px] font-mono font-bold shrink-0 w-12 text-right" style={{ color: wrCol }}>
+          {stats.winRate.toFixed(0)}%
+        </span>
+
+        {/* PF */}
+        <span className="text-[9px] font-mono shrink-0 w-10 text-right" style={{ color: "#64748b" }}>
+          PF {pfDisp}
+        </span>
+
+        {/* 合計PIPS */}
+        <span className="text-[10px] font-black font-mono ml-auto shrink-0" style={{ color: ppCol }}>
+          {stats.totalPips >= 0 ? "+" : ""}{stats.totalPips.toFixed(1)}
+        </span>
+      </button>
+
+      {/* ドロップダウン: 個別トレード */}
+      {open && (
+        <div style={{ background: "rgba(0,0,0,0.20)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+          {/* テーブルヘッダー */}
+          <div className="grid px-3 py-1.5" style={{
+            gridTemplateColumns: "1fr 1fr 48px 48px 56px 44px",
+            borderBottom: "1px solid rgba(255,255,255,0.04)"
+          }}>
+            {["エントリー", "決済", "方向", "結果", "PIPS", "理由"].map(h => (
+              <span key={h} className="text-[7px] font-mono tracking-widest" style={{ color: "#334155" }}>{h}</span>
+            ))}
+          </div>
+          {/* トレード行 */}
+          {trades.map((t, i) => {
+            const pips   = Number(t.pips);
+            const ppC    = pips >= 0 ? NG : RED;
+            const dirC   = t.direction === "BUY" ? NG : RED;
+            const resC   = t.result === "WIN" ? NG : t.result === "LOSS" ? RED : AMBER;
+            return (
+              <div key={t.id ?? i}
+                className="grid px-3 py-1.5 items-center"
+                style={{
+                  gridTemplateColumns: "1fr 1fr 48px 48px 56px 44px",
+                  background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
+                  borderBottom: "1px solid rgba(255,255,255,0.03)",
+                }}>
+                {/* エントリー日時 */}
+                <span className="text-[8px] font-mono" style={{ color: "#64748b" }}>
+                  {fmtDateTime(t.entry_time)}
+                </span>
+                {/* 決済日時 */}
+                <span className="text-[8px] font-mono" style={{ color: "#64748b" }}>
+                  {fmtDateTime(t.exit_time)}
+                </span>
+                {/* 方向 */}
+                <span className="text-[8px] font-mono font-bold" style={{ color: dirC }}>
+                  {t.direction}
+                </span>
+                {/* 結果バッジ */}
+                <span className="text-[7px] font-black px-1 py-0.5 rounded text-center"
+                  style={{ background: `${resC}12`, border: `1px solid ${resC}30`, color: resC }}>
+                  {t.result === "WIN" ? "勝" : t.result === "LOSS" ? "負" : "BE"}
+                </span>
+                {/* PIPS */}
+                <span className="text-[9px] font-black font-mono text-right" style={{ color: ppC }}>
+                  {pips >= 0 ? "+" : ""}{pips.toFixed(1)}
+                </span>
+                {/* 理由 */}
+                <span className="text-[7px] font-mono" style={{ color: "#334155" }}>
+                  {t.exit_reason}
+                </span>
+              </div>
+            );
+          })}
+          {/* 月の小計 */}
+          <div className="flex items-center justify-between px-3 py-2"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.02)" }}>
+            <span className="text-[8px] font-mono" style={{ color: "#475569" }}>
+              月合計 {stats.wins}勝 {stats.losses}負 (WR {stats.winRate.toFixed(0)}%)
+            </span>
+            <span className="text-[10px] font-black font-mono" style={{ color: ppCol }}>
+              {stats.totalPips >= 0 ? "+" : ""}{stats.totalPips.toFixed(1)} pips
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BacktestSummaryCard({
   result,
   trades,
@@ -437,23 +567,22 @@ function BacktestSummaryCard({
   result:  DisplayResult;
   trades:  DBTrade[];
 }) {
-  // 日付範囲計算（tradeデータから）
-  const times    = trades.map(t => new Date(t.entry_time).getTime());
-  const minTime  = trades.length ? Math.min(...times) : 0;
-  const maxTime  = trades.length ? Math.max(...times) : 0;
+  const times   = trades.map(t => new Date(t.entry_time).getTime());
+  const minTime = trades.length ? Math.min(...times) : 0;
+  const maxTime = trades.length ? Math.max(...times) : 0;
 
-  // 全期間統計（tradeデータ）
+  // 全期間統計
   const allStats = calcStats(trades);
 
-  // 直近3ヶ月
-  const cut3m     = maxTime - 90 * 86_400_000;
-  const trades3m  = trades.filter(t => new Date(t.entry_time).getTime() >= cut3m);
-  const stats3m   = calcStats(trades3m);
-
-  // 直近6ヶ月
-  const cut6m     = maxTime - 180 * 86_400_000;
-  const trades6m  = trades.filter(t => new Date(t.entry_time).getTime() >= cut6m);
-  const stats6m   = calcStats(trades6m);
+  // 月別グループ (YYYY-MM キーで降順)
+  const monthMap = new Map<string, DBTrade[]>();
+  for (const t of trades) {
+    const d   = new Date(t.entry_time);
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    if (!monthMap.has(key)) monthMap.set(key, []);
+    monthMap.get(key)!.push(t);
+  }
+  const monthKeys = [...monthMap.keys()].sort((a, b) => b.localeCompare(a)); // 新しい月が上
 
   return (
     <div className="space-y-4">
@@ -464,13 +593,11 @@ function BacktestSummaryCard({
         <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: CYAN }}>
           分析データ期間
         </p>
-        <div className="flex items-baseline gap-2 flex-wrap">
-          <p className="text-[13px] font-black font-mono" style={{ color: "#e2e8f0" }}>
-            {trades.length
-              ? `${fmtDateJP(minTime)} 〜 ${fmtDateJP(maxTime)}`
-              : `${result.dataCoverageDays.toFixed(0)}日間のデータ`}
-          </p>
-        </div>
+        <p className="text-[13px] font-black font-mono" style={{ color: "#e2e8f0" }}>
+          {trades.length
+            ? `${fmtDateJP(minTime)} 〜 ${fmtDateJP(maxTime)}`
+            : `${result.dataCoverageDays.toFixed(0)}日間のデータ`}
+        </p>
         <div className="flex items-center gap-3 mt-1.5 flex-wrap">
           <span className="text-[11px] font-black" style={{ color: CYAN }}>
             {periodText(result.dataCoverageDays)}分のデータ
@@ -482,25 +609,18 @@ function BacktestSummaryCard({
       </div>
 
       {/* ── 全期間成績 ───────────────────────────────── */}
-      {allStats && (
-        <WinLossBlock stats={allStats} label="全期間成績" />
-      )}
+      {allStats && <WinLossBlock stats={allStats} label="全期間成績" />}
 
-      {/* ── 直近3ヶ月 ───────────────────────────────── */}
-      {stats3m && stats3m.total > 0 ? (
-        <WinLossBlock stats={stats3m} label="直近3ヶ月成績" />
-      ) : (
-        <div className="px-4 py-3 rounded-lg text-center"
-          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-[9px] font-mono" style={{ color: "#334155" }}>
-            直近3ヶ月のトレードデータがありません
+      {/* ── 月次内訳 ─────────────────────────────────── */}
+      {monthKeys.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[8px] font-black tracking-[0.22em]" style={{ color: "#475569" }}>
+            月次内訳 — クリックで詳細展開
           </p>
+          {monthKeys.map(key => (
+            <MonthlyRow key={key} monthKey={key} trades={monthMap.get(key)!} />
+          ))}
         </div>
-      )}
-
-      {/* ── 直近6ヶ月（3ヶ月と全期間の間で参考に） ─── */}
-      {stats6m && stats6m.total > 0 && stats6m.total !== (allStats?.total ?? 0) && (
-        <WinLossBlock stats={stats6m} label="直近6ヶ月成績" />
       )}
 
     </div>
