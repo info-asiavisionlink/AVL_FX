@@ -81,6 +81,8 @@ export const ALLOWED_OPERATORS = [
   "HISTOGRAM_CROSS_UP", "HISTOGRAM_CROSS_DOWN",
   "REVERSAL",
   "NEAR_EMA",
+  // PRICE_ACTION 専用 (ローソク足パターンの方向)
+  "BULLISH", "BEARISH",
 ] as const;
 
 export const ALLOWED_SL_METHODS = [
@@ -114,6 +116,16 @@ const EntryConditionsSchema = z.object({
   conditions: z.array(IndicatorConditionSchema).min(1).max(8),
 });
 
+/** トレーリングストップ設定 */
+const TrailingStopSchema = z.object({
+  method:          z.enum(["ATR", "FIXED_PIPS", "PERCENTAGE"]),
+  period:          z.number().int().min(1).max(100).optional(),     // ATR期間
+  multiplier:      z.number().min(0.1).max(10).optional(),          // ATR倍率
+  pips:            z.number().min(1).max(1000).optional(),          // 固定pips
+  pct:             z.number().min(0.01).max(10).optional(),         // 割合%
+  activation_pips: z.number().min(0).max(1000).optional(),          // 発動までの最低利益pips
+}).optional();
+
 /** SL/TP 条件 */
 const ExitConditionsSchema = z.object({
   stop_loss: z.object({
@@ -131,6 +143,18 @@ const ExitConditionsSchema = z.object({
     rr_ratio:   z.number().min(0.5).max(20).optional(),
     pct:        z.number().min(0.01).max(20).optional(),
   }).optional(),
+  /** トレーリングストップ設定 */
+  trailing_stop: TrailingStopSchema,
+  /** 複数TP / 部分決済 (最大3レベル) */
+  take_profits: z.array(z.object({
+    method:     z.enum(ALLOWED_TP_METHODS),
+    period:     z.number().int().min(1).max(100).optional(),
+    multiplier: z.number().min(0.1).max(20).optional(),
+    pips:       z.number().min(1).max(5000).optional(),
+    rr_ratio:   z.number().min(0.5).max(20).optional(),
+    pct:        z.number().min(0.01).max(20).optional(),
+    portion:    z.number().min(0.1).max(1.0),  // この価格でクローズする割合 (0.5 = 50%)
+  })).max(3).optional(),
 }).optional();
 
 /** トレンドフィルター (単体) */
@@ -323,7 +347,20 @@ export function conditionToJapanese(cond: z.infer<typeof IndicatorConditionSchem
       return `${tf} サポレジ`;
     }
     case "PRICE_ACTION": {
-      return `${tf} プライスアクション`;
+      const dir = op === "BULLISH" ? "強気" : op === "BEARISH" ? "弱気" : "";
+      const condLabel = cond.condition;
+      const patternMap: Record<string, string> = {
+        PIN_BAR:       "ピンバー",
+        ENGULFING:     "エンゴルフィング",
+        HAMMER:        "ハンマー",
+        SHOOTING_STAR: "シューティングスター",
+        DOJI:          "ドジ",
+        INSIDE_BAR:    "インサイドバー",
+        MORNING_STAR:  "モーニングスター",
+        EVENING_STAR:  "イブニングスター",
+      };
+      const patternName = condLabel ? (patternMap[condLabel] ?? condLabel) : "パターン";
+      return `${tf} ${patternName}${dir ? " (" + dir + ")" : ""}`;
     }
     case "HMA": {
       if (op === "PRICE_ABOVE") return `${tf} HMA${p} より価格が上`;

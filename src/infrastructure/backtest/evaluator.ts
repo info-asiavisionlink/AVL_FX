@@ -158,7 +158,11 @@ function inferDirectionFromConditions(
         if (op === "PRICE_BELOW") sell++;
         break;
       // ATR は方向中立
-      // VOLUME_RATIO, ADX, PRICE_ACTION, MARKET_STRUCTURE 等は方向中立
+      // VOLUME_RATIO, ADX, MARKET_STRUCTURE 等は方向中立
+      case "PRICE_ACTION":
+        if (op === "BULLISH") buy++;
+        if (op === "BEARISH") sell++;
+        break;
     }
   }
 
@@ -312,7 +316,12 @@ function getConditionDirection(c: StrategySpec["entry_conditions"]["conditions"]
       if (op === "PRICE_BELOW") return "SELL";
       return "NEUTRAL";
 
-    // ATR, VOLUME_RATIO, ADX, PRICE_ACTION, MARKET_STRUCTURE 等は方向中立
+    case "PRICE_ACTION":
+      if (op === "BULLISH") return "BUY";
+      if (op === "BEARISH") return "SELL";
+      return "NEUTRAL";
+
+    // ATR, VOLUME_RATIO, ADX, MARKET_STRUCTURE 等は方向中立
     default:
       return "NEUTRAL";
   }
@@ -1240,6 +1249,184 @@ function evalPSAR(
 }
 
 // ------------------------------------------------------------------
+// Candlestick Pattern Evaluator (機能1: PRICE_ACTION)
+// ------------------------------------------------------------------
+
+/**
+ * ローソク足パターン判定
+ *
+ * @param bars     バー配列（確定済みインデックスを含む）
+ * @param idx      評価対象バーのインデックス
+ * @param operator "BULLISH" | "BEARISH"
+ * @param pattern  パターン名
+ */
+function evalCandlePattern(
+  bars:     Bar[],
+  idx:      number,
+  operator: string,
+  pattern:  string,
+): boolean {
+  if (idx < 0 || idx >= bars.length) return false;
+
+  const bar  = bars[idx];
+  const high = bar.high;
+  const low  = bar.low;
+  const open = bar.open;
+  const close = bar.close;
+
+  const candleRange = high - low;
+  if (candleRange <= 0) return false; // ゼロレンジバーは除外
+
+  const body       = Math.abs(close - open);
+  const upperWick  = high - Math.max(open, close);
+  const lowerWick  = Math.min(open, close) - low;
+
+  switch (pattern) {
+    // ----------------------------------------------------------------
+    // PIN_BAR（ピンバー）
+    // BULLISH: 下ヒゲが全体の60%以上、ボディが30%以下
+    // BEARISH: 上ヒゲが全体の60%以上、ボディが30%以下
+    // ----------------------------------------------------------------
+    case "PIN_BAR": {
+      if (body > candleRange * 0.30) return false;
+      if (operator === "BULLISH") {
+        return lowerWick >= candleRange * 0.60;
+      } else {
+        return upperWick >= candleRange * 0.60;
+      }
+    }
+
+    // ----------------------------------------------------------------
+    // ENGULFING（エンゴルフィング）
+    // 前バーとの比較が必要（idx >= 1）
+    // ----------------------------------------------------------------
+    case "ENGULFING": {
+      if (idx < 1) return false;
+      const prev = bars[idx - 1];
+      if (operator === "BULLISH") {
+        // 前が陰線、今が陽線、今の実体が前の実体を包む
+        return (
+          prev.close  < prev.open  &&   // 前バー陰線
+          close       > open       &&   // 現バー陽線
+          open        <= prev.close &&  // 今の始値 ≤ 前の終値
+          close       >= prev.open      // 今の終値 ≥ 前の始値
+        );
+      } else {
+        // 前が陽線、今が陰線
+        return (
+          prev.close  > prev.open  &&   // 前バー陽線
+          close       < open       &&   // 現バー陰線
+          open        >= prev.close &&  // 今の始値 ≥ 前の終値
+          close       <= prev.open      // 今の終値 ≤ 前の始値
+        );
+      }
+    }
+
+    // ----------------------------------------------------------------
+    // HAMMER（ハンマー） — BULLISH専用
+    // 下ヒゲ ≥ 2×ボディ、上ヒゲ ≤ 0.5×ボディ
+    // ----------------------------------------------------------------
+    case "HAMMER": {
+      if (body <= 0) return false;
+      if (operator !== "BULLISH") return false;
+      return (
+        lowerWick >= 2.0 * body &&
+        upperWick <= 0.5 * body
+      );
+    }
+
+    // ----------------------------------------------------------------
+    // SHOOTING_STAR（シューティングスター） — BEARISH専用
+    // 上ヒゲ ≥ 2×ボディ、下ヒゲ ≤ 0.5×ボディ
+    // ----------------------------------------------------------------
+    case "SHOOTING_STAR": {
+      if (body <= 0) return false;
+      if (operator !== "BEARISH") return false;
+      return (
+        upperWick >= 2.0 * body &&
+        lowerWick <= 0.5 * body
+      );
+    }
+
+    // ----------------------------------------------------------------
+    // DOJI（ドジ）
+    // ボディが全体の5%以下
+    // BULLISH: 下ヒゲ ≥ 上ヒゲ（下に試してから戻った）
+    // BEARISH: 上ヒゲ > 下ヒゲ
+    // ----------------------------------------------------------------
+    case "DOJI": {
+      if (body > candleRange * 0.05) return false;
+      if (operator === "BULLISH") {
+        return lowerWick >= upperWick;
+      } else {
+        return upperWick > lowerWick;
+      }
+    }
+
+    // ----------------------------------------------------------------
+    // INSIDE_BAR（インサイドバー）
+    // 前バーのHigh/Lowの内側に収まっている
+    // ----------------------------------------------------------------
+    case "INSIDE_BAR": {
+      if (idx < 1) return false;
+      const prev = bars[idx - 1];
+      return high <= prev.high && low >= prev.low;
+    }
+
+    // ----------------------------------------------------------------
+    // MORNING_STAR（モーニングスター） — BULLISH専用、3本パターン
+    // [idx-2] 大陰線、[idx-1] 小ボディ、[idx] 大陽線
+    // ----------------------------------------------------------------
+    case "MORNING_STAR": {
+      if (operator !== "BULLISH") return false;
+      if (idx < 2) return false;
+      const b2 = bars[idx - 2];
+      const b1 = bars[idx - 1];
+      const b0 = bars[idx];
+      const range1 = b1.high - b1.low;
+      if (range1 <= 0) return false;
+
+      // 大陰線チェック (1%以上の陰線)
+      if (b2.close >= b2.open * 0.99) return false;
+      // 小ボディチェック
+      if (Math.abs(b1.close - b1.open) >= range1 * 0.3) return false;
+      // 大陽線チェック (0.5%以上)
+      if (b0.close <= b0.open * 1.005) return false;
+      // 前の大陰線の中間点まで戻す
+      const midPoint = (b2.open + b2.close) / 2;
+      return b0.close > midPoint;
+    }
+
+    // ----------------------------------------------------------------
+    // EVENING_STAR（イブニングスター） — BEARISH専用、3本パターン
+    // [idx-2] 大陽線、[idx-1] 小ボディ、[idx] 大陰線
+    // ----------------------------------------------------------------
+    case "EVENING_STAR": {
+      if (operator !== "BEARISH") return false;
+      if (idx < 2) return false;
+      const b2 = bars[idx - 2];
+      const b1 = bars[idx - 1];
+      const b0 = bars[idx];
+      const range1 = b1.high - b1.low;
+      if (range1 <= 0) return false;
+
+      // 大陽線チェック (1%以上の陽線)
+      if (b2.close <= b2.open * 1.01) return false;
+      // 小ボディチェック
+      if (Math.abs(b1.close - b1.open) >= range1 * 0.3) return false;
+      // 大陰線チェック (0.5%以上)
+      if (b0.close >= b0.open * 0.995) return false;
+      // 前の大陽線の中間点まで下落
+      const midPoint = (b2.open + b2.close) / 2;
+      return b0.close < midPoint;
+    }
+
+    default:
+      return false;
+  }
+}
+
+// ------------------------------------------------------------------
 // Single condition dispatcher
 // ------------------------------------------------------------------
 
@@ -1328,8 +1515,15 @@ function evalCondition(
       return evalATRCondition(inds.atr, idx, cond.operator, cond.threshold);
     case "PSAR":
       return evalPSAR(bars, inds.psar, idx, cond.operator);
+    case "PRICE_ACTION":
+      return evalCandlePattern(
+        bars,
+        idx,
+        cond.operator ?? "BULLISH",
+        cond.condition ?? "PIN_BAR",
+      );
     default:
-      return false; // PRICE_ACTION, MARKET_STRUCTURE 等は Phase 2-B 対象外
+      return false; // MARKET_STRUCTURE, SUPPORT_RESISTANCE 等は未実装
   }
 }
 

@@ -270,6 +270,48 @@ PSAR (Parabolic SAR — directional reversal indicator):
   Operators: PRICE_ABOVE (price > SAR = uptrend BUY), PRICE_BELOW (price < SAR = downtrend SELL)
   Example: "PSARの上にいる(上昇トレンド)" → { indicator: "PSAR", operator: "PRICE_ABOVE" }
 
+PRICE_ACTION (ローソク足パターン — candlestick pattern):
+  operator: "BULLISH" or "BEARISH"
+  condition (pattern name): "PIN_BAR" | "ENGULFING" | "HAMMER" | "SHOOTING_STAR" | "DOJI" | "INSIDE_BAR" | "MORNING_STAR" | "EVENING_STAR"
+  Example: "ピンバーBUY" → { indicator: "PRICE_ACTION", operator: "BULLISH", condition: "PIN_BAR", timeframe: "H1" }
+  Example: "エンゴルフィングSELL" → { indicator: "PRICE_ACTION", operator: "BEARISH", condition: "ENGULFING", timeframe: "H4" }
+  Example: "ハンマー" → { indicator: "PRICE_ACTION", operator: "BULLISH", condition: "HAMMER", timeframe: "H1" }
+  Example: "シューティングスター" → { indicator: "PRICE_ACTION", operator: "BEARISH", condition: "SHOOTING_STAR", timeframe: "H1" }
+  Example: "インサイドバー (BUY)" → { indicator: "PRICE_ACTION", operator: "BULLISH", condition: "INSIDE_BAR", timeframe: "H1" }
+  Example: "モーニングスター" → { indicator: "PRICE_ACTION", operator: "BULLISH", condition: "MORNING_STAR", timeframe: "H4" }
+  HAMMER is BULLISH only. SHOOTING_STAR is BEARISH only. MORNING_STAR is BULLISH only. EVENING_STAR is BEARISH only.
+  Note: operator must be "BULLISH" or "BEARISH" — NOT standard operators like PRICE_ABOVE, CROSS_UP etc.
+
+## TRAILING STOP (in exit_conditions)
+
+trailing_stop field in exit_conditions (optional):
+  { method: "ATR", multiplier: 2.0, activation_pips: 10 }  // 10pips利益で発動、ATR2倍距離で追随
+  { method: "FIXED_PIPS", pips: 20 }  // 20pips固定でトレーリング
+  { method: "PERCENTAGE", pct: 0.5 }  // 価格の0.5%距離でトレーリング
+  activation_pips: 最低何pips利益が出たら発動するか (省略可, default 0 = 即発動)
+  Examples:
+    "ATR2倍トレーリング" → trailing_stop: { method: "ATR", multiplier: 2.0 }
+    "20pipsトレーリングストップ" → trailing_stop: { method: "FIXED_PIPS", pips: 20 }
+    "10pips以上の利益が出たらATR1.5倍でトレーリング" → trailing_stop: { method: "ATR", multiplier: 1.5, activation_pips: 10 }
+
+## MULTIPLE TAKE PROFITS (in exit_conditions)
+
+take_profits array in exit_conditions (optional, max 3 levels):
+  Each level: { method, portion, multiplier/pips/rr_ratio/pct (optional) }
+  portion: この価格でクローズする割合 (0.5 = 50%)。全レベルのportionの合計 = 1.0
+  Examples:
+    "ATR1.5倍で半分利確、ATR3倍で残り利確":
+      take_profits: [
+        { method: "ATR", multiplier: 1.5, portion: 0.5 },
+        { method: "ATR", multiplier: 3.0, portion: 0.5 }
+      ]
+    "20pipsで50%決済、RR2.0で残り全決済":
+      take_profits: [
+        { method: "FIXED_PIPS", pips: 20, portion: 0.5 },
+        { method: "RR_RATIO", rr_ratio: 2.0, portion: 0.5 }
+      ]
+  Note: take_profits and take_profit can coexist; take_profits takes precedence in the engine.
+
 ## ABSOLUTE PROHIBITIONS
 
 - DO NOT output: javascript, typescript, mql5, python, eval, exec, function, require, import
@@ -356,6 +398,11 @@ MFI: range 0-100. ABOVE/BELOW/REVERSAL. default thresholds 80/20. period default
 CMF: range -1 to +1. ABOVE/BELOW/CROSS_UP/CROSS_DOWN. period default 20.
 ATR: ABOVE/BELOW (volatility filter, direction-neutral). threshold = raw price value (e.g. 0.001 for EURUSD).
 PSAR: PRICE_ABOVE (uptrend BUY), PRICE_BELOW (downtrend SELL).
+PRICE_ACTION: operator="BULLISH"/"BEARISH", condition="PIN_BAR"/"ENGULFING"/"HAMMER"/"SHOOTING_STAR"/"DOJI"/"INSIDE_BAR"/"MORNING_STAR"/"EVENING_STAR".
+  Example: { indicator: "PRICE_ACTION", operator: "BULLISH", condition: "PIN_BAR", timeframe: "H1" }
+
+trailing_stop in exit_conditions (optional): { method: "ATR"/"FIXED_PIPS"/"PERCENTAGE", multiplier/pips/pct, activation_pips }
+take_profits in exit_conditions (optional, max 3): [{ method, portion, multiplier/pips/rr_ratio/pct }]. portion sums to 1.0.
 
 ## ABSOLUTE PROHIBITIONS
 - DO NOT include: javascript, typescript, mql5, python, code, function, eval, exec, require, import

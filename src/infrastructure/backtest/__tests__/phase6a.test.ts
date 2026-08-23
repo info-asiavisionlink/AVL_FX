@@ -115,23 +115,60 @@ const DEFAULT_PARAMS = {
   ema1Period: 21, ema2Period: 200, smaPeriod: 50, atrPeriod: 14,
   rsiPeriod: 14, macdFast: 12, macdSlow: 26, macdSignal: 9,
   adxPeriod: 14, bbPeriod: 20, bbDeviation: 2.0, stochPeriod: 14,
+  wmaPeriod: 14, vwmaPeriod: 14, cciPeriod: 14, williamsRPeriod: 14,
+  momentumPeriod: 10, volumeRatioPeriod: 20,
+  hmaPeriod: 14, demaPeriod: 14, donchianPeriod: 20,
+  keltnerPeriod: 20, keltnerAtrPeriod: 10, keltnerMultiplier: 2.0,
+  stochRsiRsiPeriod: 14, stochRsiPeriod: 14, rocPeriod: 14,
+  aroonPeriod: 14, forceIndexPeriod: 13, mfiPeriod: 14, cmfPeriod: 20,
+  psarStep: 0.02, psarMax: 0.2,
 };
 
 function makeInds(n: number, opts: {
   atr?:  (number | undefined)[];
   ema1?: (number | undefined)[];
 }): PrecomputedIndicators {
-  const def = new Array(n).fill(undefined);
+  const def = new Array<number | undefined>(n).fill(undefined);
+  const noIchimoku = () => Array.from({ length: n }, () => ({
+    tenkan: undefined, kijun: undefined, senkouA: undefined,
+    senkouB: undefined, cloudTop: undefined, cloudBottom: undefined,
+  }));
+  const noDonchian = () => Array.from({ length: n }, () => ({
+    upper: undefined, lower: undefined, middle: undefined,
+  }));
+  const noAroon = () => Array.from({ length: n }, () => ({
+    up: undefined, down: undefined, oscillator: undefined,
+  }));
   return {
-    ema1:  opts.ema1  ?? def,
-    ema2:  def,
-    sma:   def,
-    atr:   opts.atr   ?? def,
-    rsi:   def,
-    macd:  new Array(n).fill(EMPTY_MACD),
-    adx:   new Array(n).fill(EMPTY_ADX),
-    bb:    new Array(n).fill(EMPTY_BB),
-    stoch: def,
+    ema1:        opts.ema1  ?? def,
+    ema2:        def,
+    sma:         def,
+    atr:         opts.atr   ?? def,
+    rsi:         def,
+    macd:        new Array(n).fill(EMPTY_MACD),
+    adx:         new Array(n).fill(EMPTY_ADX),
+    bb:          new Array(n).fill(EMPTY_BB),
+    stoch:       def,
+    wma:         def,
+    vwma:        def,
+    cci:         def,
+    williamsR:   def,
+    momentum:    def,
+    obv:         def,
+    volumeRatio: def,
+    hma:         def,
+    dema:        def,
+    ichimoku:    noIchimoku(),
+    donchian:    noDonchian(),
+    keltner:     noDonchian(),
+    stochRsi:    def,
+    roc:         def,
+    ao:          def,
+    aroon:       noAroon(),
+    forceIndex:  def,
+    mfi:         def,
+    cmf:         def,
+    psar:        def,
     params: DEFAULT_PARAMS,
   };
 }

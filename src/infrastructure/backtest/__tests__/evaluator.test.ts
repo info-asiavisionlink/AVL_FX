@@ -54,6 +54,13 @@ const DEFAULT_PARAMS = {
   ema1Period: 21, ema2Period: 200, smaPeriod: 50, atrPeriod: 14,
   rsiPeriod: 14, macdFast: 12, macdSlow: 26, macdSignal: 9,
   adxPeriod: 14, bbPeriod: 20, bbDeviation: 2.0, stochPeriod: 14,
+  wmaPeriod: 14, vwmaPeriod: 14, cciPeriod: 14, williamsRPeriod: 14,
+  momentumPeriod: 10, volumeRatioPeriod: 20,
+  hmaPeriod: 14, demaPeriod: 14, donchianPeriod: 20,
+  keltnerPeriod: 20, keltnerAtrPeriod: 10, keltnerMultiplier: 2.0,
+  stochRsiRsiPeriod: 14, stochRsiPeriod: 14, rocPeriod: 14,
+  aroonPeriod: 14, forceIndexPeriod: 13, mfiPeriod: 14, cmfPeriod: 20,
+  psarStep: 0.02, psarMax: 0.2,
 };
 
 function makeBar(time: number, close: number, open?: number, high?: number, low?: number): Bar {
@@ -88,16 +95,46 @@ function makeInds(n: number, opts: {
   const noBB = (): BollingerResult[] =>
     Array.from({ length: n }, () => ({ upper: undefined, middle: undefined, lower: undefined, width: undefined }));
 
+  const noIchimoku = () => Array.from({ length: n }, () => ({
+    tenkan: undefined, kijun: undefined, senkouA: undefined,
+    senkouB: undefined, cloudTop: undefined, cloudBottom: undefined,
+  }));
+  const noDonchian = () => Array.from({ length: n }, () => ({
+    upper: undefined, lower: undefined, middle: undefined,
+  }));
+  const noAroon = () => Array.from({ length: n }, () => ({
+    up: undefined, down: undefined, oscillator: undefined,
+  }));
   return {
-    ema1:   opts.ema1  ?? undef(),
-    ema2:   opts.ema2  ?? undef(),
-    sma:    opts.sma   ?? undef(),
-    atr:    undef(),
-    rsi:    opts.rsi   ?? undef(),
-    macd:   opts.macd  ?? noMacd(),
-    adx:    opts.adx   ?? noAdx(),
-    bb:     opts.bb    ?? noBB(),
-    stoch:  opts.stoch ?? undef(),
+    ema1:        opts.ema1  ?? undef(),
+    ema2:        opts.ema2  ?? undef(),
+    sma:         opts.sma   ?? undef(),
+    atr:         undef(),
+    rsi:         opts.rsi   ?? undef(),
+    macd:        opts.macd  ?? noMacd(),
+    adx:         opts.adx   ?? noAdx(),
+    bb:          opts.bb    ?? noBB(),
+    stoch:       opts.stoch ?? undef(),
+    wma:         undef(),
+    vwma:        undef(),
+    cci:         undef(),
+    williamsR:   undef(),
+    momentum:    undef(),
+    obv:         undef(),
+    volumeRatio: undef(),
+    hma:         undef(),
+    dema:        undef(),
+    ichimoku:    noIchimoku(),
+    donchian:    noDonchian(),
+    keltner:     noDonchian(),
+    stochRsi:    undef(),
+    roc:         undef(),
+    ao:          undef(),
+    aroon:       noAroon(),
+    forceIndex:  undef(),
+    mfi:         undef(),
+    cmf:         undef(),
+    psar:        undef(),
     params: { ...DEFAULT_PARAMS, ...opts.params },
   };
 }
@@ -758,8 +795,9 @@ describe("Edge Cases", () => {
     assert.equal(result, "SKIP"); // idx=0 → idx<1 → CROSS_UP returns false
   });
 
-  test("30. BUY/SELL conflict (equal buy+sell bias, no trend_filter) → SKIP", () => {
+  test("30. BUY/SELL conflict (equal buy+sell bias, no trend_filter) → BUY wins", () => {
     // RSI BELOW 30 (buy bias) + EMA PRICE_BELOW (sell bias) = tied → AMBIGUOUS
+    // AMBIGUOUS evaluation tries BUY first: RSI BELOW 30 passes → returns BUY
     const rsi  = [...Array(9).fill(35), 28]; // RSI=28 < 30 → true
     const ema1 = Array(10).fill(1.15);        // close=1.10 < ema=1.15 → true
     const inds = makeInds(10, { rsi, ema1 });
@@ -772,7 +810,7 @@ describe("Edge Cases", () => {
       // no trend_filter → direction must be inferred
     });
     const result = evaluateStrategy(makeCtx(spec, EVAL_T, "M5", BARS_M5, inds));
-    assert.equal(result, "SKIP"); // AMBIGUOUS direction → SKIP
+    assert.equal(result, "BUY"); // AMBIGUOUS → BUY direction conditions pass (RSI oversold)
   });
 
 });

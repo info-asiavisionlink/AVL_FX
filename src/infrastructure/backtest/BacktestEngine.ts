@@ -26,6 +26,8 @@ import { AccountSimulator }           from "./AccountSimulator";
 import {
   checkExitOnBar,
   buildClosedTrade,
+  updateTrailingStop,
+  checkPartialExits,
   type OpenPosition,
   type BacktestTrade,
 } from "./PositionManager";
@@ -156,6 +158,8 @@ function calcEntryPrice(
 
 type SLSpec = NonNullable<NonNullable<StrategySpec["exit_conditions"]>["stop_loss"]>;
 type TPSpec = NonNullable<NonNullable<StrategySpec["exit_conditions"]>["take_profit"]>;
+type TPItem = NonNullable<NonNullable<StrategySpec["exit_conditions"]>["take_profits"]>[number];
+type TrailingStopSpec = NonNullable<NonNullable<StrategySpec["exit_conditions"]>["trailing_stop"]>;
 
 function calcSL(
   direction: "BUY" | "SELL",
@@ -265,6 +269,71 @@ function calcTP(
   }
 }
 
+/** 複数TPの1レベル分の価格を計算（calcTP と同じロジックだが TPItem に対応）*/
+function calcTPItemPrice(
+  direction: "BUY" | "SELL",
+  entry:     number,
+  tpItem:    TPItem,
+  atr:       number,
+  bars:      Bar[],
+  barIdx:    number,
+  pipSize:   number,
+  sl:        number,
+): number {
+  const slDist = Math.abs(entry - sl);
+  const sign   = direction === "BUY" ? 1 : -1;
+
+  switch (tpItem.method) {
+    case "ATR":
+      return entry + sign * atr * (tpItem.multiplier ?? 2.0);
+    case "FIXED_PIPS":
+      return entry + sign * (tpItem.pips ?? 40) * pipSize;
+    case "RR_RATIO":
+      return entry + sign * slDist * (tpItem.rr_ratio ?? 1.5);
+    case "PERCENTAGE":
+      return entry * (1 + sign * (tpItem.pct ?? 1.0) / 100);
+    case "SWING_HIGH": {
+      const lookback = tpItem.period ?? 20;
+      const from = Math.max(0, barIdx - lookback + 1);
+      let swingHigh = -Infinity;
+      for (let i = from; i <= barIdx; i++) swingHigh = Math.max(swingHigh, bars[i].high);
+      return isFinite(swingHigh) && swingHigh > entry + slDist
+        ? swingHigh - atr * 0.1
+        : entry + slDist * 1.5;
+    }
+    case "SWING_LOW": {
+      const lookback = tpItem.period ?? 20;
+      const from = Math.max(0, barIdx - lookback + 1);
+      let swingLow = Infinity;
+      for (let i = from; i <= barIdx; i++) swingLow = Math.min(swingLow, bars[i].low);
+      return isFinite(swingLow) && swingLow < entry - slDist
+        ? swingLow + atr * 0.1
+        : entry - slDist * 1.5;
+    }
+    default:
+      return entry + sign * slDist * 1.5;
+  }
+}
+
+/** トレーリングストップの距離を価格単位で計算 */
+function calcTrailDistance(
+  ts:         TrailingStopSpec,
+  entryPrice: number,
+  atr:        number,
+  pipSize:    number,
+): number {
+  switch (ts.method) {
+    case "ATR":
+      return atr * (ts.multiplier ?? 2.0);
+    case "FIXED_PIPS":
+      return (ts.pips ?? 20) * pipSize;
+    case "PERCENTAGE":
+      return entryPrice * (ts.pct ?? 1.0) / 100;
+    default:
+      return 0;
+  }
+}
+
 function calcSLTP(params: {
   direction:      "BUY" | "SELL";
   entryPrice:     number;
@@ -273,14 +342,31 @@ function calcSLTP(params: {
   inds:           PrecomputedIndicators;
   barIdx:         number;   // signal bar index (SL/TP 計算の基準)
   cfg:            SymbolConfig;
-}): { sl: number; tp: number } {
+}): { sl: number; tp: number; trailDistance: number; tpLevels: import("./PositionManager").TPLevel[] } {
   const { direction, entryPrice, exitConditions, bars, inds, barIdx, cfg } = params;
   const atr = inds.atr[barIdx] ?? pipToPrice(15, cfg); // ATR fallback: 15 pips
 
   const sl = calcSL(direction, entryPrice, exitConditions?.stop_loss, atr, bars, barIdx, cfg.pipSize);
   const tp = calcTP(direction, entryPrice, exitConditions?.take_profit, atr, bars, barIdx, cfg.pipSize, sl);
 
-  return { sl, tp };
+  // ── TrailingStop ─────────────────────────────────────────────
+  let trailDistance = 0;
+  const ts = exitConditions?.trailing_stop;
+  if (ts) {
+    trailDistance = calcTrailDistance(ts, entryPrice, atr, cfg.pipSize);
+  }
+
+  // ── MultiTP ──────────────────────────────────────────────────
+  const tpLevels: import("./PositionManager").TPLevel[] = [];
+  const tpItems = exitConditions?.take_profits;
+  if (tpItems && tpItems.length > 0) {
+    for (const item of tpItems) {
+      const price = calcTPItemPrice(direction, entryPrice, item, atr, bars, barIdx, cfg.pipSize, sl);
+      tpLevels.push({ price, portion: item.portion, hit: false });
+    }
+  }
+
+  return { sl, tp, trailDistance, tpLevels };
 }
 
 // ------------------------------------------------------------------
@@ -354,7 +440,7 @@ export function runBacktest(input: BacktestInput): BacktestResult {
       pendingSignalBarIdx = -1;
 
       const entryPrice = calcEntryPrice(bar.open, dir, cfg);
-      const { sl, tp } = calcSLTP({
+      const { sl, tp, trailDistance, tpLevels } = calcSLTP({
         direction:      dir,
         entryPrice,
         exitConditions: spec.exit_conditions,
@@ -377,21 +463,93 @@ export function runBacktest(input: BacktestInput): BacktestResult {
         spreadPips:   cfg.spreadPips,
         slippagePips: cfg.slippagePips,
         entryBarIdx:  i,
+        // TrailingStop 初期化
+        trailSL:       0,
+        highestFav:    entryPrice,
+        trailDistance,
+        // MultiTP 初期化
+        remainingLot:  1.0,
+        tpLevels,
       };
     }
 
-    // Step 2: Check SL/TP on open position using current bar
+    // Step 2: Check exits on open position using current bar
     if (openPos != null) {
-      const exitCheck = checkExitOnBar(openPos, bar);
-      if (exitCheck.hit) {
-        const closed = buildClosedTrade(
-          openPos, bar, i,
-          exitCheck.reason, exitCheck.price,
-          cfg.pipSize, cfg.pipValuePerLot
-        );
-        trades.push(closed);
-        account.recordTrade({ pips: closed.pips, profit: closed.profit, result: closed.result });
-        openPos = null;
+      // Step 2a: MultiTP 部分決済チェック
+      if ((openPos.tpLevels?.length ?? 0) > 0 && (openPos.remainingLot ?? 1) > 0) {
+        const partials = checkPartialExits(openPos, bar, i, cfg.pipSize, cfg.pipValuePerLot);
+        for (const partial of partials) {
+          trades.push(partial);
+          account.recordTrade({ pips: partial.pips, profit: partial.profit, result: partial.result });
+        }
+        // 全レベルヒットして残ポジションがゼロになった場合
+        if ((openPos.remainingLot ?? 1) <= 0) {
+          openPos = null;
+        }
+      }
+
+      // Step 2b: TrailingStop チェック（ポジションがまだ存在する場合）
+      if (openPos != null && (openPos.trailDistance ?? 0) > 0) {
+        const activationPips = spec.exit_conditions?.trailing_stop?.activation_pips ?? 0;
+        const trailHit = updateTrailingStop(openPos, bar, cfg.pipSize, activationPips);
+        if (trailHit) {
+          // TrailingStop でクローズ（残ポジション全体）
+          const trailLot = (openPos.tpLevels?.length ?? 0) > 0
+            ? openPos.lot * (openPos.remainingLot ?? 1)
+            : openPos.lot;
+          const closedByTrail = buildClosedTrade(
+            { ...openPos, lot: trailLot },
+            bar, i, "SL", trailHit.price,
+            cfg.pipSize, cfg.pipValuePerLot,
+          );
+          trades.push(closedByTrail);
+          account.recordTrade({ pips: closedByTrail.pips, profit: closedByTrail.profit, result: closedByTrail.result });
+          openPos = null;
+        }
+      }
+
+      // Step 2c: 通常の SL/TP チェック
+      if (openPos != null) {
+        // MultiTP が設定されている場合は単一TPは使わない（tpLevels で管理）
+        if ((openPos.tpLevels?.length ?? 0) > 0) {
+          // SLのみチェック（TPはMultiTPで処理済み）
+          const dir2 = openPos.direction;
+          let slHit = false;
+          let slPrice = openPos.sl;
+
+          if (dir2 === "BUY") {
+            if (bar.open <= openPos.sl) { slHit = true; slPrice = bar.open; }
+            else if (bar.low <= openPos.sl) { slHit = true; slPrice = openPos.sl; }
+          } else {
+            if (bar.open >= openPos.sl) { slHit = true; slPrice = bar.open; }
+            else if (bar.high >= openPos.sl) { slHit = true; slPrice = openPos.sl; }
+          }
+
+          if (slHit && (openPos.remainingLot ?? 1) > 0) {
+            const remainLot = openPos.lot * (openPos.remainingLot ?? 1);
+            const closed = buildClosedTrade(
+              { ...openPos, lot: remainLot },
+              bar, i, "SL", slPrice,
+              cfg.pipSize, cfg.pipValuePerLot,
+            );
+            trades.push(closed);
+            account.recordTrade({ pips: closed.pips, profit: closed.profit, result: closed.result });
+            openPos = null;
+          }
+        } else {
+          // 通常の SL/TP チェック
+          const exitCheck = checkExitOnBar(openPos, bar);
+          if (exitCheck.hit) {
+            const closed = buildClosedTrade(
+              openPos, bar, i,
+              exitCheck.reason, exitCheck.price,
+              cfg.pipSize, cfg.pipValuePerLot,
+            );
+            trades.push(closed);
+            account.recordTrade({ pips: closed.pips, profit: closed.profit, result: closed.result });
+            openPos = null;
+          }
+        }
       }
     }
 
@@ -419,8 +577,13 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   if (openPos != null) {
     const lastBar = mainBars[mainBars.length - 1];
     const lastIdx = mainBars.length - 1;
+    // MultiTP 設定時は残 lot 分のみクローズ
+    const remainingLot = (openPos.tpLevels?.length ?? 0) > 0
+      ? openPos.lot * (openPos.remainingLot ?? 1)
+      : openPos.lot;
     const closed  = buildClosedTrade(
-      openPos, lastBar, lastIdx,
+      { ...openPos, lot: remainingLot },
+      lastBar, lastIdx,
       "END_OF_DATA", lastBar.close,
       cfg.pipSize, cfg.pipValuePerLot
     );
