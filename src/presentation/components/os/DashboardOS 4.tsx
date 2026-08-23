@@ -1,0 +1,1923 @@
+"use client";
+
+// =================================================================
+// AVL AI Trading Operating System — Dashboard OS v4.0
+// JARVIS / Cyberpunk Style — Full Redesign
+// =================================================================
+
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
+import { cn } from "@/lib/utils";
+import { useConnectionStore }  from "@/application/stores/connectionStore";
+import { usePriceStore }       from "@/application/stores/priceStore";
+import { useIndicatorStore }   from "@/application/stores/indicatorStore";
+import { useMarketStore }      from "@/application/stores/marketStore";
+import type { MarketSymbol }   from "@/infrastructure/connection/GatewayClient";
+import type { IndicatorData }  from "@/application/stores/indicatorStore";
+import { useAIOSStore, type AIMode, type AgentState } from "@/application/stores/aiOSStore";
+import { ConnectionManager }   from "@/infrastructure/connection/ConnectionManager";
+import { useRealtimeAgent }    from "@/presentation/hooks/useRealtimeAgent";
+import { useMonitor }          from "@/presentation/hooks/useMonitor";
+import { useAgentPipeline }    from "@/presentation/hooks/useAgentPipeline";
+import { useSettingsStore }    from "@/application/stores/settingsStore";
+import { HolographicAICore }   from "@/presentation/components/os/HolographicAICore";
+import { ParticleTorus }       from "@/presentation/components/os/ParticleTorus";
+import { AnalysisEngine }      from "@/presentation/components/os/AnalysisEngine";
+import { AVLAICore }           from "@/presentation/components/os/AVLAICore";
+import type { MarketPosition, MarketAccount } from "@/infrastructure/connection/GatewayClient";
+import {
+  Wifi, WifiOff, Radio, Mic, MicOff, Send, Volume2, VolumeX,
+  TrendingUp, TrendingDown, Minus, AlertCircle, RefreshCw,
+  Eye, Brain, Zap, Bot, Shield, Activity, ChevronRight, Bell,
+  Briefcase, ScrollText, Globe, BarChart2, Settings,
+} from "lucide-react";
+
+// -----------------------------------------------------------------
+// 型定義
+// -----------------------------------------------------------------
+interface Message { id: string; role: "user" | "assistant" | "system"; content: string; ts: number; }
+interface OrderProposal { direction: "BUY"|"SELL"; symbol: string; entry: number; sl: number; tp: number; rr: string; confidence: number; reason: string; }
+
+// =================================================================
+// CURRENT INSTRUMENT PANEL
+// =================================================================
+function CurrentInstrumentPanel({ activeSymbol, symbolList, indicators, onSelect }: {
+  activeSymbol: string;
+  symbolList:   MarketSymbol[];
+  indicators:   Record<string, IndicatorData>;
+  onSelect:     (sym: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [open,   setOpen]   = useState(false);
+
+  const activeSym = symbolList.find(s => s.symbol.toUpperCase() === activeSymbol.toUpperCase());
+  const pos = activeSym ? activeSym.changePct >= 0 : null;
+
+  const filtered = symbolList.filter(s =>
+    s.symbol.toUpperCase().includes(search.toUpperCase())
+  );
+
+  const h4 = indicators[activeSymbol.toUpperCase()]?.timeframes?.H4;
+  const trend = h4 ? (h4.ema21 > h4.ema200 ? "UP" : "DOWN") : null;
+
+  return (
+    <div className="avl-glass relative overflow-hidden">
+      {/* top accent — cyan glow */}
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent"/>
+
+      <div className="px-3 pt-3 pb-2">
+        <p className="text-[7.5px] text-cyan-400/60 font-mono tracking-[0.25em] mb-2 flex items-center gap-1.5">
+          <Zap size={7} className="text-cyan-400/60"/> CURRENT INSTRUMENT
+        </p>
+
+        {/* 選択中シンボル表示 */}
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="w-full group relative"
+        >
+          <div className={cn(
+            "relative border px-3 py-2.5 transition-all duration-300",
+            "border-cyan-500/40 bg-cyan-950/20",
+            "hover:border-cyan-400/60 hover:bg-cyan-900/25",
+          )}
+          style={{ boxShadow: "0 0 12px rgba(0,229,255,0.08), inset 0 0 8px rgba(0,229,255,0.03)" }}>
+            {/* pulse corner */}
+            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-cyan-400/70"/>
+            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-cyan-400/70"/>
+            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-cyan-400/40"/>
+            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-cyan-400/40"/>
+
+            {/* symbol name */}
+            <p className="text-[18px] font-black font-mono tracking-[0.15em] text-center"
+              style={{ color:"#00e5ff", textShadow:"0 0 14px #00e5ff, 0 0 30px rgba(0,229,255,0.4)" }}>
+              {activeSymbol}
+            </p>
+
+            {/* price row */}
+            {activeSym && activeSym.bid > 0 ? (
+              <div className="flex items-center justify-between mt-1.5">
+                <div className="text-center">
+                  <p className="text-[6.5px] text-gray-700 font-mono">BID</p>
+                  <p className="text-[10px] text-gray-100 font-mono tabular-nums font-semibold">
+                    {activeSym.bid.toFixed(activeSym.digits > 3 ? 5 : 3)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[6.5px] text-gray-700 font-mono">ASK</p>
+                  <p className="text-[10px] text-gray-100 font-mono tabular-nums font-semibold">
+                    {activeSym.ask.toFixed(activeSym.digits > 3 ? 5 : 3)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[6.5px] text-gray-700 font-mono">SPR</p>
+                  <p className={cn("text-[10px] font-mono tabular-nums font-semibold",
+                    activeSym.spread > 5 ? "text-red-400" : "text-cyan-400/80"
+                  )}>{activeSym.spread.toFixed(1)}p</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[6.5px] text-gray-700 font-mono">CHG</p>
+                  <p className={cn("text-[10px] font-mono tabular-nums font-semibold",
+                    pos ? "text-green-400" : "text-red-400"
+                  )}>
+                    {pos ? "+" : ""}{activeSym.changePct.toFixed(2)}%
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[8px] text-gray-700 font-mono text-center mt-1">AWAITING DATA</p>
+            )}
+
+            {/* trend badge */}
+            {trend && (
+              <div className="flex justify-center mt-1.5">
+                <span className={cn("text-[7px] font-mono border px-2 py-0.5 tracking-widest",
+                  trend === "UP"
+                    ? "border-green-700/40 text-green-400 bg-green-950/20"
+                    : "border-red-700/40 text-red-400 bg-red-950/20"
+                )}>
+                  {trend === "UP" ? "▲ BULLISH" : "▼ BEARISH"} H4
+                </span>
+              </div>
+            )}
+          </div>
+        </button>
+
+        {/* 展開時: シンボルリスト */}
+        {open && (
+          <div className="mt-1 border border-cyan-900/30 bg-[#03060f]/95 backdrop-blur">
+            {/* 検索 */}
+            <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-cyan-900/20">
+              <Globe size={8} className="text-cyan-600/60 shrink-0"/>
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search symbol..."
+                className="flex-1 bg-transparent text-[8.5px] font-mono text-cyan-300 placeholder-gray-700 outline-none"
+                autoFocus
+              />
+              {search && (
+                <button onClick={() => setSearch("")} className="text-gray-700 hover:text-gray-400 text-[8px]">✕</button>
+              )}
+            </div>
+
+            {/* シンボルリスト */}
+            <div className="max-h-48 overflow-y-auto avl-scroll">
+              {filtered.length === 0 && (
+                <p className="text-[8px] text-gray-700 font-mono text-center py-3">MT5 データ待機中...</p>
+              )}
+              {filtered.map(s => {
+                const isActive  = s.symbol.toUpperCase() === activeSymbol.toUpperCase();
+                const symChange = s.changePct >= 0;
+                return (
+                  <button
+                    key={s.symbol}
+                    onClick={() => { onSelect(s.symbol); setOpen(false); setSearch(""); }}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-2.5 py-1 text-left transition-all",
+                      isActive
+                        ? "bg-cyan-900/25 border-l-2 border-cyan-400"
+                        : "hover:bg-cyan-950/20 border-l-2 border-transparent"
+                    )}
+                  >
+                    <div className={cn("w-1 h-1 rounded-full shrink-0",
+                      s.bid > 0 ? "bg-green-400" : "bg-gray-700"
+                    )}/>
+                    <span className={cn("text-[9px] font-mono font-semibold flex-1",
+                      isActive ? "text-cyan-300" : s.bid > 0 ? "text-gray-200" : "text-gray-600"
+                    )}>{s.symbol}</span>
+                    {s.bid > 0 && (
+                      <>
+                        <span className="text-[8.5px] font-mono text-gray-300 tabular-nums">
+                          {s.bid.toFixed(s.digits > 3 ? 5 : 3)}
+                        </span>
+                        <span className={cn("text-[7px] font-mono tabular-nums w-10 text-right",
+                          symChange ? "text-green-400" : "text-red-400"
+                        )}>
+                          {symChange ? "+" : ""}{s.changePct.toFixed(2)}%
+                        </span>
+                      </>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="px-2.5 py-1 border-t border-cyan-900/20">
+              <p className="text-[6.5px] text-gray-700 font-mono">
+                {symbolList.length} symbols from MT5 Market Watch
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function parseOrder(text: string): OrderProposal | null {
+  const m = text.match(/<ORDER>([\s\S]*?)<\/ORDER>/);
+  if (!m) return null;
+  try { return JSON.parse(m[1]) as OrderProposal; } catch { return null; }
+}
+function stripOrder(t: string) { return t.replace(/<ORDER>[\s\S]*?<\/ORDER>/g,"").trim(); }
+
+// =================================================================
+// グローバルステータスバー
+// =================================================================
+function GlobalStatusBar({ time, isConnected, status, aiMode, voiceStatus, account, sessions }: {
+  time: Date; isConnected: boolean; status: string; aiMode: AIMode; voiceStatus: string; account: MarketAccount | null; sessions?: string[];
+}) {
+  const modeLabel: Record<AIMode, string> = {
+    analysis: "ANALYSIS", monitor: "MONITOR", assisted: "ASSISTED", autonomous: "AUTONOMOUS",
+  };
+  const modeColor: Record<AIMode, string> = {
+    analysis: "text-cyan-400 border-cyan-700/40", monitor: "text-yellow-400 border-yellow-700/40",
+    assisted: "text-green-400 border-green-700/40", autonomous: "text-red-400 border-red-700/40",
+  };
+
+  return (
+    <div className="relative flex items-center gap-3 px-4 h-10 bg-[#020408] border-b border-cyan-900/20 shrink-0 text-[8.5px] font-mono overflow-hidden">
+      {/* 底辺グロー */}
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
+
+      {/* ブランド */}
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="flex gap-0.5">
+          <div className="w-0.5 h-4 bg-cyan-500" style={{boxShadow:"0 0 6px rgba(0,200,255,0.8)"}} />
+          <div className="w-0.5 h-4 bg-cyan-500/40" />
+        </div>
+        <span className="text-cyan-400 tracking-[0.2em] font-bold text-[9px]" style={{textShadow:"0 0 12px rgba(0,200,255,0.5)"}}>
+          AVL AI
+        </span>
+        <span className="text-gray-600 tracking-widest text-[7px]">OPERATING SYSTEM</span>
+      </div>
+
+      <div className="w-px h-5 bg-cyan-900/40" />
+
+      {/* MT5 接続 */}
+      <div className="flex items-center gap-1.5">
+        <div className={cn("relative w-2 h-2 rounded-full", isConnected ? "bg-green-400" : "bg-gray-700")}>
+          {isConnected && <div className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-50" />}
+        </div>
+        <span className={cn("tracking-wider", isConnected ? "text-green-400" : "text-gray-600")}>
+          MT5 {isConnected ? "LIVE" : "OFFLINE"}
+        </span>
+      </div>
+
+      {/* AI Mode */}
+      <div className={cn("flex items-center gap-1 px-2 py-0.5 border tracking-widest", modeColor[aiMode])}>
+        <Brain size={7} />
+        <span className="text-[7.5px]">{modeLabel[aiMode]}</span>
+      </div>
+
+      {/* Voice */}
+      {voiceStatus !== "idle" ? (
+        <div className="flex items-center gap-1 text-cyan-400">
+          <Volume2 size={9} className="animate-pulse" />
+          <span className="tracking-wider">{voiceStatus.toUpperCase()}</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 text-gray-700">
+          <VolumeX size={9} />
+          <span>VOICE</span>
+        </div>
+      )}
+
+      {/* Account */}
+      {account && (
+        <>
+          <div className="w-px h-4 bg-cyan-900/40" />
+          <div className="flex items-center gap-3">
+            <span className="text-gray-600">{account.broker.slice(0,14)}</span>
+            <span className="text-gray-300">{account.currency} <span className="text-white font-semibold">{account.balance.toLocaleString()}</span></span>
+            <span className={cn("font-semibold", account.equity >= account.balance ? "text-green-400" : "text-red-400")}>
+              EQ {account.equity.toLocaleString()}
+            </span>
+          </div>
+        </>
+      )}
+
+      <div className="flex-1" />
+
+      {/* Sessions */}
+      {sessions && sessions.length > 0 && (
+        <div className="flex items-center gap-1">
+          {sessions.map(s => (
+            <span key={s} className={cn("text-[7px] tracking-wider border px-1.5 py-0.5",
+              s.includes("Tokyo")    ? "border-blue-800/60 text-blue-300 bg-blue-950/30" :
+              s.includes("London")   ? "border-purple-800/60 text-purple-300 bg-purple-950/30" :
+              s.includes("New York") ? "border-orange-800/60 text-orange-300 bg-orange-950/30" :
+              s.includes("Sydney")   ? "border-teal-800/60 text-teal-300 bg-teal-950/30" :
+              "border-gray-700/50 text-gray-500"
+            )}>{s.replace(" Session","")}</span>
+          ))}
+        </div>
+      )}
+
+      <div className="w-px h-4 bg-cyan-900/40" />
+
+      {/* Time */}
+      <div className="flex items-center gap-1.5">
+        <Radio size={8} className="text-cyan-600/60 avl-blink" />
+        <span className="text-gray-300 tabular-nums" suppressHydrationWarning>
+          {time.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+        </span>
+        <span className="text-gray-700">JST</span>
+      </div>
+    </div>
+  );
+}
+
+// =================================================================
+// AI モードセレクター
+// =================================================================
+function ModeSelector({ mode, onChange }: { mode: AIMode; onChange: (m: AIMode) => void }) {
+  const [confirm, setConfirm] = useState<AIMode | null>(null);
+
+  const modes: { id: AIMode; label: string; icon: typeof Brain }[] = [
+    { id: "analysis",   label: "ANALYSIS",   icon: Brain },
+    { id: "monitor",    label: "MONITOR",    icon: Eye   },
+    { id: "assisted",   label: "ASSISTED",   icon: Zap   },
+    { id: "autonomous", label: "AUTO",       icon: Bot   },
+  ];
+  const colors: Record<AIMode,string> = {
+    analysis:   "border-cyan-600/60 bg-cyan-900/30 text-cyan-300",
+    monitor:    "border-yellow-600/60 bg-yellow-900/30 text-yellow-300",
+    assisted:   "border-green-600/60 bg-green-900/30 text-green-300",
+    autonomous: "border-red-600/60 bg-red-900/30 text-red-300",
+  };
+
+  const handleClick = (id: AIMode) => {
+    if (id === "autonomous" && mode !== "autonomous") { setConfirm(id); return; }
+    onChange(id);
+  };
+
+  return (
+    <>
+      <div className="flex gap-1">
+        {modes.map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => handleClick(id)}
+            className={cn("flex items-center gap-1 px-2 py-1 text-[8px] font-mono border transition-all",
+              mode === id ? colors[id] : "border-[#0d1520] text-gray-700 hover:text-gray-500 hover:border-[#1a2535]"
+            )}>
+            <Icon size={8} />{label}
+          </button>
+        ))}
+      </div>
+      {confirm === "autonomous" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="border border-red-700/60 bg-[#060a12] p-6 max-w-xs w-full mx-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-5 bg-red-500" />
+              <span className="text-[10px] text-red-400 font-mono font-bold">AUTONOMOUS MODE</span>
+            </div>
+            <p className="text-[8px] text-yellow-300 font-mono mb-2">⚠ 重要な警告</p>
+            <p className="text-[8px] text-gray-300 font-mono leading-relaxed mb-4">
+              このモードでは AVL AI が市場分析・<br/>
+              エントリー・決済を自動実行します。<br/><br/>
+              実際の資金が自動運用されます。<br/>
+              リスクを完全に理解した上で有効化してください。
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => { onChange("autonomous"); setConfirm(null); }}
+                className="flex-1 py-1.5 text-[8px] font-mono border border-red-700/50 text-red-300 hover:bg-red-900/30">
+                有効化する
+              </button>
+              <button onClick={() => setConfirm(null)}
+                className="flex-1 py-1.5 text-[8px] font-mono border border-[#0d1520] text-gray-500 hover:text-gray-300">
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// =================================================================
+// エージェントカード
+// =================================================================
+function AgentCard({ agent }: { agent: AgentState }) {
+  const statusColors: Record<AgentState["status"],string> = {
+    idle:     "bg-gray-700",
+    active:   "bg-green-400",
+    thinking: "bg-cyan-400 animate-pulse",
+    error:    "bg-red-400",
+  };
+  const icons: Record<string, typeof Brain> = {
+    market:   Activity, analysis: Brain, decision: Zap, order: Shield, voice: Volume2,
+  };
+  const Icon = icons[agent.id] ?? Bot;
+
+  const isActive   = agent.status === "active";
+  const isThinking = agent.status === "thinking";
+  const isError    = agent.status === "error";
+
+  return (
+    <div className={cn(
+      "relative flex-1 border p-2 min-w-[110px] overflow-hidden transition-all duration-300",
+      isActive   ? "border-green-700/50 bg-green-950/20" :
+      isThinking ? "border-cyan-700/50 bg-cyan-950/20" :
+      isError    ? "border-red-700/50 bg-red-950/20" :
+      "border-[#0d1520] bg-[#04060d]"
+    )}>
+      {/* アクティブ時のトップグロー */}
+      {(isActive || isThinking) && (
+        <div className={cn("absolute top-0 left-0 right-0 h-px",
+          isThinking ? "bg-cyan-500/60" : "bg-green-500/50"
+        )} />
+      )}
+      {/* 思考中スキャンライン */}
+      {isThinking && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent avl-scan-line" />
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5 mb-1">
+        <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusColors[agent.status])} />
+        <Icon size={9} className={cn(
+          isActive   ? "text-green-400" :
+          isThinking ? "text-cyan-400" :
+          isError    ? "text-red-400" :
+          "text-gray-700"
+        )} />
+        <span className={cn(
+          "text-[7.5px] font-mono font-semibold tracking-wide truncate",
+          isActive || isThinking ? "text-gray-200" : isError ? "text-red-400" : "text-gray-700"
+        )}>{agent.name}</span>
+      </div>
+      {agent.lastAction ? (
+        <p className="text-[7px] font-mono truncate avl-fade-up" style={{color: isThinking?"rgba(0,200,255,0.7)": isActive?"rgba(0,255,120,0.6)":"rgba(100,120,140,0.6)"}}>
+          {agent.lastAction}
+        </p>
+      ) : (
+        <p className="text-[7px] text-gray-800 font-mono">{agent.description}</p>
+      )}
+    </div>
+  );
+}
+
+// =================================================================
+// AI レーダー — JARVIS / Cyberpunk スタイル
+// =================================================================
+function AIRadar({ mode, thinking, voiceStatus }: {
+  mode: AIMode; thinking: boolean; voiceStatus: string;
+}) {
+  const isListening = voiceStatus === "listening";
+  const isSpeaking  = voiceStatus === "speaking";
+  const isActive    = thinking || isListening || isSpeaking;
+
+  // モード別ネオンカラー
+  const nc: Record<AIMode, {hex: string; r: string}> = {
+    analysis:   { hex: "#00e5ff", r: "rgba(0,229,255," },
+    monitor:    { hex: "#ffd700", r: "rgba(255,215,0," },
+    assisted:   { hex: "#00ff88", r: "rgba(0,255,136," },
+    autonomous: { hex: "#ff1a4e", r: "rgba(255,26,78," },
+  };
+  const { hex, r: rgba } = nc[mode];
+
+  const statusText =
+    thinking    ? "ANALYZING"   :
+    isListening ? "LISTENING"   :
+    isSpeaking  ? "RESPONDING"  :
+    { analysis:"ANALYSIS MODE", monitor:"MONITOR MODE", assisted:"ASSISTED MODE", autonomous:"AUTONOMOUS MODE" }[mode];
+
+  const SIZE = 480;
+  const CX   = SIZE / 2;
+  const rnd  = (v: number) => Math.round(v * 1e4) / 1e4;
+
+  // 外周ティック (72本)
+  const ticks = useMemo(() => Array.from({ length: 72 }, (_, i) => {
+    const deg = i * 5 * Math.PI / 180;
+    const main = i % 9 === 0;
+    const r1 = 228, r2 = main ? 212 : 222;
+    return {
+      x1: rnd(CX + r1 * Math.cos(deg - Math.PI/2)),
+      y1: rnd(CX + r1 * Math.sin(deg - Math.PI/2)),
+      x2: rnd(CX + r2 * Math.cos(deg - Math.PI/2)),
+      y2: rnd(CX + r2 * Math.sin(deg - Math.PI/2)),
+      main,
+    };
+  }), []);
+
+  // ニューラルネットワーク ノード（黄金角スパイラル）
+  const nodes = useMemo(() =>
+    Array.from({ length: 24 }, (_, i) => {
+      const angle = i * 137.508 * Math.PI / 180;
+      const dist  = 32 + i * 8.5;
+      if (dist > 198) return null;
+      return {
+        id: i,
+        x:  rnd(CX + dist * Math.cos(angle)),
+        y:  rnd(CX + dist * Math.sin(angle)),
+        r:  1 + (i % 3) * 0.5,
+        a:  0.18 + (i % 4) * 0.09,
+      };
+    }).filter(Boolean) as {id:number;x:number;y:number;r:number;a:number}[]
+  , []);
+
+  // 3軌道リング定義
+  const orbits = [
+    { ry: 55,  rotG: 0,    col: hex,      dur: "20s", ccw: false, pts: [0, 180]      },
+    { ry: 55,  rotG: 65,   col: "#ff1a4e",dur: "13s", ccw: true,  pts: [0, 120, 240] },
+    { ry: 55,  rotG: -58,  col: "#00ff88",dur: "24s", ccw: false, pts: [60, 240]     },
+  ];
+  const ORBIT_RX = 168;
+
+  // 放射ライン (12本)
+  const spokes = useMemo(() =>
+    Array.from({ length: 12 }, (_, i) => {
+      const rad = i * 30 * Math.PI / 180;
+      return {
+        x1: rnd(CX + 38  * Math.cos(rad)),
+        y1: rnd(CX + 38  * Math.sin(rad)),
+        x2: rnd(CX + 200 * Math.cos(rad)),
+        y2: rnd(CX + 200 * Math.sin(rad)),
+      };
+    })
+  , []);
+
+  return (
+    <div className="relative flex items-center justify-center select-none" style={{ width: SIZE, height: SIZE }}>
+
+      {/* ── 背景ネオングロー ── */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: `radial-gradient(circle at 50% 50%, ${rgba}0.22) 0%, ${rgba}0.08) 30%, ${rgba}0.02) 60%, transparent 80%)`,
+        filter: `blur(${isActive ? 24 : 14}px)`,
+      }}/>
+      <div className="absolute inset-0 avl-grid-bg opacity-10 pointer-events-none"/>
+
+      {/* ── スキャンスウィープ（メイン）── */}
+      <div className="absolute overflow-hidden rounded-full pointer-events-none"
+        style={{ width: SIZE-16, height: SIZE-16, left: 8, top: 8,
+          animation: `avl-spin-cw-med ${isActive ? (thinking ? "2.8s" : "4.5s") : "12s"} linear infinite` }}>
+        <div className="absolute inset-0" style={{
+          background: `conic-gradient(from 0deg, transparent 0deg, ${rgba}0.4) 16deg, ${rgba}0.15) 38deg, transparent 40deg)`,
+        }}/>
+      </div>
+
+      {/* ── 逆回転スウィープ（アクティブ時）── */}
+      {isActive && (
+        <div className="absolute overflow-hidden rounded-full pointer-events-none"
+          style={{ width: SIZE-100, height: SIZE-100, left: 50, top: 50,
+            animation: `avl-spin-ccw ${thinking ? "3.5s" : "8s"} linear infinite` }}>
+          <div className="absolute inset-0" style={{
+            background: `conic-gradient(from 0deg, transparent 0deg, rgba(255,255,255,0.06) 8deg, transparent 10deg)`,
+          }}/>
+        </div>
+      )}
+
+      {/* ── メイン SVG ── */}
+      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="absolute inset-0" overflow="visible">
+        <defs>
+          <filter id="jv-sm" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="2.5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="jv-md" x="-120%" y="-120%" width="340%" height="340%">
+            <feGaussianBlur stdDeviation="5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="jv-lg" x="-200%" y="-200%" width="500%" height="500%">
+            <feGaussianBlur stdDeviation="10" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <radialGradient id="jv-core" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stopColor={hex} stopOpacity={isActive ? 1 : 0.7}/>
+            <stop offset="25%"  stopColor={hex} stopOpacity="0.4"/>
+            <stop offset="60%"  stopColor={hex} stopOpacity="0.1"/>
+            <stop offset="100%" stopColor={hex} stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="jv-sphere" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stopColor={hex} stopOpacity="0.12"/>
+            <stop offset="70%"  stopColor={hex} stopOpacity="0.04"/>
+            <stop offset="100%" stopColor={hex} stopOpacity="0"/>
+          </radialGradient>
+        </defs>
+
+        {/* 外側球体グロー */}
+        <circle cx={CX} cy={CX} r={228} fill="url(#jv-sphere)"/>
+        <circle cx={CX} cy={CX} r={228} fill="none" stroke={`${rgba}0.10)`} strokeWidth="1.5"/>
+
+        {/* 外周72ティック */}
+        {ticks.map((t, i) => (
+          <line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
+            stroke={`${rgba}${t.main ? 0.6 : 0.18})`}
+            strokeWidth={t.main ? 2 : 0.7}
+            filter={t.main ? "url(#jv-sm)" : undefined}
+          />
+        ))}
+
+        {/* 同心円 5本 */}
+        {[192, 155, 118, 82, 52].map((r, i) => (
+          <circle key={r} cx={CX} cy={CX} r={r}
+            fill="none"
+            stroke={`${rgba}${0.06 + i * 0.02})`}
+            strokeWidth={i === 0 ? 1.2 : 0.5}
+            strokeDasharray={i === 1 ? "4 8" : i === 3 ? "1 6" : undefined}
+          />
+        ))}
+
+        {/* 放射スポーク */}
+        {spokes.map((s, i) => (
+          <line key={i} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
+            stroke={`${rgba}0.07)`} strokeWidth="0.5"
+          />
+        ))}
+
+        {/* ニューラルネット接続線 */}
+        {nodes.map((n, i) =>
+          nodes.slice(i + 1, i + 5).map((m, j) => {
+            const d = Math.hypot(n.x - m.x, n.y - m.y);
+            if (d > 85) return null;
+            return (
+              <line key={`${i}-${j}`} x1={n.x} y1={n.y} x2={m.x} y2={m.y}
+                stroke={`${rgba}${Math.max(0.04, 0.13 * (1 - d/85))})`}
+                strokeWidth="0.5"
+              />
+            );
+          })
+        )}
+        {/* ニューラルノード */}
+        {nodes.map(n => (
+          <circle key={n.id} cx={n.x} cy={n.y} r={n.r}
+            fill={hex} opacity={n.a}
+          />
+        ))}
+
+        {/* 3軌道リング + アニメーション粒子 */}
+        {orbits.map((orb, oi) => (
+          <g key={oi} style={{ transformOrigin:`${CX}px ${CX}px`, transform:`rotate(${orb.rotG}deg)` }}>
+            <ellipse cx={CX} cy={CX} rx={ORBIT_RX} ry={orb.ry}
+              fill="none" stroke={orb.col} strokeWidth="1" opacity="0.45"
+              strokeDasharray="3 10" filter="url(#jv-sm)"
+            />
+            {orb.pts.map((offset, pi) => (
+              <g key={pi}>
+                {/* 粒子本体 */}
+                <circle cx={CX + ORBIT_RX} cy={CX} r={pi === 0 ? 4 : 3}
+                  fill={orb.col} filter="url(#jv-md)" opacity="0.95">
+                  <animateTransform attributeName="transform" type="rotate"
+                    from={`${offset} ${CX} ${CX}`}
+                    to={`${offset + (orb.ccw ? -360 : 360)} ${CX} ${CX}`}
+                    dur={orb.dur} repeatCount="indefinite"
+                  />
+                </circle>
+                {/* ハロー */}
+                <circle cx={CX + ORBIT_RX} cy={CX} r={pi === 0 ? 9 : 7}
+                  fill="none" stroke={orb.col} strokeWidth="0.8" opacity="0.25">
+                  <animateTransform attributeName="transform" type="rotate"
+                    from={`${offset} ${CX} ${CX}`}
+                    to={`${offset + (orb.ccw ? -360 : 360)} ${CX} ${CX}`}
+                    dur={orb.dur} repeatCount="indefinite"
+                  />
+                </circle>
+              </g>
+            ))}
+          </g>
+        ))}
+
+        {/* アクティブ時パルス波 */}
+        {isActive && [0, 1, 2].map(i => (
+          <circle key={i} cx={CX} cy={CX} r={52}
+            fill="none" stroke={`${rgba}0.45)`} strokeWidth="1.5"
+            style={{
+              animation: `avl-pulse-ring-out ${2.2 + i * 0.4}s ease-out ${i * 0.65}s infinite`,
+            }}
+          />
+        ))}
+
+        {/* コアグロー */}
+        <circle cx={CX} cy={CX} r={70} fill="url(#jv-core)"/>
+
+        {/* センターリング群 */}
+        <circle cx={CX} cy={CX} r={46} fill="none" stroke={`${rgba}0.3)`} strokeWidth="1" filter="url(#jv-sm)"/>
+        <circle cx={CX} cy={CX} r={32} fill="none" stroke={`${rgba}0.5)`} strokeWidth="1.2" filter="url(#jv-sm)"/>
+        <circle cx={CX} cy={CX} r={20} fill="none" stroke={`${rgba}0.7)`} strokeWidth="1.5" filter="url(#jv-md)"/>
+
+        {/* 内側高速回転スポーク */}
+        <g style={{ transformOrigin:`${CX}px ${CX}px`, animation:"avl-spin-cw-fast 7s linear infinite" }}>
+          {[0,60,120,180,240,300].map(deg => {
+            const rad = deg * Math.PI / 180;
+            return (
+              <line key={deg}
+                x1={rnd(CX + 22 * Math.cos(rad))} y1={rnd(CX + 22 * Math.sin(rad))}
+                x2={rnd(CX + 30 * Math.cos(rad))} y2={rnd(CX + 30 * Math.sin(rad))}
+                stroke={hex} strokeWidth="2.5" opacity="0.7"
+              />
+            );
+          })}
+        </g>
+        {/* 逆回転リング（外側）*/}
+        <g style={{ transformOrigin:`${CX}px ${CX}px`, animation:"avl-spin-ccw-slow 15s linear infinite" }}>
+          {[0,45,90,135,180,225,270,315].map(deg => {
+            const rad = deg * Math.PI / 180;
+            const x = rnd(CX + 46 * Math.cos(rad));
+            const y = rnd(CX + 46 * Math.sin(rad));
+            return <circle key={deg} cx={x} cy={y} r="2" fill={hex} opacity="0.5" filter="url(#jv-sm)"/>;
+          })}
+        </g>
+
+        {/* センタードット */}
+        <circle cx={CX} cy={CX} r={isActive ? 9 : 6} fill={hex} filter="url(#jv-lg)"/>
+        <circle cx={CX} cy={CX} r={isActive ? 4 : 3} fill="white" opacity="0.95"/>
+
+        {/* コンパスラベル */}
+        {[{l:"N",x:CX,y:16},{l:"E",x:SIZE-15,y:CX+4},{l:"S",x:CX,y:SIZE-11},{l:"W",x:15,y:CX+4}].map(({l,x,y})=>(
+          <text key={l} x={x} y={y} textAnchor="middle"
+            fill={`${rgba}0.45)`} fontSize="9" fontFamily="monospace" filter="url(#jv-sm)">
+            {l}
+          </text>
+        ))}
+
+        {/* HUD コーナーブラケット */}
+        {([
+          `M 34,54 L 34,34 L 54,34`,
+          `M ${SIZE-54},34 L ${SIZE-34},34 L ${SIZE-34},54`,
+          `M 34,${SIZE-54} L 34,${SIZE-34} L 54,${SIZE-34}`,
+          `M ${SIZE-54},${SIZE-34} L ${SIZE-34},${SIZE-34} L ${SIZE-34},${SIZE-54}`,
+        ] as string[]).map((d, i) => (
+          <path key={i} d={d} fill="none" stroke={`${rgba}0.45)`} strokeWidth="1.8" filter="url(#jv-sm)"/>
+        ))}
+
+        {/* HUD データラベル */}
+        <text x={42} y={29} fill={`${rgba}0.35)`} fontSize="6.5" fontFamily="monospace">SYS:ONLINE</text>
+        <text x={SIZE-42} y={29} textAnchor="end" fill={`${rgba}0.35)`} fontSize="6.5" fontFamily="monospace">AVL.v3.11</text>
+        <text x={42} y={SIZE-20} fill={`${rgba}0.35)`} fontSize="6.5" fontFamily="monospace">MT5:LIVE</text>
+        <text x={SIZE-42} y={SIZE-20} textAnchor="end" fill={`${rgba}0.35)`} fontSize="6.5" fontFamily="monospace">EURUSD</text>
+
+        {/* 45°ノード（交差点マーカー）*/}
+        {[45,135,225,315].map((deg, i) => {
+          const rad = deg * Math.PI / 180;
+          const x = rnd(CX + 155 * Math.cos(rad));
+          const y = rnd(CX + 155 * Math.sin(rad));
+          return (
+            <g key={i}>
+              <circle cx={x} cy={y} r={5} fill="none" stroke={hex} strokeWidth="1.2" opacity="0.5" filter="url(#jv-sm)"/>
+              <circle cx={x} cy={y} r={2} fill={hex} opacity="0.8" filter="url(#jv-sm)"/>
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* ── 外側パルスリング（active）── */}
+      {isActive && (
+        <div className="absolute rounded-full pointer-events-none"
+          style={{
+            width: 130, height: 130, left: CX-65, top: CX-65,
+            border: `1px solid ${rgba}0.35)`,
+            boxShadow: `0 0 20px ${hex}44, inset 0 0 15px ${hex}22`,
+            animation: "avl-ping-outer 2.8s ease-out infinite",
+          }}
+        />
+      )}
+
+      {/* ── 中心テキスト ── */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <p className="font-black font-mono"
+          style={{
+            fontSize: 18, letterSpacing: "0.55em",
+            color: hex,
+            textShadow: `0 0 12px ${hex}, 0 0 28px ${hex}bb, 0 0 55px ${hex}66, 0 0 100px ${hex}33`,
+          }}>
+          AVL AI
+        </p>
+        <p className="font-mono mt-1"
+          style={{
+            fontSize: 7.5, letterSpacing: "0.28em",
+            color: `${rgba}0.85)`,
+            textShadow: `0 0 8px ${hex}88`,
+          }}>
+          {statusText}
+        </p>
+
+        {/* 音声ウェーブバー */}
+        {isActive && (
+          <div className="flex gap-0.5 mt-3 items-end">
+            {[2,4,6,9,13,16,13,9,6,4,2].map((h, i) => (
+              <div key={i} className="w-1 rounded-full"
+                style={{
+                  height: h * 2.2,
+                  backgroundColor: hex,
+                  boxShadow: `0 0 6px ${hex}, 0 0 12px ${hex}88`,
+                  animation: `avl-wave-bar ${0.65 + i * 0.07}s ease-in-out ${i * 0.07}s infinite alternate`,
+                  transformOrigin: "bottom",
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =================================================================
+// スパークライン（小型折れ線 SVG）
+// =================================================================
+function Sparkline({ data, color = "#22c55e", height = 28 }: {
+  data: number[]; color?: string; height?: number;
+}) {
+  if (data.length < 2) return null;
+  const w = 100, h = height;
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * h;
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <svg viewBox={`0 0 100 ${h}`} className="w-full" style={{ height }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+      <polyline points={`0,${h} ${pts} 100,${h}`} fill={color} fillOpacity="0.08" stroke="none" />
+    </svg>
+  );
+}
+
+// =================================================================
+// 左パネル: アカウント・ポジション
+// =================================================================
+function AccountPanel({ account, positions, logs }: {
+  account: MarketAccount | null;
+  positions: MarketPosition[];
+  logs: { id: string; ts: number; text: string; type: string }[];
+}) {
+  const totalPL = positions.reduce((s, p) => s + p.profit, 0);
+
+  // セッション中の equity 履歴（最大40点）
+  const equityHistRef = useRef<number[]>([]);
+  useEffect(() => {
+    if (account) {
+      equityHistRef.current = [...equityHistRef.current.slice(-39), account.equity];
+    }
+  }, [account?.equity]);
+  const equityHist = equityHistRef.current;
+
+  const plPct = account ? (totalPL / Math.max(1, account.balance)) * 100 : 0;
+
+  return (
+    <div className="flex flex-col gap-1.5 w-56 shrink-0 overflow-y-auto p-2 avl-grid-bg">
+
+      {/* Account Overview */}
+      <div className="border border-cyan-900/20 bg-[#02040a] p-3 relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
+        <div className="text-[7.5px] text-cyan-500/50 font-mono tracking-[0.2em] mb-2.5 flex items-center gap-1.5">
+          <Activity size={8} className="text-cyan-500/50" />
+          ACCOUNT OVERVIEW
+        </div>
+        {account ? (
+          <div className="space-y-2">
+            {/* Balance / Equity */}
+            <div className="space-y-1">
+              <div className="flex justify-between items-baseline">
+                <span className="text-[7px] text-gray-600">BALANCE</span>
+                <span className="text-[10px] text-white font-semibold tabular-nums">
+                  {account.balance.toLocaleString()} <span className="text-[7px] text-gray-600">{account.currency}</span>
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline">
+                <span className="text-[7px] text-gray-600">EQUITY</span>
+                <span className={cn("text-[10px] font-semibold tabular-nums", account.equity >= account.balance ? "text-green-400" : "text-red-400")}>
+                  {account.equity.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {/* Equity Sparkline */}
+            {equityHist.length >= 2 && (
+              <div className="border border-[#0d1520] p-1.5">
+                <div className="text-[6.5px] text-gray-700 font-mono mb-1">EQUITY CURVE</div>
+                <Sparkline data={equityHist} color={account.equity >= account.balance ? "#22c55e" : "#ef4444"} height={24} />
+              </div>
+            )}
+
+            {/* P&L バー */}
+            <div>
+              <div className="flex justify-between text-[7px] font-mono mb-1">
+                <span className="text-gray-700">UNREALIZED P&L</span>
+                <span className={cn("font-semibold", totalPL >= 0 ? "text-green-400" : "text-red-400")}>
+                  {totalPL >= 0 ? "+" : ""}{totalPL.toFixed(2)}
+                </span>
+              </div>
+              <div className="h-0.5 w-full bg-[#0d1520] relative overflow-hidden">
+                <div className={cn("h-full transition-all duration-500", totalPL >= 0 ? "bg-green-500" : "bg-red-500")}
+                  style={{ width: `${Math.min(100, Math.abs(plPct) * 50)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* グリッドメトリクス */}
+            <div className="grid grid-cols-2 gap-1">
+              {[
+                { label: "FREE MG", value: account.freeMargin.toFixed(0) },
+                { label: "MG LEVEL", value: account.marginLevel > 0 ? account.marginLevel.toFixed(0) + "%" : "—" },
+                { label: "LEVERAGE", value: "1:" + account.leverage },
+                { label: "BROKER", value: account.broker.slice(0, 8) },
+              ].map(({ label, value }) => (
+                <div key={label} className="border border-[#0d1520] px-1.5 py-1">
+                  <div className="text-[6.5px] text-gray-700 font-mono">{label}</div>
+                  <div className="text-[8.5px] text-gray-300 font-mono">{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center py-3 gap-1">
+            <WifiOff size={14} className="text-gray-700" />
+            <p className="text-[8px] text-gray-700 font-mono">MT5 未接続</p>
+          </div>
+        )}
+      </div>
+
+      {/* Open Positions */}
+      <div className="border border-cyan-900/20 bg-[#02040a] p-3 flex-1 min-h-0">
+        <div className="text-[7.5px] text-cyan-500/50 font-mono tracking-[0.2em] mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Briefcase size={8} className="text-cyan-500/50" />
+            POSITIONS
+          </div>
+          <span className={cn("text-[7px] tabular-nums", positions.length > 0 ? "text-green-400" : "text-gray-700")}>
+            {positions.length} OPEN
+          </span>
+        </div>
+        {positions.length === 0 ? (
+          <p className="text-[7.5px] text-gray-700 font-mono py-2 text-center">— NO OPEN POSITIONS —</p>
+        ) : (
+          <div className="space-y-1.5 overflow-y-auto max-h-40">
+            {positions.map((pos) => (
+              <div key={pos.ticket} className={cn(
+                "relative border p-2 overflow-hidden",
+                pos.profit >= 0 ? "border-green-900/30 bg-green-950/10" : "border-red-900/30 bg-red-950/10"
+              )}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1">
+                    {pos.type===0
+                      ? <TrendingUp size={9} className="text-green-400"/>
+                      : <TrendingDown size={9} className="text-red-400"/>}
+                    <span className={cn("text-[8px] font-mono font-bold", pos.type===0 ? "text-green-400" : "text-red-400")}>
+                      {pos.type===0 ? "BUY" : "SELL"}
+                    </span>
+                    <span className="text-[7px] text-gray-500 font-mono">{pos.volume}L</span>
+                  </div>
+                  <span className={cn("text-[9px] font-mono font-semibold tabular-nums", pos.profit>=0 ? "text-green-400" : "text-red-400")}>
+                    {pos.profit>=0?"+":""}{pos.profit.toFixed(2)}
+                  </span>
+                </div>
+                <div className="text-[6.5px] text-gray-600 font-mono tabular-nums">
+                  {pos.openPrice.toFixed(5)} → {pos.currentPrice.toFixed(5)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* System Log */}
+      <div className="border border-cyan-900/20 bg-[#02040a] p-2.5 relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/20 to-transparent" />
+        <div className="text-[7.5px] text-purple-500/50 font-mono tracking-[0.2em] mb-2 flex items-center gap-1.5">
+          <ScrollText size={8} className="text-purple-500/50" />
+          SYSTEM LOG
+        </div>
+        <div className="space-y-0.5 max-h-24 overflow-y-auto">
+          {logs.length === 0 && <p className="text-[7px] text-gray-800 font-mono text-center py-1">STANDBY</p>}
+          {logs.slice().reverse().slice(0, 20).map((log) => (
+            <div key={log.id} className="flex items-start gap-1.5 avl-slide-in">
+              <div className={cn("w-1 h-1 rounded-full shrink-0 mt-1",
+                log.type==="ok"     ? "bg-green-500" :
+                log.type==="warn"   ? "bg-yellow-500" :
+                log.type==="ai"     ? "bg-purple-400" :
+                log.type==="signal" ? "bg-cyan-400" :
+                log.type==="order"  ? "bg-orange-400" :
+                "bg-gray-700"
+              )} />
+              <p className="text-[6.5px] text-gray-600 font-mono leading-tight truncate">{log.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// =================================================================
+// マークダウン表示
+// =================================================================
+function MessageContent({ content }: { content: string }) {
+  const clean = stripOrder(content);
+  return (
+    <div className="space-y-0.5">
+      {clean.split("\n").map((line, i) => {
+        if (line.startsWith("## "))  return <p key={i} className="text-cyan-300 font-semibold text-[11px] mt-1.5">{line.slice(3)}</p>;
+        if (line.startsWith("### ")) return <p key={i} className="text-blue-300 text-[10px] mt-1">{line.slice(4)}</p>;
+        if (/^\*\*(.+)\*\*$/.test(line)) return <p key={i} className="text-white font-semibold text-[11px]">{line.replace(/\*\*/g,"")}</p>;
+        if (!line.trim()) return <div key={i} className="h-0.5" />;
+        return <p key={i} className="text-gray-300 text-[11px] leading-relaxed">{line}</p>;
+      })}
+    </div>
+  );
+}
+
+// =================================================================
+// 注文確認カード
+// =================================================================
+function OrderCard({ p, onConfirm, onCancel }: { p: OrderProposal; onConfirm:()=>void; onCancel:()=>void }) {
+  const isBuy = p.direction === "BUY";
+  return (
+    <div className={cn("border mx-4 p-3 my-1", isBuy ? "border-green-700/50 bg-green-950/20" : "border-red-700/50 bg-red-950/20")}>
+      <div className="flex items-center gap-2 mb-2">
+        <span className={cn("text-[10px] font-mono font-bold px-2 py-0.5 border", isBuy ? "border-green-600/50 text-green-300 bg-green-900/30" : "border-red-600/50 text-red-300 bg-red-900/30")}>
+          {p.direction}
+        </span>
+        <span className="text-[9px] text-cyan-400 font-mono">{p.symbol}</span>
+        <span className="ml-auto text-[8px] text-gray-600 font-mono">ORDER CONFIRMATION</span>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5 mb-2">
+        {[["ENTRY",p.entry.toFixed(5),"text-white"],["SL",p.sl.toFixed(5),"text-red-400"],["TP",p.tp.toFixed(5),"text-green-400"]].map(([l,v,c])=>(
+          <div key={l} className="border border-[#0d1520] p-1 text-center">
+            <div className="text-[7px] text-gray-700 font-mono">{l}</div>
+            <div className={cn("text-[9px] font-mono font-semibold",c)}>{v}</div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-3 text-[8px] font-mono mb-2">
+        <span className="text-gray-600">RR: <span className="text-cyan-400">{p.rr}</span></span>
+        <span className="text-gray-600">Confidence: <span className="text-yellow-400">{p.confidence}%</span></span>
+      </div>
+      <p className="text-[8px] text-gray-500 font-mono mb-2 leading-snug">{p.reason}</p>
+      <div className="flex gap-1.5">
+        <button onClick={onConfirm} className={cn("flex-1 py-1.5 text-[9px] font-mono border transition-all", isBuy ? "border-green-600/50 text-green-300 hover:bg-green-900/30" : "border-red-600/50 text-red-300 hover:bg-red-900/30")}>
+          ✓ 注文実行
+        </button>
+        <button onClick={onCancel} className="flex-1 py-1.5 text-[9px] font-mono border border-[#0d1520] text-gray-500 hover:text-gray-300 transition-all">
+          ✗ キャンセル
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// =================================================================
+// Log panels — isolated memo components so aiLogs updates
+// don't re-render the entire DashboardOS tree
+// =================================================================
+const SystemLogPanel = memo(function SystemLogPanel() {
+  const aiLogs = useAIOSStore(s => s.aiLogs);
+  return (
+    <div className="avl-glass avl-top-accent relative overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/20 to-transparent"/>
+      <div className="px-3 py-2.5">
+        <p className="text-[8px] text-purple-400/50 font-mono tracking-[0.2em] mb-2 flex items-center gap-1.5">
+          <ScrollText size={8}/> SYSTEM LOG
+        </p>
+        <div className="space-y-1 max-h-36 overflow-y-auto">
+          {aiLogs.slice().reverse().slice(0,15).map(log => (
+            <div key={log.id} className="flex items-start gap-2 avl-slide-in">
+              <div className={cn("w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
+                log.type==="ok"?"bg-green-500": log.type==="warn"?"bg-yellow-500":
+                log.type==="ai"?"bg-purple-400": log.type==="signal"?"bg-cyan-400":
+                log.type==="order"?"bg-orange-400":"bg-gray-700"
+              )}/>
+              <div>
+                <span className="text-[7px] text-gray-700 font-mono tabular-nums">
+                  {new Date(log.ts).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+                </span>
+                <p className="text-[7.5px] text-gray-500 font-mono leading-snug">{log.text}</p>
+              </div>
+            </div>
+          ))}
+          {aiLogs.length === 0 && <p className="text-[7px] text-gray-800 font-mono">STANDBY</p>}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const AIActivityPanel = memo(function AIActivityPanel() {
+  const aiLogs = useAIOSStore(s => s.aiLogs);
+  return (
+    <div className="avl-glass avl-top-accent relative overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/25 to-transparent"/>
+      <div className="px-3 py-2.5">
+        <p className="text-[8px] text-purple-400/60 font-mono tracking-[0.2em] mb-2.5 flex items-center gap-1.5">
+          <Activity size={8}/> AI ACTIVITY
+        </p>
+        <div className="space-y-1.5 max-h-44 overflow-y-auto">
+          {aiLogs.length===0 && <p className="text-[7.5px] text-gray-800 font-mono text-center py-2">NO ACTIVITY</p>}
+          {[...aiLogs].reverse().slice(0,20).map(log => (
+            <div key={log.id} className="flex items-start gap-2 avl-slide-in">
+              <div className={cn("w-1.5 h-1.5 rounded-full shrink-0 mt-1",
+                log.type==="signal"?"bg-cyan-400":log.type==="order"?"bg-orange-400":
+                log.type==="ok"?"bg-green-500":log.type==="warn"?"bg-yellow-500":
+                log.type==="ai"?"bg-purple-400":"bg-gray-700"
+              )}/>
+              <div>
+                <span className="text-[7px] text-gray-700 font-mono tabular-nums">
+                  {new Date(log.ts).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+                </span>
+                <p className="text-[7.5px] text-gray-500 font-mono leading-snug">{log.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// =================================================================
+// Agent Flow — horizontal chain with live state visualization
+// =================================================================
+const AGENT_ICONS: Record<string, typeof Brain> = {
+  market: Activity, analysis: Brain, decision: Zap, order: Shield, voice: Volume2,
+};
+
+function AgentFlow({ agents }: { agents: AgentState[] }) {
+  return (
+    <div className="flex items-center w-full gap-0">
+      {agents.map((agent, idx) => {
+        const Icon     = AGENT_ICONS[agent.id] ?? Brain;
+        const isThink  = agent.status === "thinking";
+        const isActive = agent.status === "active";
+        const isError  = agent.status === "error";
+        const isLit    = isThink || isActive;
+        const col      = isThink ? "#00e5ff" : isActive ? "#00ff88" : isError ? "#ef4444" : "#1e2d3a";
+        return (
+          <div key={agent.id} className="flex items-center flex-1">
+            {idx > 0 && (
+              <div className="h-px flex-1 transition-all duration-500 min-w-[6px]"
+                style={{background: isLit ? `${col}35` : "#0d1520"}}/>
+            )}
+            <div className="flex flex-col items-center gap-0.5 px-2 py-1 shrink-0 relative transition-all duration-300 rounded-sm"
+              style={{
+                background: isLit ? `${col}07` : "transparent",
+                border: `1px solid ${isLit ? col + "20" : "transparent"}`,
+              }}>
+              <div className="flex items-center gap-1">
+                <div className={cn("w-1.5 h-1.5 rounded-full transition-all duration-300", isThink && "animate-pulse")}
+                  style={{backgroundColor: col, boxShadow: isLit ? `0 0 5px ${col}` : "none"}}/>
+                <Icon size={9} style={{color: isLit ? col : "#2a3a4a"}}/>
+              </div>
+              <span className="text-[6px] font-mono tracking-wider transition-colors"
+                style={{color: isLit ? col : "#283545"}}>
+                {agent.name.replace(" Agent","").toUpperCase()}
+              </span>
+              {isThink && (
+                <div className="absolute inset-0 rounded-sm overflow-hidden pointer-events-none">
+                  <div className="absolute inset-x-0 h-px top-0"
+                    style={{
+                      background:`linear-gradient(90deg,transparent,${col},transparent)`,
+                      animation:"avl-scan-h 1.2s linear infinite",
+                    }}/>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// =================================================================
+// AI State Meta — single source of truth for state colors/labels
+// =================================================================
+const AI_STATE_META: Record<string, {color: string; label: string}> = {
+  standby:    { color: "#00e5ff", label: "STANDBY"     },
+  scanning:   { color: "#00ff88", label: "SCANNING"    },
+  analyzing:  { color: "#a855f7", label: "ANALYZING"   },
+  reasoning:  { color: "#f59e0b", label: "REASONING"   },
+  risk_check: { color: "#f97316", label: "RISK CHECK"  },
+  listening:  { color: "#00e5ff", label: "LISTENING"   },
+  speaking:   { color: "#7c3aed", label: "AI SPEAKING" },
+};
+
+// =================================================================
+// Voice Telop — AI speaking subtitle
+// =================================================================
+const VoiceTelop = memo(function VoiceTelop({
+  text, status, neonHex,
+}: { text: string; status: string; neonHex: string }) {
+  const [displayed, setDisplayed] = useState("");
+  const [visible,   setVisible]   = useState(false);
+  const idxRef  = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!text) {
+      // Fade out when text clears
+      const t = setTimeout(() => { setVisible(false); setDisplayed(""); }, 600);
+      return () => clearTimeout(t);
+    }
+    // New text: reset and typewrite character by character
+    setVisible(true);
+    setDisplayed("");
+    idxRef.current = 0;
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    const MAX_DISPLAY = 80; // characters to show at once (scrolling window)
+    const tick = () => {
+      if (idxRef.current >= text.length) return;
+      idxRef.current++;
+      const slice = text.slice(Math.max(0, idxRef.current - MAX_DISPLAY), idxRef.current);
+      setDisplayed(slice);
+      timerRef.current = setTimeout(tick, 28); // ~35 chars/sec ≈ natural speech pace
+    };
+    timerRef.current = setTimeout(tick, 40);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [text]);
+
+  const isSpeaking = status === "speaking" || status === "processing";
+
+  return (
+    <div
+      className="flex items-center justify-center px-6 transition-all duration-500"
+      style={{ minHeight: 36, opacity: visible ? 1 : 0 }}
+    >
+      {visible && (
+        <p
+          className="text-[9px] font-mono text-center leading-relaxed tracking-wide"
+          style={{
+            color: neonHex,
+            textShadow: `0 0 10px ${neonHex}70, 0 0 20px ${neonHex}30`,
+            maxWidth: 340,
+          }}
+        >
+          {displayed}
+          {isSpeaking && (
+            <span
+              className="inline-block w-[6px] h-[9px] ml-0.5 align-middle rounded-sm"
+              style={{
+                backgroundColor: neonHex,
+                opacity: 0.9,
+                animation: "avl-wave-bar 0.5s ease-in-out infinite alternate",
+              }}
+            />
+          )}
+        </p>
+      )}
+    </div>
+  );
+});
+
+// =================================================================
+// メインコンポーネント
+// =================================================================
+export function DashboardOS() {
+  const { status, connectedAt } = useConnectionStore();
+  const { activeSymbol, watchlist, setActiveSymbol } = usePriceStore();
+  const { indicators, setIndicators, setIndicatorsBatch } = useIndicatorStore();
+  const { setSymbols, setOrders, symbolList } = useMarketStore();
+  // Use selectors — prevent re-render when unrelated store fields (aiLogs) change
+  const mode         = useAIOSStore(s => s.mode);
+  const agents       = useAIOSStore(s => s.agents);
+  const setMode      = useAIOSStore(s => s.setMode);
+  const setAgentStatus = useAIOSStore(s => s.setAgentStatus);
+  const addLog       = useAIOSStore(s => s.addLog);
+  // aiLogs NOT subscribed here — rendered by isolated memo components below
+  const { settings: osSettings } = useSettingsStore();
+
+  const [messages, setMessages]     = useState<Message[]>([{
+    id:"boot",role:"system",content:"AVL AI TRADING OS v3.0 起動完了\nシステム初期化... ALL SYSTEMS ONLINE",ts:Date.now()
+  }]);
+  const [input, setInput]           = useState("");
+  const [thinking, setThinking]     = useState(false);  // text chat AI only
+  const [voiceThinking, setVoiceThinking] = useState(false); // voice AI only
+  const [error, setError]           = useState<string|null>(null);
+  const [orderProposal, setOrderProposal] = useState<OrderProposal|null>(null);
+  const [positions, setPositions]   = useState<MarketPosition[]>([]);
+  const [account, setAccount]       = useState<MarketAccount|null>(null);
+  const [time, setTime]             = useState(new Date());
+  const [showChat, setShowChat]     = useState(false);
+
+  const scrollRef   = useRef<HTMLDivElement>(null);
+  const inputRef    = useRef<HTMLTextAreaElement>(null);
+  const isConnected = status === "connected";
+  const symInd      = indicators[activeSymbol.toUpperCase()];
+
+  // Stable callback refs — prevent useRealtimeAgent from re-subscribing on every render
+  const voiceCallbacks = useRef({
+    onTranscript: (text: string, role: "user" | "assistant") => {
+      setMessages(prev => [...prev, { id: `v_${Date.now()}`, role, content: text, ts: Date.now() }]);
+    },
+    onOrderProposal: (p: Parameters<typeof setOrderProposal>[0]) => {
+      setOrderProposal(p);
+    },
+    onAgentThinking: (t: boolean) => setVoiceThinking(t),
+  });
+
+  // Voice Agent (useRealtimeAgent)
+  const voice = useRealtimeAgent(voiceCallbacks.current);
+
+  // Monitor フック
+  const monitor = useMonitor();
+
+  // Multi-Agent パイプライン
+  const pipeline = useAgentPipeline();
+
+
+  // 時計
+  useEffect(() => { const id = setInterval(()=>setTime(new Date()),1000); return ()=>clearInterval(id); }, []);
+
+  // /api/mt5/live プロキシ経由でポーリング（CORS回避）
+  useEffect(() => {
+    const fetchLive = async () => {
+      try {
+        const res = await fetch("/api/mt5/live");
+        if (!res.ok) return;
+        const data = await res.json() as {
+          symbols: Array<{
+            symbol: string; bid: number; ask: number; spread: number;
+            digits?: number; point?: number; changePct?: number;
+            contractSize?: number; tickValue?: number; tickSize?: number;
+            high52?: number; low52?: number; prevClose?: number; time?: number;
+          }>;
+          account: unknown;
+          indicators: Array<{ symbol: string; [k: string]: unknown }>;
+        };
+
+        if (Array.isArray(data.symbols) && data.symbols.length > 0) {
+          setSymbols(data.symbols.map(s => ({
+            symbol:       s.symbol,
+            bid:          s.bid ?? 0,
+            ask:          s.ask ?? 0,
+            spread:       s.spread ?? 0,
+            changePct:    s.changePct ?? 0,
+            digits:       s.digits ?? 5,
+            point:        s.point ?? 0.00001,
+            contractSize: s.contractSize ?? 100000,
+            tickValue:    s.tickValue ?? 0,
+            tickSize:     s.tickSize ?? 0,
+            high52:       s.high52 ?? 0,
+            low52:        s.low52 ?? 0,
+            prevClose:    s.prevClose ?? 0,
+            time:         s.time ?? 0,
+          })));
+        }
+
+        if (data.account) setAccount(data.account as Parameters<typeof setAccount>[0]);
+
+        if (Array.isArray(data.indicators) && data.indicators.length > 0) {
+          // Single batch write — avoids N re-renders for N symbols
+          setIndicatorsBatch(
+            data.indicators.filter(ind => !!ind.symbol) as unknown as Parameters<typeof setIndicatorsBatch>[0]
+          );
+        }
+      } catch {}
+    };
+
+    fetchLive();
+    const id = setInterval(fetchLive, 10000); // 10s is enough; WS provides real-time updates
+    return () => clearInterval(id);
+  }, [setSymbols, setIndicatorsBatch]);
+
+  // スクロール
+  useEffect(() => { scrollRef.current?.scrollTo({top:scrollRef.current.scrollHeight,behavior:"smooth"}); }, [messages]);
+
+  // WebSocket サブスクリプション
+  useEffect(() => {
+    if (status !== "connected") return;
+    const client = ConnectionManager.instance.client;
+    if (!client) return;
+
+    // Throttle indicator store writes: accumulate WS messages, flush as a single batch every 300ms
+    let pendingIndicators: Parameters<typeof setIndicators>[0][] = [];
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const flushIndicators = () => {
+      if (pendingIndicators.length === 0) return;
+      setIndicatorsBatch(pendingIndicators);
+      pendingIndicators = [];
+      flushTimer = null;
+    };
+
+    const unsubs = [
+      client.onIndicators((ind) => {
+        pendingIndicators.push(ind);
+        if (!flushTimer) flushTimer = setTimeout(flushIndicators, 300);
+      }),
+      client.onPosition((pos) => { setPositions(pos); }),
+      client.onAccount((acc)  => { setAccount(acc); }),
+      client.onSymbols((syms) => {
+        setSymbols(syms);
+        setAgentStatus("market", "active", `Market Watch ${syms.length}シンボル受信`);
+      }),
+      client.onOrders((orders) => {
+        setOrders(orders);
+      }),
+    ];
+    addLog("MT5 データストリーム接続完了", "ok");
+    setAgentStatus("market", "active", "データ受信中");
+    return () => {
+      unsubs.forEach(u=>u());
+      if (flushTimer) clearTimeout(flushTimer);
+      setAgentStatus("market","idle");
+    };
+  }, [status, setIndicators, setIndicatorsBatch, addLog, setAgentStatus]);
+
+  useEffect(() => {
+    if (status==="connected") { addLog("MT5 Gateway 接続完了","ok"); }
+    else if (status==="disconnected") { addLog("MT5 Gateway 切断","warn"); setAgentStatus("market","idle"); }
+  }, [status, addLog, setAgentStatus]);
+
+  // パイプライン結果 → OrderProposal 変換
+  useEffect(() => {
+    if (!pipeline.result?.decision) return;
+    const d = pipeline.result.decision;
+    if (d.decision === "HOLD") {
+      setMessages(prev => [...prev, {
+        id: `pipe_${Date.now()}`, role: "assistant",
+        content: `[3-Agent 分析完了] HOLD — ${d.reason} (confidence: ${d.confidence}%)`,
+        ts: Date.now(),
+      }]);
+      return;
+    }
+    setOrderProposal({
+      direction:  d.decision as "BUY"|"SELL",
+      symbol:     pipeline.result.symbol,
+      entry:      d.entry,
+      sl:         d.sl,
+      tp:         d.tp,
+      rr:         d.rr,
+      confidence: d.confidence,
+      reason:     d.reason,
+    });
+    setShowChat(true);
+    setMessages(prev => [...prev, {
+      id: `pipe_${Date.now()}`, role: "assistant",
+      content: `[MarketAgent→AnalysisAgent→DecisionAgent]\n${d.reason}\n\nConfidence: ${d.confidence}%\n${d.warnings?.join(", ") ?? ""}`,
+      ts: Date.now(),
+    }]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipeline.result]);
+
+  // AI 送信
+  const sendMessage = useCallback(async (userText: string) => {
+    if (!userText.trim() || thinking) return;
+    setError(null);
+    setOrderProposal(null);
+    setShowChat(true);
+
+    const userMsg: Message = { id:`u_${Date.now()}`, role:"user", content:userText.trim(), ts:Date.now() };
+    const aid = `a_${Date.now()}`;
+    const assistantMsg: Message = { id:aid, role:"assistant", content:"", ts:Date.now() };
+
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
+    setInput("");
+    setThinking(true);
+    setAgentStatus("analysis","thinking","分析中...");
+    addLog(`[AI] "${userText.slice(0,30)}..." → 分析開始`, "ai");
+
+    const sym = activeSymbol; // 常に選択中のインストゥルメントを使用
+    const history = messages.filter(m=>m.role!=="system").slice(-8).map(m=>({role:m.role as "user"|"assistant",content:m.content}));
+
+    try {
+      const res = await fetch("/api/ai/chat", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ messages:[...history,{role:"user",content:userText}], symbol:sym }),
+      });
+      if (!res.ok || !res.body) throw new Error(`AI API エラー: ${res.status}`);
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let   buf     = "";
+      let   full    = "";
+
+      while (true) {
+        const {done,value} = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value,{stream:true});
+        const lines = buf.split("\n"); buf = lines.pop()??"";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const d = line.slice(6).trim();
+          if (d==="[DONE]") break;
+          try {
+            const {delta} = JSON.parse(d) as {delta:string};
+            full += delta;
+            setMessages(prev => prev.map(m => m.id===aid ? {...m,content:full} : m));
+          } catch {}
+        }
+      }
+
+      const proposal = parseOrder(full);
+      if (proposal) {
+        setOrderProposal(proposal);
+        setAgentStatus("decision","active",`${proposal.direction} ${proposal.symbol} 提案`);
+        addLog(`[SIGNAL] ${proposal.direction} ${proposal.symbol} Entry:${proposal.entry}`, "signal", proposal.symbol);
+      }
+      setAgentStatus("analysis","idle","分析完了");
+      addLog("[AI] 分析レポート生成完了", "ai");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      setMessages(prev => prev.filter(m=>m.id!==aid));
+      addLog(`[ERR] ${msg}`, "warn");
+      setAgentStatus("analysis","error",msg);
+    } finally {
+      setThinking(false);
+    }
+  }, [thinking, messages, activeSymbol, addLog, setAgentStatus]);
+
+  // 注文実行
+  const executeOrder = useCallback(async (p: OrderProposal) => {
+    addLog(`[ORDER] ${p.direction} ${p.symbol} @ ${p.entry} — 送信中`, "order");
+    setAgentStatus("order","thinking","注文送信中...");
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_MT5_GATEWAY_HTTP_URL}/orders/pending`,{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ type:p.direction, symbol:p.symbol, entry:p.entry, sl:p.sl, tp:p.tp, volume:0.01, source:"AVL_AI" }),
+      });
+      if (res.ok) {
+        addLog(`[ORDER] ✓ ${p.direction} ${p.symbol} 注文送信完了`, "ok");
+        setAgentStatus("order","idle","注文完了");
+      } else {
+        addLog(`[ORDER] 送信失敗: ${res.status}`, "warn");
+        setAgentStatus("order","error","注文失敗");
+      }
+    } catch {
+      addLog("[ORDER] Gateway 送信エラー", "warn");
+      setAgentStatus("order","error");
+    }
+    setOrderProposal(null);
+  }, [addLog, setAgentStatus]);
+
+  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); sendMessage(input); };
+  const handleKey    = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key==="Enter"&&!e.shiftKey) { e.preventDefault(); sendMessage(input); }
+  };
+
+  // モード別ネオンカラー
+  const modeNeon: Record<AIMode,{hex:string;label:string}> = {
+    analysis:   { hex:"#00e5ff", label:"ANALYSIS MODE"   },
+    monitor:    { hex:"#ffd700", label:"MONITOR MODE"    },
+    assisted:   { hex:"#00ff88", label:"ASSISTED MODE"   },
+    autonomous: { hex:"#ff1a4e", label:"AUTONOMOUS MODE" },
+  };
+  const { hex: neonHex, label: modeLabel2 } = modeNeon[mode];
+  const isVoiceActive = voice.status !== "idle";
+  const isActive      = thinking || voiceThinking || isVoiceActive;
+
+  const aiStatusText =
+    thinking        ? "THINKING..."   :
+    voice.status === "listening"  ? "LISTENING..."  :
+    voice.status === "speaking"   ? "RESPONDING..." :
+    voice.status === "connecting" ? "CONNECTING..." :
+    isConnected     ? "STANDBY"     : "OFFLINE";
+
+  // =================================================================
+  // AI Brain State — derived from actual agent/voice states
+  // =================================================================
+  const brainState = useMemo((): string => {
+    if (voice.status === "listening")  return "listening";
+    if (voice.status === "speaking")   return "speaking";
+    if (voice.status === "processing" || voiceThinking) return "analyzing";
+    if (thinking)         return "analyzing";
+    if (pipeline.running) return "analyzing";
+    const dec = agents.find(a => a.id === "decision");
+    const ana = agents.find(a => a.id === "analysis");
+    const mkt = agents.find(a => a.id === "market");
+    if (dec?.status === "thinking") return "reasoning";
+    if (ana?.status === "thinking") return "analyzing";
+    if (mkt?.status === "active" || mkt?.status === "thinking") return "scanning";
+    return "standby";
+  }, [voice.status, voiceThinking, thinking, pipeline.running, agents]);
+
+  const stateMeta  = AI_STATE_META[brainState] ?? AI_STATE_META["standby"];
+  const aiStateCol = stateMeta.color;
+  const aiStateLbl = stateMeta.label;
+
+  // =================================================================
+  // レンダリング — Full-Screen AI Command Environment v5.1
+  // =================================================================
+  return (
+    <div className="relative h-full w-full overflow-hidden" style={{background:"#020408"}}>
+
+      {/* ░░ LAYER 0 — HolographicAICore (Full-Screen AI Environment) ░░ */}
+      <div className="absolute inset-0 z-0">
+        <HolographicAICore mode={mode} isActive={isActive} isThinking={thinking || voiceThinking} voiceStatus={voice.status}/>
+      </div>
+
+      {/* ░░ LAYER 5 — ParticleTorus (orbital ring overlay) ░░ */}
+      <div className="absolute inset-0 z-[5] pointer-events-none">
+        <ParticleTorus voiceStatus={voice.status} isThinking={thinking || voiceThinking}/>
+      </div>
+
+      {/* ░░ LAYER 3 — Ambient effects ░░ */}
+      <div className="absolute inset-0 z-[3] pointer-events-none">
+        <div className="absolute left-0 right-0 h-px avl-scan-line"
+          style={{background:"linear-gradient(to right,transparent,rgba(0,255,136,0.08),transparent)"}}/>
+      </div>
+
+      {/* ░░ LAYER 20 — TOP STATUS BAR (Glass HUD) ░░ */}
+      <div className="absolute top-0 left-0 right-0 z-20 h-11 flex items-center px-5 gap-5"
+        style={{
+          background:"transparent",
+        }}>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex gap-0.5">
+            <div className="w-0.5 h-5 bg-cyan-400" style={{boxShadow:"0 0 6px #00e5ff"}}/>
+            <div className="w-0.5 h-5 bg-cyan-400/25"/>
+          </div>
+          <div>
+            <p className="text-[11px] font-black font-mono tracking-[0.2em]" style={{color:"#00e5ff",textShadow:"0 0 12px #00e5ff88"}}>AVL AI</p>
+            <p className="text-[6.5px] font-mono tracking-[0.15em] text-gray-600 -mt-0.5">COMMAND CENTER</p>
+          </div>
+        </div>
+        <div className="w-px h-4 bg-gray-800/60"/>
+        {[
+          {dot:isConnected?"bg-green-400":"bg-gray-700",glow:isConnected?"0 0 6px #22c55e":"none",label:"MT5 LIVE",active:isConnected},
+          {dot:"bg-green-400",glow:"0 0 6px #22c55e",label:"GATEWAY",active:isConnected},
+          {dot:isActive?"bg-cyan-400 animate-pulse":"bg-gray-600",glow:isActive?"0 0 6px #00e5ff":"none",label:"AI ONLINE",active:true},
+          {dot:isVoiceActive?"bg-purple-400 animate-pulse":"bg-gray-700",glow:isVoiceActive?"0 0 6px #a855f7":"none",label:"VOICE",active:isVoiceActive},
+        ].map(({dot,glow,label,active})=>(
+          <div key={label} className="flex items-center gap-1.5">
+            <div className={cn("w-1.5 h-1.5 rounded-full",dot)} style={{boxShadow:glow}}/>
+            <span className={cn("text-[8px] font-mono tracking-wider",active?"text-gray-300":"text-gray-700")}>{label}</span>
+          </div>
+        ))}
+        <div className="flex-1"/>
+        {symInd?.sessions && symInd.sessions.length > 0 && (
+          <div className="flex gap-1.5 items-center">
+            {symInd.sessions.map(s=>(
+              <span key={s} className={cn("text-[7px] font-mono border px-1.5 py-0.5 tracking-wider",
+                s.includes("Tokyo")?"border-blue-700/40 text-blue-300/75 bg-blue-950/15":
+                s.includes("London")?"border-purple-700/40 text-purple-300/75 bg-purple-950/15":
+                s.includes("York")?"border-orange-700/40 text-orange-300/75 bg-orange-950/15":
+                "border-gray-700/30 text-gray-500"
+              )}>{s.replace(" Session","")}</span>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2 text-[9.5px] font-mono">
+          <span className="text-gray-100 tabular-nums font-semibold" suppressHydrationWarning>
+            {time.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+          </span>
+          <span className="text-gray-700">JST</span>
+        </div>
+      </div>
+
+      {/* ░░ LAYER 20 — AI OPERATIONS CENTER (Glass HUD) ░░ */}
+      <div className="absolute top-11 left-0 right-0 z-20"
+        style={{
+          background:"transparent",
+        }}>
+        <div className="px-4 py-2.5">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2.5">
+              <div className="flex gap-0.5">
+                <div className="w-0.5 h-4" style={{background:"#00ff88",boxShadow:"0 0 4px #00ff88"}}/>
+                <div className="w-0.5 h-4" style={{background:"rgba(0,255,136,0.18)"}}/>
+              </div>
+              <span className="text-[9px] font-mono tracking-[0.2em] font-semibold" style={{color:"rgba(0,255,136,0.80)"}}>
+                AI OPERATIONS CENTER
+              </span>
+              <span className={cn("text-[7px] font-mono border px-1.5 py-0.5 tracking-wider",
+                isConnected?"border-green-600/25 text-green-400/65 bg-green-950/10":"border-red-800/25 text-red-500/50"
+              )}>● {isConnected?"ONLINE":"OFFLINE"}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <ModeSelector mode={mode} onChange={setMode}/>
+              <button onClick={()=>pipeline.run()} disabled={pipeline.running||!isConnected}
+                className={cn("px-3 py-1 text-[7px] font-mono border flex items-center gap-1.5 tracking-wider transition-all",
+                  pipeline.running?"border-purple-600/30 text-purple-300/70 bg-purple-950/12 cursor-wait"
+                    :isConnected?"border-cyan-700/25 text-cyan-400/70 hover:bg-cyan-950/20"
+                    :"border-gray-800/25 text-gray-700 cursor-not-allowed"
+                )}>
+                <Brain size={8} className={pipeline.running?"animate-pulse":""}/>
+                {pipeline.running?"ANALYZING...":"3-AGENT"}
+              </button>
+            </div>
+          </div>
+          <AgentFlow agents={agents}/>
+        </div>
+      </div>
+
+      {/* ░░ LAYER 25 — Analysis Engine (mode=analysis) ░░ */}
+      {mode === "analysis" && (
+        <div className="absolute inset-0 z-[25]" style={{paddingTop:"88px"}}>
+          <AnalysisEngine activeSymbol={activeSymbol}/>
+        </div>
+      )}
+
+      {/* ░░ LAYER 12 — AVL AI CORE (SVG Ring HUD + Brand text) ░░ */}
+      {mode !== "analysis" && (
+        <div className="absolute inset-0 z-[12]" style={{paddingTop:"88px",paddingBottom:"160px"}}>
+          <AVLAICore
+            brainState={brainState}
+            voiceStatus={voice.status}
+            isActive={isActive}
+            isThinking={thinking || voiceThinking}
+            neonHex={neonHex}
+          />
+        </div>
+      )}
+
+      {/* ░░ LAYER 10 — HUD corner brackets ░░ */}
+      {["absolute top-[92px] left-3 border-t border-l","absolute top-[92px] right-3 border-t border-r",
+        "absolute bottom-3 left-3 border-b border-l","absolute bottom-3 right-3 border-b border-r"
+      ].map((cls,i)=>(
+        <div key={i} className={`${cls} w-5 h-5 pointer-events-none z-10`}
+          style={{borderColor:`${neonHex}25`}}/>
+      ))}
+
+      {/* ░░ LAYER 20 — Monitor signal ░░ */}
+      {monitor.signals.length > 0 && mode !== "analysis" && (
+        <div className="absolute left-0 right-0 z-20 flex justify-center" style={{bottom:"32%"}}>
+          <div className="flex items-center gap-2 px-4 py-2 border"
+            style={{background:"rgba(2,5,10,0.72)",backdropFilter:"blur(12px)",borderColor:`${neonHex}28`}}>
+            <Bell size={9} style={{color:neonHex}} className="animate-pulse"/>
+            <span className="text-[8px] font-mono tracking-wider" style={{color:neonHex}}>
+              {monitor.signals[monitor.signals.length-1]?.message}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ░░ LAYER 20 — Order proposal card ░░ */}
+      {orderProposal && mode !== "analysis" && (
+        <div className="absolute left-0 right-0 z-20 px-4" style={{bottom:"28%"}}>
+          <OrderCard p={orderProposal}
+            onConfirm={()=>executeOrder(orderProposal)}
+            onCancel={()=>{setOrderProposal(null);addLog("[ORDER] キャンセル","info");}}
+          />
+        </div>
+      )}
+
+      {/* ░░ LAYER 20 — AI status waveform (bottom-left float) ░░ */}
+      {mode !== "analysis" && (
+        <div className="absolute z-20 flex items-center gap-3 px-4 py-2" style={{bottom:"22%",left:0,right:0}}>
+          <div className="flex items-end gap-0.5 h-5 overflow-hidden">
+            {[3,5,8,12,16,20,16,12,8,5,3,6,10,15,10,6].map((h,i)=>(
+              <div key={i} className="w-0.5 rounded-full"
+                style={{
+                  height:Math.min(h,20),
+                  backgroundColor:neonHex,
+                  opacity:isActive?0.65:0.15,
+                  boxShadow:isActive?`0 0 3px ${neonHex}`:"none",
+                  animation:`avl-wave-bar ${0.6+i*0.06}s ease-in-out ${i*0.06}s infinite alternate`,
+                  animationPlayState:isActive?"running":"paused",
+                  transformOrigin:"bottom",
+                  transition:"opacity 0.4s ease",
+                  willChange:"transform",
+                }}/>
+            ))}
+          </div>
+          <p className="text-[11px] font-mono tracking-[0.2em] font-semibold"
+            style={{color:neonHex,textShadow:`0 0 8px ${neonHex}88`}}>{aiStatusText}</p>
+          <button onClick={()=>{setMessages([{id:"r",role:"system",content:"RESET",ts:Date.now()}]);setOrderProposal(null);setError(null);}}
+            className="ml-auto text-gray-700 hover:text-gray-400 transition-colors p-1">
+            <RefreshCw size={11}/>
+          </button>
+        </div>
+      )}
+
+      {/* ░░ LAYER 30 — holographic mic floating at bottom ░░ */}
+      {mode !== "analysis" && (
+        <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center pb-5 gap-2">
+
+          {/* Concentric ring mic button */}
+          <div className="relative flex items-center justify-center" style={{width:96,height:96,contain:'layout style'}}>
+
+            {/* Listening: ambient pulse ring */}
+            <div className="absolute rounded-full pointer-events-none"
+              style={{
+                width:140, height:140, left:-22, top:-22,
+                border:`1px solid ${neonHex}55`,
+                boxShadow:`0 0 30px ${neonHex}22, 0 0 60px ${neonHex}11`,
+                animation:"avl-ping-outer 2s ease-out infinite",
+                animationPlayState: voice.status === "listening" ? "running" : "paused",
+                opacity: voice.status === "listening" ? 1 : 0,
+                transition:"opacity 0.3s ease",
+                willChange:"transform,opacity",
+              }}/>
+
+            {/* Thinking: inner convergence glow */}
+            <div className="absolute rounded-full pointer-events-none"
+              style={{
+                width:120, height:120, left:-12, top:-12,
+                background:`radial-gradient(circle, ${neonHex}18 0%, transparent 70%)`,
+                animation:"avl-pulse-ring-out 1.8s ease-out infinite",
+                animationPlayState: (thinking || voiceThinking) ? "running" : "paused",
+                opacity: (thinking || voiceThinking) ? 1 : 0,
+                transition:"opacity 0.3s ease",
+                willChange:"transform,opacity",
+              }}/>
+
+            {/* Speaking: outward energy waves */}
+            {[0,1,2].map(i => (
+              <div key={i} className="absolute rounded-full pointer-events-none"
+                style={{
+                  width:48+i*36, height:48+i*36,
+                  left:-(i*18+4), top:-(i*18+4),
+                  border:`1px solid ${neonHex}${["55","33","18"][i]}`,
+                  animation:`avl-pulse-ring-out ${1.4+i*0.5}s ease-out ${i*0.4}s infinite`,
+                  animationPlayState: voice.status === "speaking" ? "running" : "paused",
+                  opacity: voice.status === "speaking" ? 1 : 0,
+                  transition:"opacity 0.3s ease",
+                  willChange:"transform,opacity",
+                }}/>
+            ))}
+
+            {/* Voice active ping */}
+            <div className="absolute inset-0 rounded-full"
+              style={{
+                border:`1px solid ${neonHex}`,
+                animation:"ping 1s cubic-bezier(0,0,0.2,1) infinite",
+                animationPlayState: isVoiceActive ? "running" : "paused",
+                opacity: isVoiceActive ? 0.2 : 0,
+                transition:"opacity 0.3s ease",
+                willChange:"transform,opacity",
+              }}/>
+
+            {/* Ring 3 */}
+            <div className="absolute w-24 h-24 rounded-full transition-all duration-500"
+              style={{border:`1px solid ${isVoiceActive ? neonHex+'35' : '#1a2a35'}`,
+                      boxShadow: isVoiceActive ? `0 0 18px ${neonHex}18` : 'none'}}/>
+
+            {/* Ring 2 + cardinal dots */}
+            <div className="absolute w-[70px] h-[70px] rounded-full transition-all duration-500"
+              style={{border:`1px solid ${isVoiceActive ? neonHex+'55' : '#1e303d'}`,
+                      boxShadow: isVoiceActive ? `0 0 14px ${neonHex}28` : 'none'}}>
+              {[
+                'absolute top-0    left-1/2 -translate-x-1/2 -translate-y-1/2',
+                'absolute bottom-0 left-1/2 -translate-x-1/2  translate-y-1/2',
+                'absolute right-0  top-1/2   translate-x-1/2 -translate-y-1/2',
+                'absolute left-0   top-1/2  -translate-x-1/2 -translate-y-1/2',
+              ].map((cls,i) => (
+                <div key={i} className={`${cls} w-1.5 h-1.5 rounded-full transition-all duration-500`}
+                  style={{backgroundColor: isVoiceActive ? neonHex : '#1e3a4a',
+                          boxShadow:       isVoiceActive ? `0 0 6px ${neonHex}` : 'none'}}/>
+              ))}
+            </div>
+
+            {/* Ring 1 */}
+            <div className="absolute w-[50px] h-[50px] rounded-full transition-all duration-500"
+              style={{border:`1px solid ${isVoiceActive ? neonHex+'75' : '#1e303d'}`,
+                      boxShadow: isVoiceActive ? `0 0 10px ${neonHex}38` : 'none'}}/>
+
+            {/* Button core */}
+            <button type="button" disabled={voice.status === "connecting"}
+              onClick={() => voice.status==="idle" ? voice.start(activeSymbol) : voice.stop()}
+              className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 disabled:opacity-30 disabled:cursor-not-allowed"
+              style={{
+                background: isVoiceActive
+                  ? `radial-gradient(circle, ${neonHex}30 0%, ${neonHex}08 70%)`
+                  : 'radial-gradient(circle, rgba(0,70,110,0.45) 0%, rgba(0,25,50,0.2) 70%)',
+                border: `2px solid ${isVoiceActive ? neonHex : neonHex+'30'}`,
+                boxShadow: isVoiceActive
+                  ? `0 0 22px ${neonHex}55, 0 0 44px ${neonHex}18, inset 0 0 14px ${neonHex}12`
+                  : `0 0 8px ${neonHex}18`,
+              }}>
+              <Mic size={17}
+                style={{color: isVoiceActive ? neonHex : `${neonHex}60`}}
+                className={isVoiceActive ? 'animate-pulse' : ''}/>
+            </button>
+          </div>
+
+          {/* Voice status + wave bars */}
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[8px] font-mono tracking-[0.35em] transition-all duration-300"
+              style={{color: isVoiceActive ? neonHex : '#2a3a4a',
+                      textShadow: isVoiceActive ? `0 0 8px ${neonHex}60` : 'none'}}>
+              {isVoiceActive ? aiStatusText : 'VOICE STANDBY'}
+            </span>
+            {isVoiceActive && (
+              <div className="flex items-end gap-0.5 h-3">
+                {[2,4,6,9,6,4,2,4,6,4,2].map((h,i) => (
+                  <div key={i} className="w-0.5 rounded-full"
+                    style={{height:h,backgroundColor:neonHex,opacity:0.75,
+                      animation:`avl-wave-bar 0.8s ease-in-out ${i*0.07}s infinite alternate`}}/>
+                ))}
+              </div>
+            )}
+            {isVoiceActive && voice.status !== 'idle' && (
+              <div className="flex items-center gap-3 mt-0.5">
+                {voice.muted && <span className="text-[7px] text-yellow-400 font-mono">MUTED</span>}
+                <button onClick={voice.interrupt}
+                  className="text-[7px] text-gray-600 hover:text-red-400 font-mono transition-colors tracking-wider">
+                  INTERRUPT
+                </button>
+              </div>
+            )}
+          </div>
+
+          <VoiceTelop text={voice.speakingText} status={voice.status} neonHex={neonHex} />
+        </div>
+      )}
+
+      {/* ░░ LAYER 40 — Order Proposal Modal ░░ */}
+      {orderProposal && !showChat && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-40 backdrop-blur-sm">
+          <OrderCard p={orderProposal}
+            onConfirm={()=>executeOrder(orderProposal)}
+            onCancel={()=>{setOrderProposal(null);addLog("[ORDER] キャンセル","info");}}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
