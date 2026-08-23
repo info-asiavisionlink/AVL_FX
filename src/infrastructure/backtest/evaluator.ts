@@ -70,8 +70,8 @@ function inferDirectionFromConditions(
         if (op === "REVERSAL") { thr <= 50 ? buy++ : sell++; }
         break;
       case "MACD":
-        if (op === "ABOVE_SIGNAL" || op === "HISTOGRAM_POSITIVE") buy++;
-        if (op === "BELOW_SIGNAL" || op === "HISTOGRAM_NEGATIVE") sell++;
+        if (op === "ABOVE_SIGNAL" || op === "HISTOGRAM_POSITIVE" || op === "HISTOGRAM_CROSS_UP") buy++;
+        if (op === "BELOW_SIGNAL" || op === "HISTOGRAM_NEGATIVE" || op === "HISTOGRAM_CROSS_DOWN") sell++;
         break;
       case "BOLLINGER_BANDS":
         if (op === "PRICE_BELOW") buy++;   // price < lower band → oversold
@@ -82,6 +82,7 @@ function inferDirectionFromConditions(
         if (op === "CROSS_DOWN")                             sell++;
         if (op === "BELOW" && thr <= 50)                     buy++;
         if (op === "ABOVE" && thr >= 50)                     sell++;
+        if (op === "REVERSAL") { thr <= 50 ? buy++ : sell++; }
         break;
       // ADX, PRICE_ACTION, MARKET_STRUCTURE 等は方向中立
     }
@@ -147,8 +148,8 @@ function getConditionDirection(c: StrategySpec["entry_conditions"]["conditions"]
       return "NEUTRAL";
 
     case "MACD":
-      if (op === "ABOVE_SIGNAL" || op === "HISTOGRAM_POSITIVE") return "BUY";
-      if (op === "BELOW_SIGNAL" || op === "HISTOGRAM_NEGATIVE") return "SELL";
+      if (op === "ABOVE_SIGNAL" || op === "HISTOGRAM_POSITIVE" || op === "HISTOGRAM_CROSS_UP") return "BUY";
+      if (op === "BELOW_SIGNAL" || op === "HISTOGRAM_NEGATIVE" || op === "HISTOGRAM_CROSS_DOWN") return "SELL";
       return "NEUTRAL";
 
     case "BOLLINGER_BANDS":
@@ -388,7 +389,23 @@ function evalMACD(
     case "BELOW_SIGNAL":       return m.macd < m.signal;
     case "HISTOGRAM_POSITIVE": return m.histogram > 0;
     case "HISTOGRAM_NEGATIVE": return m.histogram < 0;
-    default:                   return false;
+
+    // ヒストグラムがマイナスからプラスへ転換（ゴールデンクロス相当）
+    case "HISTOGRAM_CROSS_UP": {
+      if (idx < 1) return false;
+      const prev = macd[idx - 1];
+      if (!prev || prev.histogram === undefined) return false;
+      return prev.histogram < 0 && m.histogram >= 0;
+    }
+    // ヒストグラムがプラスからマイナスへ転換（デッドクロス相当）
+    case "HISTOGRAM_CROSS_DOWN": {
+      if (idx < 1) return false;
+      const prev = macd[idx - 1];
+      if (!prev || prev.histogram === undefined) return false;
+      return prev.histogram > 0 && m.histogram <= 0;
+    }
+
+    default: return false;
   }
 }
 
@@ -430,6 +447,7 @@ function evalStochastic(
   idx:       number,
   op:        string | undefined,
   threshold: number | undefined,
+  direction: "BUY" | "SELL",
 ): boolean {
   const curr = stoch[idx];
   if (curr === undefined) return false;
@@ -451,6 +469,22 @@ function evalStochastic(
       if (prev === undefined) return false;
       const thr = threshold ?? 80;
       return prev > thr && curr <= thr;
+    }
+
+    // REVERSAL: RSI と同様の反転検知
+    //   BUY  → Stochastic が threshold(default 20) 以下に到達後、上昇転換
+    //   SELL → Stochastic が threshold(default 80) 以上に到達後、下落転換
+    case "REVERSAL": {
+      if (idx < 1) return false;
+      const prev = stoch[idx - 1];
+      if (prev === undefined) return false;
+      if (direction === "BUY") {
+        const thr = threshold ?? 20;
+        return prev <= thr && curr > prev;
+      } else {
+        const thr = threshold ?? 80;
+        return prev >= thr && curr < prev;
+      }
     }
 
     default:
@@ -504,7 +538,7 @@ function evalCondition(
     case "BOLLINGER_BANDS":
       return evalBB(bars, inds.bb, idx, cond.operator);
     case "STOCHASTIC":
-      return evalStochastic(inds.stoch, idx, cond.operator, cond.threshold);
+      return evalStochastic(inds.stoch, idx, cond.operator, cond.threshold, dir);
     default:
       return false; // PRICE_ACTION, MARKET_STRUCTURE 等は Phase 2-B 対象外
   }
