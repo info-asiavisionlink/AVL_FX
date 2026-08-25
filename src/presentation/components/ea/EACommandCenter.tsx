@@ -33,10 +33,12 @@ function StrategyDraftCard({
   strategy,
   onDelete,
   onDetail,
+  onBtLoad,
 }: {
   strategy: StrategyRecord;
   onDelete: (id: string) => void;
   onDetail: (s: StrategyRecord) => void;
+  onBtLoad?: (id: string, stat: BtStat) => void;
 }) {
   const typeColor: Record<string, string> = {
     SCALPING:  CYAN,
@@ -62,18 +64,23 @@ function StrategyDraftCard({
       .then(r => r.json())
       .then((d: { status: string; result?: Record<string, unknown> }) => {
         if (d.status === "HAS_RESULT" && d.result) {
+          const wr = Number(d.result.win_rate ?? 0);
+          const pips = Number(d.result.total_pips ?? 0);
+          const pf = d.result.profit_factor != null ? Number(d.result.profit_factor) : null;
           setBtData({
             verdict:        d.result.verdict as "PASSED" | "CONDITIONAL" | "FAILED",
-            totalPips:      Number(d.result.total_pips ?? 0),
-            winRate:        Number(d.result.win_rate ?? 0),
-            profitFactor:   d.result.profit_factor != null ? Number(d.result.profit_factor) : null,
+            totalPips:      pips,
+            winRate:        wr,
+            profitFactor:   pf,
             maxDrawdownPct: Number(d.result.max_drawdown_pct ?? 0),
           });
+          // 親に btStats を報告
+          onBtLoad?.(strategy.id, { winRate: wr, pips, pf });
         }
       })
       .catch(() => {})
       .finally(() => setBtLoading(false));
-  }, [strategy.id, bts]);
+  }, [strategy.id, bts, onBtLoad]);
 
   const verdictColor =
     btData?.verdict === "PASSED"      ? NG    :
@@ -299,11 +306,144 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 }
 
 // ── Main EACommandCenter ─────────────────────────────────────────────────────
+// ── BtStats (親コンポーネントで一元管理) ──────────────────────────────────
+interface BtStat { winRate: number; pips: number; pf: number | null }
+
+// ── FilterBar ─────────────────────────────────────────────────────────────────
+interface Filters {
+  search:      string;
+  symbols:     string[];
+  indicators:  string[];
+  direction:   "" | "BUY" | "SELL";
+  stratType:   "" | "SCALPING" | "DAY_TRADE" | "SWING";
+  minWR:       number;   // 0=無制限
+  minPips:     number;   // 0=無制限
+}
+
+const EMPTY_FILTERS: Filters = {
+  search: "", symbols: [], indicators: [], direction: "", stratType: "", minWR: 0, minPips: 0,
+};
+
+const INDICATOR_TAGS = ["ICHIMOKU", "AO", "EMA", "MACD", "RSI", "ADX", "PSAR", "CCI", "BB", "STOCH"];
+const WR_OPTIONS     = [0, 30, 33, 35, 38, 40];
+const PIPS_OPTIONS   = [0, 100, 500, 1000];
+
+function FilterBar({
+  strategies,
+  btStats,
+  filters,
+  setFilters,
+  filtered,
+}: {
+  strategies: StrategyRecord[];
+  btStats:    Record<string, BtStat>;
+  filters:    Filters;
+  setFilters: (f: Filters) => void;
+  filtered:   number;
+}) {
+  const allSymbols = [...new Set(strategies.flatMap(s => s.symbols as string[]))].sort();
+  const hasFilters = filters.search || filters.symbols.length || filters.indicators.length
+    || filters.direction || filters.stratType || filters.minWR || filters.minPips;
+
+  function toggleArr<T>(arr: T[], val: T): T[] {
+    return arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val];
+  }
+
+  const Chip = ({ label, active, onClick, color = CYAN }: { label: string; active: boolean; onClick: () => void; color?: string }) => (
+    <button onClick={onClick}
+      className="px-2 py-1 rounded text-[8px] font-mono font-bold tracking-widest transition-all whitespace-nowrap"
+      style={{
+        background: active ? `${color}18` : "rgba(255,255,255,0.03)",
+        border:     `1px solid ${active ? `${color}50` : "rgba(255,255,255,0.08)"}`,
+        color:      active ? color : "#475569",
+      }}>
+      {label}
+    </button>
+  );
+
+  return (
+    <div className="space-y-2 p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+      {/* 検索バー + リセット */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: "#334155" }}>🔍</span>
+          <input
+            type="text"
+            placeholder="EA名で検索..."
+            value={filters.search}
+            onChange={e => setFilters({ ...filters, search: e.target.value })}
+            className="w-full pl-7 pr-3 py-1.5 rounded text-[9px] font-mono outline-none"
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", color: "#e2e8f0" }}
+          />
+        </div>
+        <span className="text-[8px] font-mono shrink-0" style={{ color: "#334155" }}>
+          {filtered}/{strategies.length}件
+        </span>
+        {hasFilters && (
+          <button onClick={() => setFilters(EMPTY_FILTERS)}
+            className="px-2 py-1.5 rounded text-[8px] font-mono transition-all shrink-0"
+            style={{ background: `${RED}12`, border: `1px solid ${RED}30`, color: RED }}>
+            クリア
+          </button>
+        )}
+      </div>
+
+      {/* シンボルフィルター */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[7px] font-mono tracking-widest shrink-0" style={{ color: "#334155" }}>シンボル</span>
+        {allSymbols.map(sym => (
+          <Chip key={sym} label={sym} active={filters.symbols.includes(sym)}
+            onClick={() => setFilters({ ...filters, symbols: toggleArr(filters.symbols, sym) })} />
+        ))}
+      </div>
+
+      {/* インジケーターフィルター */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[7px] font-mono tracking-widest shrink-0" style={{ color: "#334155" }}>インジケーター</span>
+        {INDICATOR_TAGS.map(ind => (
+          <Chip key={ind} label={ind} active={filters.indicators.includes(ind)} color={NG}
+            onClick={() => setFilters({ ...filters, indicators: toggleArr(filters.indicators, ind) })} />
+        ))}
+      </div>
+
+      {/* 方向・種別・勝率・PIPS */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[7px] font-mono tracking-widest shrink-0" style={{ color: "#334155" }}>方向</span>
+        {(["BUY", "SELL"] as const).map(d => (
+          <Chip key={d} label={d} color={d === "BUY" ? NG : RED}
+            active={filters.direction === d}
+            onClick={() => setFilters({ ...filters, direction: filters.direction === d ? "" : d })} />
+        ))}
+        <span className="text-[7px] font-mono tracking-widest ml-2 shrink-0" style={{ color: "#334155" }}>種別</span>
+        {(["DAY_TRADE", "SWING", "SCALPING"] as const).map(t => (
+          <Chip key={t} label={{ DAY_TRADE: "デイ", SWING: "スイング", SCALPING: "スキャル" }[t]}
+            color={AMBER} active={filters.stratType === t}
+            onClick={() => setFilters({ ...filters, stratType: filters.stratType === t ? "" : t })} />
+        ))}
+        <span className="text-[7px] font-mono tracking-widest ml-2 shrink-0" style={{ color: "#334155" }}>勝率≥</span>
+        {WR_OPTIONS.filter(v => v > 0).map(v => (
+          <Chip key={v} label={`${v}%`} color={CYAN}
+            active={filters.minWR === v}
+            onClick={() => setFilters({ ...filters, minWR: filters.minWR === v ? 0 : v })} />
+        ))}
+        <span className="text-[7px] font-mono tracking-widest ml-2 shrink-0" style={{ color: "#334155" }}>PIPS≥</span>
+        {PIPS_OPTIONS.filter(v => v > 0).map(v => (
+          <Chip key={v} label={`+${v}`} color={NG}
+            active={filters.minPips === v}
+            onClick={() => setFilters({ ...filters, minPips: filters.minPips === v ? 0 : v })} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function EACommandCenter() {
   const [showBuilder,    setShowBuilder]    = useState(false);
   const [strategies,     setStrategies]     = useState<StrategyRecord[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [detailStrategy, setDetailStrategy] = useState<StrategyRecord | null>(null);
+  const [btStats,        setBtStats]        = useState<Record<string, BtStat>>({});
+  const [filters,        setFilters]        = useState<Filters>(EMPTY_FILTERS);
 
   // Strategy 一覧を取得
   const fetchStrategies = useCallback(async () => {
@@ -339,6 +479,56 @@ export function EACommandCenter() {
       toast.error("削除に失敗しました");
     }
   }
+
+  const handleBtLoad = useCallback((id: string, stat: BtStat) => {
+    setBtStats(prev => ({ ...prev, [id]: stat }));
+  }, []);
+
+  // ── フィルタリングロジック ────────────────────────────────────────
+  const filteredStrategies = strategies.filter(s => {
+    const { search, symbols, indicators, direction, stratType, minWR, minPips } = filters;
+
+    // テキスト検索
+    if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false;
+
+    // シンボル
+    if (symbols.length > 0 && !symbols.some(sym => (s.symbols as string[]).includes(sym))) return false;
+
+    // 種別
+    if (stratType && s.strategy_type !== stratType) return false;
+
+    // 方向（名前の末尾から判定）
+    if (direction) {
+      const nameUpper = s.name.toUpperCase();
+      if (direction === "BUY"  && !nameUpper.endsWith("BUY"))  return false;
+      if (direction === "SELL" && !nameUpper.endsWith("SELL")) return false;
+    }
+
+    // インジケーター
+    if (indicators.length > 0) {
+      const conds = ((s.entry_conditions as Record<string,unknown>)?.conditions as Record<string,unknown>[] | undefined) ?? [];
+      const indNames = conds.map(c => String(c.indicator ?? "").toUpperCase());
+      // インジケーター名またはEA名に含まれるか
+      const passInd = indicators.some(ind =>
+        indNames.some(n => n.includes(ind)) || s.name.toUpperCase().includes(ind)
+      );
+      if (!passInd) return false;
+    }
+
+    // 勝率フィルター（btStats に読み込まれていれば適用）
+    if (minWR > 0) {
+      const stat = btStats[s.id];
+      if (stat && stat.winRate < minWR) return false;
+    }
+
+    // PIPs フィルター
+    if (minPips > 0) {
+      const stat = btStats[s.id];
+      if (stat && stat.pips < minPips) return false;
+    }
+
+    return true;
+  });
 
   return (
     <div className="relative flex flex-col flex-1 h-full overflow-hidden font-mono"
@@ -403,7 +593,16 @@ export function EACommandCenter() {
         ) : strategies.length === 0 ? (
           <EmptyState onAdd={handleAddEA} />
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
+            {/* ── フィルターバー ── */}
+            <FilterBar
+              strategies={strategies}
+              btStats={btStats}
+              filters={filters}
+              setFilters={setFilters}
+              filtered={filteredStrategies.length}
+            />
+
             <div className="flex items-center gap-2">
               <p className="text-[9px] font-black tracking-[0.22em]" style={{ color: NG }}>
                 マイ戦略
@@ -412,19 +611,41 @@ export function EACommandCenter() {
                 className="text-[8px] px-1.5 py-0.5 rounded"
                 style={{ background: `${NG_rgba}0.08)`, border: `1px solid ${NG_rgba}0.20)`, color: NG }}
               >
-                {strategies.length}
+                {filteredStrategies.length}
+                {filteredStrategies.length !== strategies.length && (
+                  <span style={{ color: "#475569" }}>/{strategies.length}</span>
+                )}
               </span>
             </div>
-            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
-              {strategies.map(s => (
-                <StrategyDraftCard
-                  key={s.id}
-                  strategy={s}
-                  onDelete={handleDeleteStrategy}
-                  onDetail={setDetailStrategy}
-                />
-              ))}
-            </div>
+
+            {filteredStrategies.length === 0 ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="text-center space-y-2">
+                  <p className="text-[10px] font-mono" style={{ color: "#475569" }}>
+                    条件に一致するEAが見つかりません
+                  </p>
+                  <button
+                    onClick={() => setFilters(EMPTY_FILTERS)}
+                    className="text-[9px] font-mono px-3 py-1.5 rounded"
+                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", color: "#64748b" }}
+                  >
+                    フィルターをクリア
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+                {filteredStrategies.map(s => (
+                  <StrategyDraftCard
+                    key={s.id}
+                    strategy={s}
+                    onDelete={handleDeleteStrategy}
+                    onDetail={setDetailStrategy}
+                    onBtLoad={handleBtLoad}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
