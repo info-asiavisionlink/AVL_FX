@@ -170,7 +170,7 @@ const TrendFilterSchema = TrendFilterItemSchema.optional();
 
 /** フィルター */
 const FiltersSchema = z.object({
-  max_spread_pips: z.number().min(0).max(20).optional(),
+  max_spread_pips: z.number().min(0).max(500).optional(), // GOLD/indices は最大500pips
   sessions:        z.array(z.enum(ALLOWED_SESSIONS)).max(4).optional(),
   trend_filter:    TrendFilterSchema,
   /** Phase 5-A: 複数トレンドフィルター (AND ロジック) — backward compatible */
