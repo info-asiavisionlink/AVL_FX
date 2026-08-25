@@ -1110,6 +1110,163 @@ function TradesTab({ jobId }: { jobId: string | null }) {
 }
 
 // ------------------------------------------------------------------
+// StrategyChatSection — EA専用AIチャット
+// ------------------------------------------------------------------
+
+interface ChatMessage { role: "user" | "assistant"; content: string }
+
+const SUGGESTED = [
+  "このEAの信頼性は？",
+  "なぜOOSで損失になるの？",
+  "どの月が一番稼いだ？",
+  "最悪のトレードはどれ？",
+  "ロンドンとNYどっちが強い？",
+  "このEAの最大リスクは？",
+];
+
+function StrategyChatSection({ strategyId }: { strategyId: string }) {
+  const [messages,  setMessages]  = useState<ChatMessage[]>([]);
+  const [input,     setInput]     = useState("");
+  const [loading,   setLoading]   = useState(false);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || loading) return;
+    const userMsg: ChatMessage = { role: "user", content: text };
+    const newHistory = [...messages, userMsg];
+    setMessages(newHistory);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const res  = await fetch(`/api/strategies/${strategyId}/chat`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ message: text, history: messages }),
+      });
+      const data = await res.json() as { answer?: string; error?: string };
+      const aiMsg: ChatMessage = {
+        role:    "assistant",
+        content: data.answer ?? data.error ?? "エラーが発生しました",
+      };
+      setMessages(prev => [...prev, aiMsg]);
+    } catch (e) {
+      setMessages(prev => [...prev, { role: "assistant", content: String(e) }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <p className="text-[8px] font-black tracking-[0.25em]" style={{ color: CYAN }}>
+        ⬡ EA AIチャット — このEAについて何でも聞いてください
+      </p>
+
+      {/* 会話履歴 */}
+      {messages.length > 0 && (
+        <div
+          ref={scrollRef}
+          className="space-y-2 max-h-80 overflow-y-auto pr-1"
+        >
+          {messages.map((m, i) => (
+            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className="max-w-[80%] px-3 py-2 rounded-lg text-[9px] font-mono leading-relaxed"
+                style={{
+                  background: m.role === "user"
+                    ? `rgba(0,229,255,0.12)`
+                    : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${m.role === "user" ? "rgba(0,229,255,0.25)" : "rgba(255,255,255,0.08)"}`,
+                  color: m.role === "user" ? CYAN : "#94a3b8",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {m.role === "assistant" && (
+                  <span className="text-[7px] font-black tracking-widest block mb-1" style={{ color: "#475569" }}>
+                    AI
+                  </span>
+                )}
+                {m.content}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <span className="text-[9px] font-mono" style={{ color: "#334155" }}>◌ 考え中...</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* クイック質問 */}
+      {messages.length === 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {SUGGESTED.map(q => (
+            <button key={q} onClick={() => sendMessage(q)}
+              className="px-2.5 py-1.5 rounded text-[8px] font-mono transition-all"
+              style={{
+                background: "rgba(0,229,255,0.05)",
+                border: "1px solid rgba(0,229,255,0.20)",
+                color: CYAN,
+              }}>
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 入力欄 */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
+          placeholder="例: なぜ3月に損失が出たの？"
+          disabled={loading}
+          className="flex-1 px-3 py-2 rounded text-[9px] font-mono outline-none"
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.10)",
+            color: "#e2e8f0",
+          }}
+        />
+        <button
+          onClick={() => sendMessage(input)}
+          disabled={!input.trim() || loading}
+          className="px-4 py-2 rounded text-[9px] font-mono font-black transition-all"
+          style={{
+            background: !input.trim() || loading ? "rgba(255,255,255,0.04)" : `rgba(0,229,255,0.15)`,
+            border: `1px solid ${!input.trim() || loading ? "rgba(255,255,255,0.08)" : "rgba(0,229,255,0.40)"}`,
+            color: !input.trim() || loading ? "#334155" : CYAN,
+            cursor: !input.trim() || loading ? "not-allowed" : "pointer",
+          }}>
+          送信
+        </button>
+      </div>
+
+      {messages.length > 0 && (
+        <button
+          onClick={() => setMessages([])}
+          className="text-[7px] font-mono opacity-40 hover:opacity-70 transition-opacity"
+          style={{ color: "#64748b" }}>
+          会話をクリア
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
 // AnalysisTab — AI Analysis display
 // ------------------------------------------------------------------
 
@@ -1464,6 +1621,9 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
 
       {/* CROSS-PHASE INTERPRETATION section (Phase 4-D) */}
       <CrossPhaseInterpretationSection strategyId={strategyId} />
+
+      {/* ── EA AIチャット ──────────────────────────────── */}
+      <StrategyChatSection strategyId={strategyId} />
 
     </div>
   );
