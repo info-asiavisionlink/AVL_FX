@@ -1321,6 +1321,47 @@ function Section({ title, color, children }: { title: string; color: string; chi
   );
 }
 
+// 事実レポートセクション（descriptionフィールドから表示）
+function FactReportSection({ strategyId }: { strategyId: string }) {
+  const [report, setReport] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/strategies/${strategyId}`)
+      .then(r => r.json())
+      .then((d: { strategy?: { description?: string | null } }) => {
+        const desc = d.strategy?.description ?? null;
+        if (desc && desc.includes("事実確認レポート")) setReport(desc);
+      })
+      .catch(() => {});
+  }, [strategyId]);
+
+  if (!report) return null;
+
+  const lines = report.split("\n");
+  const verdictLine = lines.find(l => l.includes("総合判定:")) ?? "";
+  const verdictColor = verdictLine.includes("✅") ? NG : verdictLine.includes("⚠") ? AMBER : RED;
+
+  return (
+    <div className="p-4 rounded-lg" style={{ background: "rgba(0,229,255,0.03)", border: "1px solid rgba(0,229,255,0.12)" }}>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[8px] font-black tracking-[0.25em]" style={{ color: CYAN }}>
+          事実確認レポート
+        </p>
+        {verdictLine && (
+          <span className="text-[8px] font-black px-2 py-0.5 rounded"
+            style={{ background: `${verdictColor}15`, border: `1px solid ${verdictColor}35`, color: verdictColor }}>
+            {verdictLine.replace("◆ 総合判定:", "").trim()}
+          </span>
+        )}
+      </div>
+      <pre className="text-[8px] font-mono leading-relaxed whitespace-pre-wrap"
+        style={{ color: "#64748b" }}>
+        {report.replace("【事実確認レポート】\n", "").replace(/登録日:.*\n/, "").trim()}
+      </pre>
+    </div>
+  );
+}
+
 function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBacktest: boolean }) {
   const [state,    setState]    = useState<"idle" | "loading" | "running" | "done" | "error">("loading");
   const [analysis, setAnalysis] = useState<AIAnalysis | null>(null);
@@ -1374,6 +1415,18 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
 
   return (
     <div className="p-5 space-y-5 overflow-y-auto">
+
+      {/* ── 事実確認レポート（最優先表示） ─────────── */}
+      <FactReportSection strategyId={strategyId} />
+
+      {/* ── EA AIチャット（メイン機能） ──────────── */}
+      <StrategyChatSection strategyId={strategyId} />
+
+      {/* ── 詳細AI分析（オプション） ─────────────── */}
+      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "16px" }}>
+        <p className="text-[8px] font-black tracking-[0.25em] mb-3" style={{ color: "#334155" }}>
+          詳細AI分析（オプション）
+        </p>
 
       {/* Run / Re-run button */}
       {hasBacktest && (
@@ -1619,11 +1672,7 @@ function AnalysisTab({ strategyId, hasBacktest }: { strategyId: string; hasBackt
         />
       )}
 
-      {/* CROSS-PHASE INTERPRETATION section (Phase 4-D) */}
-      <CrossPhaseInterpretationSection strategyId={strategyId} />
-
-      {/* ── EA AIチャット ──────────────────────────────── */}
-      <StrategyChatSection strategyId={strategyId} />
+      </div> {/* end 詳細AI分析 */}
 
     </div>
   );
