@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/application/stores/connectionStore";
+import { createClient } from "@/infrastructure/supabase/client";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard, BarChart2, Globe, CalendarDays,
   Newspaper, Briefcase, History, Settings,
-  ScrollText, Cable, X, Bot, DatabaseZap,
+  ScrollText, Cable, X, Bot, DatabaseZap, LogOut, User,
 } from "lucide-react";
 
 // NEON GREEN accent
@@ -34,6 +37,22 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onClose, mobile = false }: SidebarProps) {
+  const router   = useRouter();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sb = createClient();
+    sb.auth.getUser().then(({ data: { user } }) => {
+      setUserEmail(user?.email ?? null);
+    });
+  }, []);
+
+  async function handleSignOut() {
+    const sb = createClient();
+    await sb.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
   const pathname   = usePathname();
   const { status } = useConnectionStore();
   let   lastGroup  = 0;
@@ -154,6 +173,30 @@ export function Sidebar({ onClose, mobile = false }: SidebarProps) {
           );
         })}
       </div>
+
+      {/* ── ユーザーメニュー ── */}
+      {userEmail && (
+        <div className="w-full px-1.5 shrink-0">
+          <div className="w-full h-px mb-2"
+            style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.06), transparent)" }} />
+          <div className="px-2 py-1.5 rounded space-y-1"
+            style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <div className="flex items-center gap-1.5">
+              <User size={10} style={{ color: "#475569" }} />
+              <span className="text-[7px] font-mono truncate" style={{ color: "#475569" }}>
+                {userEmail}
+              </span>
+            </div>
+            <button
+              onClick={handleSignOut}
+              className="w-full flex items-center gap-1.5 px-1 py-1 rounded text-[8px] font-mono transition-all hover:opacity-80"
+              style={{ color: "#475569" }}>
+              <LogOut size={9} />
+              <span>ログアウト</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MT5 link at bottom */}
       <div className="w-full px-1.5 pb-2 shrink-0">
