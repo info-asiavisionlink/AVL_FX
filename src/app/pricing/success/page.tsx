@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 const NG = "#00ff88";
 
-export default function PricingSuccessPage() {
+function SuccessContent() {
   const params  = useSearchParams();
   const session = params.get("session_id");
   const [done,  setDone]  = useState(false);
@@ -40,5 +40,18 @@ export default function PricingSuccessPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function PricingSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center"
+        style={{ background: "radial-gradient(ellipse at 20% 50%, rgba(0,15,35,1) 0%, #020408 100%)" }}>
+        <p className="text-[9px] font-mono" style={{ color: "#334155" }}>◌ 処理中...</p>
+      </div>
+    }>
+      <SuccessContent />
+    </Suspense>
   );
 }
