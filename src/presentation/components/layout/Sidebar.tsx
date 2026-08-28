@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/application/stores/connectionStore";
 import { createClient } from "@/infrastructure/supabase/client";
 import { useEffect, useState } from "react";
+import { PLANS, type PlanId } from "@/lib/plans";
 import {
   LayoutDashboard, BarChart2, Globe, CalendarDays,
   Newspaper, Briefcase, History, Settings,
@@ -39,11 +40,15 @@ interface SidebarProps {
 export function Sidebar({ onClose, mobile = false }: SidebarProps) {
   const router   = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userPlan,  setUserPlan]  = useState<PlanId>("free");
 
   useEffect(() => {
     const sb = createClient();
     sb.auth.getUser().then(({ data: { user } }) => {
-      setUserEmail(user?.email ?? null);
+      if (!user) return;
+      setUserEmail(user.email ?? null);
+      sb.from("user_subscriptions").select("plan").eq("user_id", user.id).single()
+        .then(({ data }) => { if (data?.plan) setUserPlan(data.plan as PlanId); });
     });
   }, []);
 
@@ -181,11 +186,23 @@ export function Sidebar({ onClose, mobile = false }: SidebarProps) {
             style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.06), transparent)" }} />
           <div className="px-2 py-1.5 rounded space-y-1"
             style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-            <div className="flex items-center gap-1.5">
-              <User size={10} style={{ color: "#475569" }} />
-              <span className="text-[7px] font-mono truncate" style={{ color: "#475569" }}>
-                {userEmail}
-              </span>
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <User size={10} style={{ color: "#475569" }} />
+                <span className="text-[7px] font-mono truncate" style={{ color: "#475569" }}>
+                  {userEmail}
+                </span>
+              </div>
+              {/* プランバッジ */}
+              <Link href="/pricing" title="プランを変更"
+                className="shrink-0 px-1.5 py-0.5 rounded text-[6px] font-black tracking-widest transition-opacity hover:opacity-80"
+                style={{
+                  background: `${PLANS[userPlan].color}15`,
+                  border:     `1px solid ${PLANS[userPlan].color}35`,
+                  color:      PLANS[userPlan].color,
+                }}>
+                {PLANS[userPlan].name.toUpperCase()}
+              </Link>
             </div>
             <button
               onClick={handleSignOut}

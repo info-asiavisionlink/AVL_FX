@@ -7,6 +7,8 @@ const PUBLIC_PATHS = [
   "/signup",
   "/forgot-password",
   "/auth/callback",
+  "/pricing",
+  "/api/stripe/webhook", // Stripe Webhook は認証不要
 ];
 
 export async function middleware(request: NextRequest) {
