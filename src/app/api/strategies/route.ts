@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse }  from "next/server";
 import { createAdminClient }           from "@/infrastructure/supabase/admin";
+import { createClient }                from "@/infrastructure/supabase/server";
 import { StrategySpecSchema, type StrategyRecord } from "@/lib/strategySchema";
 import {
   promotePreviewBacktest,
@@ -21,10 +22,21 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const db = createAdminClient();
-    const { data, error } = await db
-      .from("strategy_registry")
-      .select("*")
-      .order("created_at", { ascending: false });
+
+    // ユーザーIDを取得してフィルタリング
+    let userId: string | null = null;
+    try {
+      const userClient = await createClient();
+      const { data: { user } } = await userClient.auth.getUser();
+      userId = user?.id ?? null;
+    } catch { /* 未認証 */ }
+
+    // ユーザーID指定あり: 自分のもの + 共有(null)を返す
+    // 未認証: 共有データのみ返す
+    const query = db.from("strategy_registry").select("*").order("created_at", { ascending: false });
+    const { data, error } = userId
+      ? await query.or(`user_id.is.null,user_id.eq.${userId}`)
+      : await query.is("user_id", null);
 
     if (error) throw error;
 
@@ -67,6 +79,14 @@ export async function POST(req: NextRequest) {
     const spec = validation.data;
     const db   = createAdminClient();
 
+    // ユーザーIDを取得（ログイン済みの場合のみ紐付ける）
+    let userId: string | null = null;
+    try {
+      const userClient = await createClient();
+      const { data: { user } } = await userClient.auth.getUser();
+      userId = user?.id ?? null;
+    } catch { /* 未認証でも続行 */ }
+
     // Magic Number 生成（20001 から連番）
     const { data: maxRow } = await db
       .from("strategy_registry")
@@ -101,6 +121,7 @@ export async function POST(req: NextRequest) {
         status:           "DRAFT",
         backtest_status:  backtestStatusFromPreview,
         raw_prompt:       body.raw_prompt ?? null,
+        user_id:          userId,
       })
       .select()
       .single();
