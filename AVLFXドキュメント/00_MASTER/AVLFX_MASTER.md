@@ -154,7 +154,7 @@ market_data_sync_jobs  symbol / timeframe / mode(FORWARD|BACKFILL)
 
 ## 4. 現在の完成状態
 
-**最終更新:** 2026-08-22（Phase 8-A完了時点）
+**最終更新:** 2026-09-03（Legal Pages + Resend連携完了）
 
 ### 完成済み ✅
 
@@ -173,6 +173,8 @@ market_data_sync_jobs  symbol / timeframe / mode(FORWARD|BACKFILL)
 | Cross-Phase Interpretation | 全研究フェーズの統合AI解釈 |
 | Strategy Detail UI | 6タブ（OVERVIEW/BACKTEST/TRADES/ANALYSIS/VERSIONS/OPTIMIZE） |
 | Research Scripts | Phase 5〜8 の手動研究スクリプト群 |
+| Legal Pages | 利用規約・プライバシー・特定商取引法・お問い合わせ（/legal/*） |
+| Contact API | Resend連携メール送信（RESEND_API_KEY・FROM_EMAIL設定済み） |
 
 ### 未実装 ❌
 

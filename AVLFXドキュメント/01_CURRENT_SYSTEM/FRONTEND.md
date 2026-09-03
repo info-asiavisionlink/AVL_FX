@@ -29,6 +29,44 @@
 | `/calendar` | Calendar | `IMPLEMENTED` | 経済指標 |
 | `/history` | History | `IMPLEMENTED` | 取引履歴 |
 | `/logs` | Logs | `IMPLEMENTED` | システムログ |
+| `/legal/terms` | TOS Page | `IMPLEMENTED` | 利用規約 |
+| `/legal/privacy` | Privacy Page | `IMPLEMENTED` | プライバシーポリシー |
+| `/legal/tokushoho` | Tokushoho Page | `IMPLEMENTED` | 特定商取引法に基づく表記 |
+| `/legal/contact` | Contact Page | `IMPLEMENTED` | お問い合わせフォーム（Resend連携） |
+
+## Legal Pages（/legal/*）
+
+**Last Updated:** 2026-09-03  
+**Files:** `src/app/legal/`
+
+### 構成
+
+```
+src/app/legal/
+├── layout.tsx          ← 共通レイアウト（サイドナビ付き）
+├── terms/page.tsx      ← 利用規約
+├── privacy/page.tsx    ← プライバシーポリシー
+├── tokushoho/page.tsx  ← 特定商取引法に基づく表記
+└── contact/page.tsx    ← お問い合わせフォーム（Client Component）
+```
+
+### お問い合わせAPI
+
+- **Endpoint:** `POST /api/contact`  
+- **File:** `src/app/api/contact/route.ts`  
+- **メール送信:** Resend（`RESEND_API_KEY` 環境変数）  
+- **宛先:** `info@asiavision.link`  
+- **From:** `noreply@asiavision.link`（`FROM_EMAIL` 環境変数）  
+- **フォールバック:** 環境変数未設定時はコンソールログのみ（開発用）
+
+### 事業者情報（特定商取引法）
+
+| 項目 | 値 |
+|-----|---|
+| 販売事業者 | ASIAVISIONLINK |
+| 運営責任者 | 田中慶樹 |
+| 所在地 | 〒104-0061 東京都中央区銀座1丁目12-4 |
+| メール | info@asiavision.link |
 
 ---
 
