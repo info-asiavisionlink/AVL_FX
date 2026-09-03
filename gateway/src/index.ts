@@ -52,6 +52,20 @@ import {
   SUPPORTED_TIMEFRAMES,
   SYNC_JOB_STALE_MS,
 } from "./syncJobStore";
+import {
+  isEnabled as isExecutionEnabled,
+  verifyBridgeAuth,
+  getPendingCommands,
+  claimCommand,
+  submitCommandResult,
+  updateHeartbeat as updateBridgeHeartbeat,
+  markConnectionDisconnected,
+  upsertPositions,
+  upsertDeals,
+  type BridgeResultInput,
+  type BridgePosition,
+  type BridgeDeal,
+} from "./executionStore";
 
 void SYNC_JOB_STALE_MS; // suppress unused warning
 
@@ -616,6 +630,228 @@ app.post("/orders", (req, res) => {
   res.json({ ok: true, id: order.id });
 });
 
+// =================================================================
+// STAGE 3-B: Execution Bridge Endpoints
+// Bridge EA ↔ Gateway の双方向通信
+//
+// 認証:
+//   Bearer GATEWAY_SECRET (既存 auth ミドルウェア)
+//   + X-Connection-Id ヘッダ + X-Connection-Token ヘッダ
+//   → executionStore.verifyBridgeAuth() でSHA-256照合
+//
+// セキュリティ:
+//   - X-Connection-Token はログに出力しない
+//   - Terminal StateのCommandは更新不可
+//   - PENDING以外のClaimはAtomic updateで無効化
+// =================================================================
+
+/** Bridge EA: Heartbeat送信 + Safety Flags受信 */
+app.post("/bridge/heartbeat", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"] as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+
+  if (!connectionId || !connectionToken) {
+    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+
+  if (!isExecutionEnabled()) {
+    res.json({ ok: true, tradingEnabled: false, emergencyStop: true, note: "Supabase未設定" });
+    return;
+  }
+
+  const body = req.body as {
+    mt5Login?:    number;
+    broker?:      string;
+    accountType?: "REAL" | "DEMO";
+    accountMode?: "HEDGING" | "NETTING";
+    tradeAllowed?: boolean;
+    balance?:     number;
+    equity?:      number;
+    margin?:      number;
+    freeMargin?:  number;
+    leverage?:    number;
+  };
+
+  const flags = await updateBridgeHeartbeat(connectionId, {
+    accountType:  body.accountType  ?? "DEMO",
+    accountMode:  body.accountMode  ?? "HEDGING",
+    tradeAllowed: body.tradeAllowed ?? false,
+    balance:      body.balance      ?? 0,
+    equity:       body.equity       ?? 0,
+    margin:       body.margin       ?? 0,
+    freeMargin:   body.freeMargin   ?? 0,
+    leverage:     body.leverage     ?? 0,
+  });
+
+  if (!flags) {
+    res.status(401).json({ error: "接続が見つかりません" });
+    return;
+  }
+
+  res.json({
+    ok:             true,
+    tradingEnabled: flags.tradingEnabled,
+    emergencyStop:  flags.emergencyStop,
+    accountType:    flags.accountType,
+    accountMode:    flags.accountMode,
+    serverTime:     Date.now(),
+  });
+});
+
+/** Bridge EA切断通知 */
+app.post("/bridge/disconnect", auth, async (req, res) => {
+  const connectionId = req.headers["x-connection-id"] as string | undefined;
+  if (connectionId && isExecutionEnabled()) {
+    await markConnectionDisconnected(connectionId);
+  }
+  res.json({ ok: true });
+});
+
+/** Bridge EA: Pending Execution Commands取得 */
+app.get("/execution-commands/pending", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"] as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+
+  if (!connectionId || !connectionToken) {
+    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+
+  if (!isExecutionEnabled()) {
+    res.json([]);
+    return;
+  }
+
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+
+  const commands = await getPendingCommands(connectionId);
+  res.json(commands);
+});
+
+/** Bridge EA: Command Claim（PENDING → CLAIMED, Atomic） */
+app.post("/execution-commands/:commandId/claim", auth, async (req, res) => {
+  const { commandId } = req.params;
+  const connectionId    = req.headers["x-connection-id"] as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+
+  if (!connectionId || !connectionToken) {
+    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+
+  if (!isExecutionEnabled()) {
+    res.status(503).json({ error: "Supabase未設定" });
+    return;
+  }
+
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+
+  const claimed = await claimCommand(commandId, connectionId);
+  if (!claimed) {
+    res.status(409).json({ error: "Claim失敗（既に処理中または存在しない）" });
+    return;
+  }
+
+  res.json({ ok: true, commandId, status: "CLAIMED" });
+});
+
+/** Bridge EA: Execution Result提出 */
+app.post("/execution-commands/:commandId/result", auth, async (req, res) => {
+  const { commandId } = req.params;
+  const connectionId    = req.headers["x-connection-id"] as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+
+  if (!connectionId || !connectionToken) {
+    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+
+  if (!isExecutionEnabled()) {
+    res.status(503).json({ error: "Supabase未設定" });
+    return;
+  }
+
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+
+  const result = req.body as BridgeResultInput;
+  result.commandId = commandId;
+
+  await submitCommandResult(result);
+
+  broadcast({
+    type: "EXECUTION_RESULT",
+    data: {
+      commandId,
+      status:       result.status,
+      success:      result.success,
+      orderTicket:  result.orderTicket,
+      dealTicket:   result.dealTicket,
+    },
+    ts: Date.now(),
+  });
+
+  res.json({ ok: true });
+});
+
+/** Bridge EA: Position同期 */
+app.post("/bridge/positions", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"] as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+
+  if (!connectionId || !connectionToken || !isExecutionEnabled()) {
+    res.json({ ok: true });
+    return;
+  }
+
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+
+  const { positions } = req.body as { positions: BridgePosition[] };
+  if (Array.isArray(positions)) {
+    await upsertPositions(connectionId, flags.userId, positions);
+  }
+  res.json({ ok: true });
+});
+
+/** Bridge EA: Deal同期 */
+app.post("/bridge/deals", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"] as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+
+  if (!connectionId || !connectionToken || !isExecutionEnabled()) {
+    res.json({ ok: true });
+    return;
+  }
+
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+
+  const { deals } = req.body as { deals: BridgeDeal[] };
+  if (Array.isArray(deals)) {
+    await upsertDeals(connectionId, flags.userId, deals);
+  }
+  res.json({ ok: true });
+});
+
 // -----------------------------------------------------------------
 // Browser → Server: 読み取り専用 REST API
 // -----------------------------------------------------------------
@@ -1000,6 +1236,7 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`  Auth      : ${SECRET ? "✓ 有効" : "⚠ 未設定"}`);
   console.log(`  Data      : ${PERSIST_FILE}`);
   console.log(`  Supabase  : ${isSupabaseEnabled() ? "✓ bar_data 永続化有効" : "⚠ 未設定（barStore のみ）"}`);
+  console.log(`  Execution : ${isExecutionEnabled() ? "✓ Execution Bridge有効" : "⚠ 未設定"}`);
   console.log("==============================================");
 
   // 起動時: barStore に既存データがあれば Supabase へ非同期同期
