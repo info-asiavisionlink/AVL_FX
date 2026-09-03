@@ -37,7 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_user_subscriptions_stripe_sub
 
 -- ユーザー登録時に自動でFreeプランを作成するトリガー
 CREATE OR REPLACE FUNCTION handle_new_user_subscription()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   INSERT INTO user_subscriptions (user_id, plan, max_concurrent_eas, status)
   VALUES (NEW.id, 'free', 0, 'active')
