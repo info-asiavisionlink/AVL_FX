@@ -32,7 +32,7 @@ export default function LoginPage() {
     const sb = createClient();
     const { error: err } = await sb.auth.signInWithOAuth({
       provider: "google",
-      options:  { redirectTo: `${location.origin}/callback` },
+      options:  { redirectTo: `${location.origin}/callback?from=login` },
     });
     if (err) { setError(err.message); setLoading(false); }
   }

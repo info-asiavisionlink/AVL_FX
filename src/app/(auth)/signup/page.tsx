@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/infrastructure/supabase/client";
 
 const NG    = "#00ff88";
@@ -10,14 +10,22 @@ const CYAN  = "#00e5ff";
 const RED   = "#ff4466";
 const AMBER = "#fbbf24";
 
-export default function SignupPage() {
-  const router = useRouter();
+function SignupContent() {
+  const router  = useRouter();
+  const params  = useSearchParams();
   const [email,         setEmail]         = useState("");
   const [password,      setPassword]      = useState("");
   const [confirm,       setConfirm]       = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState("");
+  const [notice,        setNotice]        = useState("");
+
+  useEffect(() => {
+    if (params.get("notice") === "register_first") {
+      setNotice("Googleアカウントで初めてご利用の方は、まずこちらから新規登録してください。");
+    }
+  }, [params]);
 
   async function handleGoogleSignup() {
     if (!termsAccepted) { setError("利用規約とプライバシーポリシーに同意してください"); return; }
@@ -25,7 +33,7 @@ export default function SignupPage() {
     const sb = createClient();
     const { error: err } = await sb.auth.signInWithOAuth({
       provider: "google",
-      options:  { redirectTo: `${location.origin}/callback` },
+      options:  { redirectTo: `${location.origin}/callback?from=signup` },
     });
     if (err) { setError(err.message); setLoading(false); }
   }
@@ -62,6 +70,14 @@ export default function SignupPage() {
         <p className="text-[11px] font-black tracking-[0.2em] text-center" style={{ color: "#94a3b8" }}>
           新規登録
         </p>
+
+          {/* 未登録Googleアカウントの誘導通知 */}
+        {notice && (
+          <div className="rounded-lg px-3 py-2.5 text-[8px] font-mono leading-relaxed"
+            style={{ background: "rgba(0,229,255,0.06)", border: "1px solid rgba(0,229,255,0.2)", color: "#7dd3fc" }}>
+            {notice}
+          </div>
+        )}
 
         {/* プラン案内 */}
         <div className="rounded-lg p-3 flex items-center gap-3"
@@ -174,5 +190,13 @@ export default function SignupPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupContent />
+    </Suspense>
   );
 }
