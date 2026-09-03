@@ -80,7 +80,7 @@ export const CreateExecutionCommandSchema = z
 
     expiresAt:      isoDatetime,
 
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((data, ctx) => {
     // BUY/SELL: volume必須
@@ -206,8 +206,8 @@ export const CreateStrategySignalSchema = z.object({
   referencePrice: nonNegativeNumber.optional(),
   suggestedSl:    nonNegativeNumber.optional(),
   suggestedTp:    nonNegativeNumber.optional(),
-  reason:         z.record(z.unknown()).optional(),
-  metadata:       z.record(z.unknown()).optional(),
+  reason:         z.record(z.string(), z.unknown()).optional(),
+  metadata:       z.record(z.string(), z.unknown()).optional(),
 });
 
 export type CreateStrategySignalInput = z.infer<typeof CreateStrategySignalSchema>;
