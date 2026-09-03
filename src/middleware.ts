@@ -6,9 +6,12 @@ const PUBLIC_PATHS = [
   "/login",
   "/signup",
   "/forgot-password",
-  "/auth/callback",
+  "/callback",        // OAuth / メール確認コールバック
+  "/verify-email",    // メール確認待ちページ
   "/pricing",
-  "/api/stripe/webhook", // Stripe Webhook は認証不要
+  "/legal",           // 利用規約・プライバシー・特商法・お問い合わせ
+  "/api/stripe/webhook",
+  "/api/contact",
 ];
 
 export async function middleware(request: NextRequest) {

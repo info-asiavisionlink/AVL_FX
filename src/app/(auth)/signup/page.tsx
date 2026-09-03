@@ -2,22 +2,25 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/infrastructure/supabase/client";
 
-const NG   = "#00ff88";
-const CYAN = "#00e5ff";
-const RED  = "#ff4466";
+const NG    = "#00ff88";
+const CYAN  = "#00e5ff";
+const RED   = "#ff4466";
 const AMBER = "#fbbf24";
 
 export default function SignupPage() {
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm,  setConfirm]  = useState("");
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState("");
-  const [done,     setDone]     = useState(false);
+  const router = useRouter();
+  const [email,         setEmail]         = useState("");
+  const [password,      setPassword]      = useState("");
+  const [confirm,       setConfirm]       = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState("");
 
   async function handleGoogleSignup() {
+    if (!termsAccepted) { setError("利用規約とプライバシーポリシーに同意してください"); return; }
     setLoading(true); setError("");
     const sb = createClient();
     const { error: err } = await sb.auth.signInWithOAuth({
@@ -29,6 +32,7 @@ export default function SignupPage() {
 
   async function handleEmailSignup(e: React.FormEvent) {
     e.preventDefault();
+    if (!termsAccepted) { setError("利用規約とプライバシーポリシーに同意してください"); return; }
     if (password !== confirm) { setError("パスワードが一致しません"); return; }
     if (password.length < 8)  { setError("パスワードは8文字以上にしてください"); return; }
     setLoading(true); setError("");
@@ -38,29 +42,7 @@ export default function SignupPage() {
       options: { emailRedirectTo: `${location.origin}/callback` },
     });
     if (err) { setError(err.message); setLoading(false); return; }
-    setDone(true);
-    setLoading(false);
-  }
-
-  if (done) {
-    return (
-      <div className="w-full max-w-sm mx-auto p-4">
-        <div className="rounded-xl p-8 text-center space-y-4"
-          style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${NG}30` }}>
-          <p className="text-3xl">📧</p>
-          <p className="text-[12px] font-black tracking-widest" style={{ color: NG }}>
-            確認メールを送信しました
-          </p>
-          <p className="text-[9px] font-mono leading-relaxed" style={{ color: "#64748b" }}>
-            {email} に確認メールを送りました。<br />
-            メール内のリンクをクリックしてアカウントを有効にしてください。
-          </p>
-          <Link href="/login" className="inline-block text-[9px] font-mono" style={{ color: CYAN }}>
-            ログインページへ →
-          </Link>
-        </div>
-      </div>
-    );
+    router.push(`/verify-email?email=${encodeURIComponent(email)}`);
   }
 
   return (
@@ -93,11 +75,45 @@ export default function SignupPage() {
           </div>
         </div>
 
+        {/* 利用規約チェックボックス */}
+        <label className="flex items-start gap-2.5 cursor-pointer group">
+          <div className="relative mt-0.5 flex-shrink-0">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={e => { setTermsAccepted(e.target.checked); setError(""); }}
+              className="sr-only"
+            />
+            <div className="w-4 h-4 rounded border transition-all flex items-center justify-center"
+              style={{
+                background: termsAccepted ? `${NG}20` : "rgba(255,255,255,0.04)",
+                borderColor: termsAccepted ? NG : "rgba(255,255,255,0.15)",
+              }}>
+              {termsAccepted && (
+                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                  <path d="M1 4L3.5 6.5L9 1" stroke={NG} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </div>
+          </div>
+          <p className="text-[8px] font-mono leading-relaxed" style={{ color: "#64748b" }}>
+            <Link href="/legal/terms" target="_blank" className="underline transition-opacity hover:opacity-80" style={{ color: CYAN }}>利用規約</Link>
+            {" "}および{" "}
+            <Link href="/legal/privacy" target="_blank" className="underline transition-opacity hover:opacity-80" style={{ color: CYAN }}>プライバシーポリシー</Link>
+            {" "}を読み、内容に同意します。
+          </p>
+        </label>
+
         {/* Google */}
         <button
           onClick={handleGoogleSignup} disabled={loading}
           className="w-full flex items-center justify-center gap-3 py-2.5 rounded-lg text-[10px] font-mono font-bold tracking-widest transition-all"
-          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", opacity: loading ? 0.5 : 1 }}>
+          style={{
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            color: "#e2e8f0",
+            opacity: loading ? 0.5 : 1,
+          }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -143,7 +159,8 @@ export default function SignupPage() {
             style={{
               background: loading ? "rgba(255,255,255,0.04)" : "rgba(0,255,136,0.12)",
               border: `1px solid ${loading ? "rgba(255,255,255,0.08)" : "rgba(0,255,136,0.35)"}`,
-              color: loading ? "#334155" : NG, opacity: loading ? 0.6 : 1,
+              color: loading ? "#334155" : NG,
+              opacity: loading ? 0.6 : 1,
             }}>
             {loading ? "◌ 登録中..." : "無料で始める →"}
           </button>
