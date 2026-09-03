@@ -2,11 +2,14 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
+type Params = { params: Promise<{ id: string }> };
+
 // GET /api/live/strategies/[id]/runtime — Strategy Runtime State取得
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: Params,
 ) {
+  const { id } = await params;
   const cookieStore = await cookies();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +26,7 @@ export async function GET(
   const { data: strategy, error: stratErr } = await supabase
     .from("strategy_registry")
     .select("id, name, status, enabled, magic_number")
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("user_id", user.id)
     .single();
 
@@ -35,7 +38,7 @@ export async function GET(
   const { data: runtimeState } = await supabase
     .from("strategy_runtime_state")
     .select("*")
-    .eq("strategy_id", params.id)
+    .eq("strategy_id", id)
     .single();
 
   return NextResponse.json({
@@ -47,7 +50,7 @@ export async function GET(
       magicNumber:  strategy.magic_number,
     },
     runtime: runtimeState ?? {
-      strategyId:      params.id,
+      strategyId:      id,
       connectionId:    null,
       runtimeStatus:   "STOPPED",
       startedAt:       null,
