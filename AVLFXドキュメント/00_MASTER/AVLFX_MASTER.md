@@ -176,18 +176,32 @@ market_data_sync_jobs  symbol / timeframe / mode(FORWARD|BACKFILL)
 | Legal Pages | 利用規約・プライバシー・特定商取引法・お問い合わせ（/legal/*） |
 | Contact API | Resend連携メール送信（RESEND_API_KEY・FROM_EMAIL設定済み） |
 
+### STAGE 3-A 完了 ✅ (2026-09-03)
+
+| カテゴリ | 内容 |
+|---------|------|
+| Live Trading Data Model | mt5_connections / execution_commands / strategy_signals / strategy_runtime_state / live_positions / live_deals |
+| Execution Command Contract | State Machine / Idempotency / Expiry / Zod Validation |
+| Architecture確定 | 共通Execution Bridge EA方式（StrategyごとのMQL5生成なし） |
+
 ### 未実装 ❌
 
 | カテゴリ | 内容 |
 |---------|------|
 | 研究パイプライン自動連鎖 | Backtest完了後の自動次ステップ起動 |
 | Final Research Verdict | VALIDATED/REJECTED/ROBUST ステータス |
-| MQL5 EA自動生成 | Strategy Spec → .mq5ファイル |
-| MT5 Live Deployment | 生成EAをMT5に配備 |
-| ライブトレード | Strategy EAによる実際の発注 |
+| AVL Execution Bridge EA | 共通MQL5 EA（STAGE 3-B） |
+| Strategy Runtime (Server) | リアルタイム評価ループ（STAGE 3-C） |
+| Execution Engine | Signal→Command変換（STAGE 3-D） |
+| ライブトレード | End-to-End Pipeline未完成 |
 | EA Commander上部パネル | MOCK_EA_PROFILES（5件固定）を実データ化 |
 | Cross-Asset Data | DXY連続/US10Y（XMブローカー非対応） |
 | Strategy Status UI | ACTIVE/PAUSED手動変更UI |
+
+> **Architecture変更（2026-09-03）:**  
+> 旧設計「StrategyごとにMQL5 EAを生成・配布」は廃止。  
+> 新設計「共通Execution Bridge EA 1個 + Server-side Strategy Runtime」に正式移行。  
+> 旧設計記録: `02_DEVELOPMENT_LOG/LIVE_TRADING_ARCHITECTURE_AUDIT.md`
 
 ---
 
