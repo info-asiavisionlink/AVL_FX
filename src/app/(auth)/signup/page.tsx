@@ -22,7 +22,7 @@ export default function SignupPage() {
     const sb = createClient();
     const { error: err } = await sb.auth.signInWithOAuth({
       provider: "google",
-      options:  { redirectTo: `${location.origin}/auth/callback` },
+      options:  { redirectTo: `${location.origin}/callback` },
     });
     if (err) { setError(err.message); setLoading(false); }
   }
@@ -35,7 +35,7 @@ export default function SignupPage() {
     const sb = createClient();
     const { error: err } = await sb.auth.signUp({
       email, password,
-      options: { emailRedirectTo: `${location.origin}/auth/callback` },
+      options: { emailRedirectTo: `${location.origin}/callback` },
     });
     if (err) { setError(err.message); setLoading(false); return; }
     setDone(true);
