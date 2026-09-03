@@ -26,7 +26,7 @@ try {
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SVC      = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const PAT      = "REDACTED_SUPABASE_PAT";
+const PAT      = process.env.SUPABASE_PAT ?? "";
 const PROJECT  = "bsmofroshpmomjwfxigh";
 
 const H = { "apikey": SVC, "Authorization": `Bearer ${SVC}`, "Content-Type": "application/json", "Prefer": "return=representation" };

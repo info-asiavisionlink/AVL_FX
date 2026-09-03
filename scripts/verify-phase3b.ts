@@ -34,7 +34,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const OPENAI_KEY   = process.env.OPENAI_API_KEY!;
 const MODEL        = process.env.OPENAI_MODEL_FAST ?? process.env.OPENAI_MODEL ?? "gpt-4.1";
-const PAT          = "REDACTED_SUPABASE_PAT";
+const PAT          = process.env.SUPABASE_PAT ?? "";
 const PROJECT_REF  = "bsmofroshpmomjwfxigh";
 
 const HEADERS = {
