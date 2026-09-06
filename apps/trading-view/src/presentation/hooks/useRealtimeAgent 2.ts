@@ -164,9 +164,11 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
       const { token, model } = await tokenRes.json() as { token: string; model: string };
 
       // 2. SDK dynamic import ──────────────────────────────────────
-      const { RealtimeAgent, RealtimeSession, tool } =
+      const { RealtimeAgent, RealtimeSession, tool: _tool } =
         await import("@openai/agents/realtime");
       const { z } = await import("zod");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tool = _tool as (config: any) => any;
 
       // 3. Build live market context ───────────────────────────────
       const indData = indicators[sym.toUpperCase()];
@@ -188,7 +190,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
         name:        "get_market_data",
         description: "指定シンボルの最新価格・EMA21/200・ATR・スプレッドをGatewayから取得する。",
         parameters:  z.object({ symbol: z.string() }),
-        execute: async ({ symbol: s }) => {
+        execute: async ({ symbol: s }: { symbol: string }) => {
           const key = s.toUpperCase().replace("/", "");
           try {
             const [tickRes, indRes] = await Promise.all([
@@ -229,8 +231,8 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
           entry: z.number(), sl: z.number(), tp: z.number(),
           rr: z.string(), confidence: z.number().min(0).max(100), reason: z.string(),
         }),
-        execute: async (params) => {
-          opts.onOrderProposal?.(params as OrderProposal);
+        execute: async (params: Record<string, unknown>) => {
+          opts.onOrderProposal?.(params as unknown as OrderProposal);
           addLog(`[VOICE SIGNAL] ${params.direction} ${params.symbol} @ ${params.entry} (${params.confidence}%)`, "signal");
           return JSON.stringify({ status: "proposed", message: "注文提案をUIに表示しました。" });
         },

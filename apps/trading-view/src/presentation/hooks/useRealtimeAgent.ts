@@ -174,9 +174,11 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
       const { token, model } = await tokenRes.json() as { token: string; model: string };
 
       // 2. SDK dynamic import ──────────────────────────────────────
-      const { RealtimeAgent, RealtimeSession, tool } =
+      const { RealtimeAgent, RealtimeSession, tool: _tool } =
         await import("@openai/agents/realtime");
       const { z } = await import("zod");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tool = _tool as (config: any) => any;
 
       // 3. Build live market context ───────────────────────────────
       const indData = indicators[sym.toUpperCase()];
@@ -197,8 +199,8 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
       const getMarketData = tool({
         name:        "get_market_data",
         description: "指定シンボルの最新価格・EMA21/200・ATR・スプレッドをGatewayから取得する。",
-        parameters:  z.object({ symbol: z.string() }),
-        execute: async ({ symbol: s }) => {
+        parameters: { type: "object", properties: { symbol: { type: "string" } }, required: ["symbol"] } as any,
+        execute: async ({ symbol: s }: { symbol: string }) => {
           const key = s.toUpperCase().replace("/", "");
           try {
             const [tickRes, indRes] = await Promise.all([
@@ -239,7 +241,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
           entry: z.number(), sl: z.number(), tp: z.number(),
           rr: z.string(), confidence: z.number().min(0).max(100), reason: z.string(),
         }),
-        execute: async (params) => {
+        execute: async (params: Record<string, unknown>) => {
           // Apply risk management settings
           const lotSize  = settings.defaultLotSize;
           const maxPos   = settings.maxPositions;
@@ -262,7 +264,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
             } catch { /* allow trade if check fails */ }
           }
 
-          opts.onOrderProposal?.({ ...params, volume: lotSize } as OrderProposal);
+          opts.onOrderProposal?.({ ...params, volume: lotSize } as unknown as OrderProposal);
           addLog(`[VOICE SIGNAL] ${params.direction} ${params.symbol} @ ${params.entry} (${params.confidence}%) ロット:${lotSize} 最大ポジション:${maxPos}`, "signal");
           return JSON.stringify({ status: "proposed", lotSize, maxPositions: maxPos, message: "注文提案をUIに表示しました。" });
         },
@@ -274,7 +276,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
         parameters:  z.object({
           currencies: z.string().describe("カンマ区切りの通貨コード例: USD,EUR,JPY").optional(),
         }),
-        execute: async ({ currencies }) => {
+        execute: async ({ currencies }: { currencies?: string }) => {
           try {
             const cur = currencies ?? "USD,EUR,JPY,GBP,AUD,NZD,CAD,CHF";
             const r = await fetch(`/api/market/economic-events?currencies=${encodeURIComponent(cur)}&hours=24`);
@@ -292,7 +294,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
         parameters:  z.object({
           symbol: z.string().describe("例: EURUSD"),
         }),
-        execute: async ({ symbol: s }) => {
+        execute: async ({ symbol: s }: { symbol: string }) => {
           try {
             const r = await fetch(`/api/market/news?symbol=${encodeURIComponent(s)}&limit=5`);
             if (!r.ok) return JSON.stringify({ error: "ニュース取得失敗" });
@@ -309,7 +311,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
         parameters:  z.object({
           query: z.string().describe("検索クエリ例: 'USD FRB 金利 最新ニュース 2026'"),
         }),
-        execute: async ({ query }) => {
+        execute: async ({ query }: { query: string }) => {
           try {
             const r = await fetch("/api/market/web-search", {
               method:  "POST",
@@ -330,7 +332,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
         parameters:  z.object({
           pairs: z.array(z.string()).optional().describe("スキャン対象ペア。省略時は主要10ペアを自動スキャン"),
         }),
-        execute: async ({ pairs }) => {
+        execute: async ({ pairs }: { pairs?: string[] }) => {
           try {
             const r = await fetch("/api/ai/trade-scanner", {
               method:  "POST",
@@ -358,7 +360,7 @@ export function useRealtimeAgent(opts: UseRealtimeAgentOptions = {}): RealtimeVo
         name:        "get_full_analysis",
         description: "指定シンボルの完全な多要素分析（ダウ理論・マルチTF・テクニカル・S/R・相関）を実行し、エントリー条件を判断する。",
         parameters:  z.object({ symbol: z.string() }),
-        execute: async ({ symbol: s }) => {
+        execute: async ({ symbol: s }: { symbol: string }) => {
           try {
             const r = await fetch("/api/ai/analysis/full", {
               method:  "POST",
