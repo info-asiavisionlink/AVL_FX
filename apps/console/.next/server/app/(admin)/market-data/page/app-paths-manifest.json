@@ -1,0 +1,3 @@
+{
+  "/(admin)/market-data/page": "app/(admin)/market-data/page.js"
+}

@@ -1,0 +1,563 @@
+"use strict";
+// =================================================================
+// AVL Market Server v3.0  [restart: timestamp normalization fix]
+// =================================================================
+//
+// 設計原則
+//   MT5 を唯一のデータソースとする。
+//   このサーバーはデータを加工しない。受信→保存→配信のみ。
+//
+//   価格補正禁止 / 時間補正禁止 / OHLC生成禁止
+//
+// エンドポイント
+//   EA → Server（認証あり）
+//     POST /connect          起動通知
+//     POST /tick             Tick ストリーム
+//     POST /bar              単一バー（リアルタイム）
+//     POST /bars/bulk        過去バー一括（起動時）
+//     POST /positions        ポジション ストリーム
+//     POST /account          口座 ストリーム
+//     POST /heartbeat        ハートビート
+//     POST /event            切断通知
+//
+//   Browser → Server（読み取り専用）
+//     GET /health            サーバー状態
+//     GET /bars/:sym/:tf     過去バー（時刻はEAのまま）
+//     GET /tick/:sym         最新 Tick
+//     GET /positions         ポジション一覧
+//     GET /account           口座情報
+//     GET /symbols           シンボル一覧
+//
+//   WebSocket /ws            リアルタイムストリーム（Tick/BAR/Positions/Account）
+//
+// 起動: cd gateway && npm run dev
+// =================================================================
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+require("dotenv/config");
+const express_1 = __importDefault(require("express"));
+const http_1 = __importDefault(require("http"));
+const ws_1 = require("ws");
+const cors_1 = __importDefault(require("cors"));
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
+// セッション判定（UTC 時刻ベース）
+function getTradingSessions(brokerTimeSec) {
+    const d = new Date(brokerTimeSec * 1000);
+    const hour = d.getUTCHours();
+    const min = d.getUTCMinutes();
+    const t = hour + min / 60; // 小数時間
+    const sess = [];
+    if (t >= 22 || t < 7)
+        sess.push("Wellington/Sydney"); // 22:00-07:00 UTC
+    if (t >= 0 && t < 9)
+        sess.push("Tokyo"); // 00:00-09:00 UTC
+    if (t >= 7 && t < 16)
+        sess.push("London"); // 07:00-16:00 UTC
+    if (t >= 12 && t < 21)
+        sess.push("New York"); // 12:00-21:00 UTC
+    return sess.length > 0 ? sess : ["Market Closed"];
+}
+// -----------------------------------------------------------------
+// Express + HTTP サーバー
+// -----------------------------------------------------------------
+const app = (0, express_1.default)();
+const server = http_1.default.createServer(app);
+app.use((0, cors_1.default)());
+app.use(express_1.default.json({ limit: "20mb" }));
+// -----------------------------------------------------------------
+// バーストア永続化（再起動してもデータを保持する）
+// -----------------------------------------------------------------
+const PERSIST_FILE = path_1.default.join(process.cwd(), "data", "bars.json");
+function persistSave() {
+    try {
+        fs_1.default.mkdirSync(path_1.default.dirname(PERSIST_FILE), { recursive: true });
+        const obj = {};
+        barStore.forEach((bars, key) => { obj[key] = bars; });
+        fs_1.default.writeFileSync(PERSIST_FILE, JSON.stringify(obj));
+    }
+    catch (e) {
+        console.warn("[Persist] 保存失敗:", e);
+    }
+}
+function persistLoad() {
+    try {
+        if (!fs_1.default.existsSync(PERSIST_FILE))
+            return;
+        const obj = JSON.parse(fs_1.default.readFileSync(PERSIST_FILE, "utf8"));
+        let total = 0;
+        for (const [key, bars] of Object.entries(obj)) {
+            barStore.set(key, bars);
+            total += bars.length;
+        }
+        console.log(`[Persist] 復元: ${Object.keys(obj).length}キー, ${total}本`);
+    }
+    catch (e) {
+        console.warn("[Persist] 読み込み失敗:", e);
+    }
+}
+// 30秒ごとに自動保存
+setInterval(persistSave, 30_000);
+// -----------------------------------------------------------------
+// インメモリストア（加工なし）
+// -----------------------------------------------------------------
+const MAX_BARS = 2000;
+/** "EURUSD:H1" → Bar[]  （時刻はブローカー秒、昇順） */
+const barStore = new Map();
+/** "EURUSD" → Tick */
+const tickStore = new Map();
+/** ポジション配列 */
+let positions = [];
+/** 口座情報 */
+let account = null;
+/** EA 接続情報 */
+let eaInfo = null;
+/** インジケーターストア（AI基盤）"EURUSD" → Indicators */
+const indicatorStore = new Map();
+/** 取引履歴ストア "EURUSD" → HistoryDeal[] （ticket でユニーク管理）*/
+const historyStore = new Map();
+/** Market Watch シンボルストア "EURUSD" → MarketWatchSymbol */
+const symbolStore = new Map();
+/** 注文ストア（Pending + Position）ticket → Order */
+const orderStore = new Map();
+/** 注文キュー（AI → EA 発注用） */
+const orderQueue = [];
+// Diagnostic timestamps for health endpoint
+let lastTickTs = 0;
+let lastSymbolTs = 0;
+let lastIndicatorTs = 0;
+// -----------------------------------------------------------------
+// WebSocket サーバー /ws
+// -----------------------------------------------------------------
+const wss = new ws_1.WebSocketServer({ server, path: "/ws" });
+const clients = new Set();
+wss.on("connection", (ws, req) => {
+    clients.add(ws);
+    console.log(`[WS] 接続 ${req.socket.remoteAddress} (計${clients.size})`);
+    // 接続直後に現在の EA 状態を通知
+    if (eaInfo)
+        safeSend(ws, { type: "EA_CONNECTED", data: eaInfo, ts: Date.now() });
+    if (account)
+        safeSend(ws, { type: "ACCOUNT", data: account, ts: Date.now() });
+    // Market Watch と注文の現在状態を送信
+    if (symbolStore.size > 0) {
+        const syms = Array.from(symbolStore.values());
+        safeSend(ws, { type: "SYMBOLS", data: syms, ts: Date.now() });
+    }
+    if (orderStore.size > 0) {
+        safeSend(ws, { type: "ORDERS", data: Array.from(orderStore.values()), ts: Date.now() });
+    }
+    ws.on("close", () => { clients.delete(ws); });
+    ws.on("error", () => { clients.delete(ws); });
+});
+function safeSend(ws, msg) {
+    if (ws.readyState === ws_1.WebSocket.OPEN)
+        ws.send(JSON.stringify(msg));
+}
+function broadcast(msg) {
+    const str = JSON.stringify(msg);
+    for (const ws of clients) {
+        if (ws.readyState === ws_1.WebSocket.OPEN)
+            ws.send(str);
+    }
+}
+// -----------------------------------------------------------------
+// 認証ミドルウェア（EA → Server 間のみ）
+// -----------------------------------------------------------------
+const SECRET = process.env.MT5_GATEWAY_SECRET ?? "";
+function auth(req, res, next) {
+    if (!SECRET) {
+        next();
+        return;
+    }
+    const token = (req.headers.authorization ?? "").replace("Bearer ", "");
+    if (token !== SECRET) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+    }
+    next();
+}
+// -----------------------------------------------------------------
+// EA → Server: 受信エンドポイント（加工禁止）
+// -----------------------------------------------------------------
+/** EA 起動通知 */
+app.post("/connect", auth, (req, res) => {
+    eaInfo = req.body;
+    const { symbol, login, broker, serverTime } = eaInfo;
+    console.log(`[EA] 接続: symbol=${symbol} login=${login} broker=${broker} serverTime=${serverTime}`);
+    broadcast({ type: "EA_CONNECTED", data: eaInfo, ts: Date.now() });
+    res.json({ ok: true });
+});
+/** EA 停止 / 切断 */
+app.post("/event", auth, (req, res) => {
+    const { type, symbol } = req.body;
+    if (type === "DISCONNECT") {
+        eaInfo = null;
+        console.log(`[EA] 切断: ${symbol}`);
+    }
+    broadcast({ type, symbol, ts: Date.now() });
+    res.json({ ok: true });
+});
+/** Tick ストリーム — 受信値をそのまま保存・配信 */
+app.post("/tick", auth, (req, res) => {
+    const tick = req.body;
+    tickStore.set(tick.symbol, tick);
+    lastTickTs = Date.now();
+    broadcast({ type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
+    res.json({ ok: true });
+});
+/**
+ * バー リアルタイム更新 — 受信値をそのまま保存・配信
+ * 同 time のバーは上書き（未確定バー更新）、新 time は追記。
+ */
+app.post("/bar", auth, (req, res) => {
+    const bar = req.body;
+    if (bar.timeframe === "M1") {
+        const norm = normalizeTime(bar.time);
+        console.log(`[BAR/M1] raw=${bar.time} norm=${norm} close=${bar.close}`);
+    }
+    upsertBar(bar.symbol, bar.timeframe, bar);
+    broadcast({ type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
+    res.json({ ok: true });
+});
+/** 過去バー一括受信（EA 起動時） */
+app.post("/bars/bulk", auth, (req, res) => {
+    const { symbol, timeframe, bars } = req.body;
+    if (!symbol || !timeframe || !Array.isArray(bars)) {
+        res.status(400).json({ error: "symbol / timeframe / bars が必要です" });
+        return;
+    }
+    const key = storeKey(symbol, timeframe);
+    const existing = barStore.get(key);
+    const normalized = bars.map(normalizeBar);
+    // タイムスタンプ整合性チェック:
+    // bulk最新バーがtickより1時間以上先の場合はチャートキャッシュのTZ不整合と判断してスキップ
+    const tick = tickStore.get(symbol.toUpperCase());
+    if (tick && normalized.length > 0) {
+        const sorted0 = dedupAndSort(normalized);
+        const lastBulkMs = sorted0[sorted0.length - 1].time;
+        const tickMs = normalizeTime(tick.time);
+        const diffSec = (lastBulkMs - tickMs) / 1000;
+        if (diffSec > 3600) {
+            console.warn(`[Bulk] ${key} TZ不整合スキップ: bulk末尾=${lastBulkMs} tick=${tickMs} diff=${Math.floor(diffSec / 60)}分`);
+            res.json({ ok: true, skipped: "tz_mismatch" });
+            return;
+        }
+    }
+    // 既存より本数が多い（新規 or EA 再起動）場合のみ上書き
+    if (!existing || bars.length >= existing.length) {
+        const sorted = dedupAndSort(normalized);
+        barStore.set(key, sorted.slice(-MAX_BARS));
+        console.log(`[Bulk] ${key}: ${sorted.length}本`);
+        persistSave(); // Bulk受信は重要データなので即座に保存
+    }
+    res.json({ ok: true });
+});
+/** ポジション ストリーム */
+app.post("/positions", auth, (req, res) => {
+    const { positions: pos, symbol } = req.body;
+    positions = pos ?? [];
+    broadcast({ type: "POSITIONS", symbol, data: positions, ts: Date.now() });
+    res.json({ ok: true });
+});
+/** 口座情報 ストリーム */
+app.post("/account", auth, (req, res) => {
+    account = req.body;
+    broadcast({ type: "ACCOUNT", data: account, ts: Date.now() });
+    res.json({ ok: true });
+});
+/** ハートビート */
+app.post("/heartbeat", auth, (req, res) => {
+    broadcast({ type: "HEARTBEAT", data: req.body, ts: Date.now() });
+    res.json({ ok: true });
+});
+// -----------------------------------------------------------------
+// Market Watch シンボル一括受信
+// -----------------------------------------------------------------
+app.post("/symbols/bulk", auth, (req, res) => {
+    const body = req.body;
+    if (!Array.isArray(body.symbols)) {
+        res.status(400).json({ error: "symbols が必要です" });
+        return;
+    }
+    const now = Date.now();
+    let updated = 0;
+    for (const sym of body.symbols) {
+        if (!sym.symbol)
+            continue;
+        symbolStore.set(sym.symbol.toUpperCase(), { ...sym, receivedAt: now });
+        updated++;
+    }
+    lastSymbolTs = now;
+    broadcast({ type: "SYMBOLS", data: Array.from(symbolStore.values()), ts: now });
+    res.json({ ok: true, updated });
+});
+// -----------------------------------------------------------------
+// 注文ストリーム（EA から全注文+ポジションを受信）
+// -----------------------------------------------------------------
+app.post("/orders/stream", auth, (req, res) => {
+    const body = req.body;
+    if (!Array.isArray(body.orders)) {
+        res.status(400).json({ error: "orders が必要です" });
+        return;
+    }
+    // 既存クリアして更新
+    orderStore.clear();
+    for (const order of body.orders) {
+        if (!order.ticket)
+            continue;
+        orderStore.set(order.ticket, order);
+    }
+    broadcast({ type: "ORDERS", data: Array.from(orderStore.values()), ts: Date.now() });
+    res.json({ ok: true, count: orderStore.size });
+});
+/** インジケーターストリーム（AI基盤）— 拡張インジケーター */
+app.post("/indicators", auth, (req, res) => {
+    const body = req.body;
+    if (!body.symbol || !body.timeframes) {
+        res.status(400).json({ error: "symbol / timeframes が必要です" });
+        return;
+    }
+    const sessions = getTradingSessions(body.brokerTime);
+    const data = { ...body, receivedAt: Date.now(), sessions };
+    indicatorStore.set(body.symbol.toUpperCase(), data);
+    lastIndicatorTs = Date.now();
+    broadcast({ type: "INDICATORS", symbol: body.symbol, data, ts: Date.now() });
+    res.json({ ok: true });
+});
+/** インジケーター取得 */
+app.get("/indicators/:symbol", (_req, res) => {
+    const ind = indicatorStore.get(_req.params.symbol.toUpperCase());
+    if (!ind) {
+        res.status(404).json({ error: "symbol not found" });
+        return;
+    }
+    res.json(ind);
+});
+/** 全シンボルのインジケーター取得 */
+app.get("/indicators", (_req, res) => {
+    const list = [];
+    indicatorStore.forEach((v) => list.push(v));
+    res.json(list);
+});
+// -----------------------------------------------------------------
+// 取引履歴ストリーム（History Stream）
+// -----------------------------------------------------------------
+/** EA → Gateway: 取引履歴一括受信 */
+app.post("/history/bulk", auth, (req, res) => {
+    const body = req.body;
+    if (!body.symbol || !Array.isArray(body.deals)) {
+        res.status(400).json({ error: "symbol / deals が必要です" });
+        return;
+    }
+    const sym = body.symbol.toUpperCase();
+    if (!historyStore.has(sym))
+        historyStore.set(sym, new Map());
+    const symMap = historyStore.get(sym);
+    let added = 0;
+    for (const deal of body.deals) {
+        if (!symMap.has(deal.ticket)) {
+            symMap.set(deal.ticket, { ...deal, symbol: sym, receivedAt: Date.now() });
+            added++;
+        }
+    }
+    console.log(`[History] ${sym}: ${added} 件追加 (合計 ${symMap.size} 件)`);
+    res.json({ ok: true, added, total: symMap.size });
+});
+/** 特定シンボルの履歴取得（新しい順） */
+app.get("/history/:symbol", (_req, res) => {
+    const sym = _req.params.symbol.toUpperCase();
+    const symMap = historyStore.get(sym);
+    if (!symMap || symMap.size === 0) {
+        res.json([]);
+        return;
+    }
+    const list = Array.from(symMap.values())
+        .sort((a, b) => b.closeTime - a.closeTime);
+    res.json(list);
+});
+/** 全シンボルの履歴取得 */
+app.get("/history", (_req, res) => {
+    const list = [];
+    historyStore.forEach((symMap) => symMap.forEach((d) => list.push(d)));
+    list.sort((a, b) => b.closeTime - a.closeTime);
+    res.json(list);
+});
+// -----------------------------------------------------------------
+// 管理エンドポイント（ローカル限定）
+// -----------------------------------------------------------------
+/** 特定シンボル・時間足のバーをクリア（異常なタイムスタンプ修正用） */
+app.delete("/admin/bars/:symbol/:timeframe", (_req, res) => {
+    const key = storeKey(_req.params.symbol, _req.params.timeframe);
+    barStore.delete(key);
+    console.log(`[Admin] ${key} クリア`);
+    res.json({ ok: true, key });
+});
+// -----------------------------------------------------------------
+// Phase4: 注文管理（スタブ）
+// -----------------------------------------------------------------
+app.get("/orders/pending", auth, (req, res) => {
+    const pending = orderQueue.filter((o) => o.status === "pending");
+    pending.forEach((o) => { o.status = "acknowledged"; });
+    res.json(pending);
+});
+app.post("/orders/:id/result", auth, (req, res) => {
+    const order = orderQueue.find((o) => o.id === req.params.id);
+    if (!order) {
+        res.status(404).json({ error: "not found" });
+        return;
+    }
+    order.status = req.body.success ? "executed" : "failed";
+    broadcast({ type: "ORDER_RESULT", data: { ...order, result: req.body }, ts: Date.now() });
+    res.json({ ok: true });
+});
+app.post("/orders", (req, res) => {
+    const order = { id: `order_${Date.now()}`, status: "pending", createdAt: Date.now(), ...req.body };
+    orderQueue.push(order);
+    broadcast({ type: "ORDER_QUEUED", data: order, ts: Date.now() });
+    res.json({ ok: true, id: order.id });
+});
+// -----------------------------------------------------------------
+// Browser → Server: 読み取り専用 REST API
+// -----------------------------------------------------------------
+/** ヘルスチェック */
+app.get("/health", (_req, res) => {
+    const mem = process.memoryUsage();
+    res.json({
+        status: "ok",
+        version: "3.0",
+        ea: eaInfo ? { symbol: eaInfo.symbol, login: eaInfo.login, version: eaInfo.version } : null,
+        eaConnected: eaInfo !== null,
+        marketWatch: symbolStore.size,
+        tickSymbols: Array.from(tickStore.keys()),
+        barKeys: Array.from(barStore.keys()),
+        indicatorSymbols: Array.from(indicatorStore.keys()),
+        openOrders: orderStore.size,
+        clients: clients.size,
+        uptime: Math.floor(process.uptime()),
+        serverTime: Date.now(),
+        lastTickTs,
+        lastSymbolTs,
+        lastIndicatorTs,
+        memoryMB: Math.round(mem.rss / 1024 / 1024),
+    });
+});
+/** シンボル一覧（Market Watch 全シンボル、なければ Tick ストアから） */
+app.get("/symbols", (_req, res) => {
+    if (symbolStore.size > 0) {
+        res.json(Array.from(symbolStore.values()));
+        return;
+    }
+    // フォールバック: Tick ストア
+    const list = Array.from(tickStore.values()).map((t) => ({
+        symbol: t.symbol, bid: t.bid, ask: t.ask,
+        spread: t.spread, digits: t.digits, time: t.time,
+    }));
+    res.json(list);
+});
+/** 注文一覧（Pending + Position） */
+app.get("/orders/all", (_req, res) => {
+    res.json(Array.from(orderStore.values()));
+});
+/** 最新 Tick */
+app.get("/tick/:symbol", (req, res) => {
+    const tick = tickStore.get(req.params.symbol.toUpperCase());
+    if (!tick) {
+        res.status(404).json({ error: "symbol not found" });
+        return;
+    }
+    res.json(tick);
+});
+/**
+ * 過去バー
+ * GET /bars/:symbol/:timeframe?count=500
+ *
+ * 時刻フィルターは使用しない。
+ * EAが送る時刻はブローカー秒（rates[i].time）であり、
+ * ブラウザのUTC秒とは異なる場合がある。
+ * count で最新N本を返すだけ。
+ */
+app.get("/bars/:symbol/:timeframe", (req, res) => {
+    const key = storeKey(req.params.symbol, req.params.timeframe);
+    let bars = barStore.get(key) ?? [];
+    const count = Number(req.query.count ?? 500);
+    // 重複排除・昇順ソート
+    bars = dedupAndSort(bars);
+    // 最新 count 本
+    const result = bars.slice(-count);
+    if (result.length > 0) {
+        const last = result[result.length - 1];
+        console.log(`[GET /bars] ${key} → ${result.length}本 last_time=${last.time} close=${last.close}`);
+    }
+    res.json(result);
+});
+/** ポジション一覧 */
+app.get("/positions", (_req, res) => {
+    res.json(positions);
+});
+/** 口座情報 */
+app.get("/account", (_req, res) => {
+    if (!account) {
+        res.status(404).json({ error: "no account data" });
+        return;
+    }
+    res.json(account);
+});
+// -----------------------------------------------------------------
+// ユーティリティ
+// -----------------------------------------------------------------
+function storeKey(symbol, timeframe) {
+    return `${symbol.toUpperCase()}:${timeframe.toUpperCase()}`;
+}
+/** EA は datetime（秒）で送信する。disk データは ms で保存済みのため、秒を ms に統一する */
+function normalizeTime(time) {
+    return time < 1_000_000_000_000 ? time * 1000 : time;
+}
+function normalizeBar(b) {
+    return { ...b, time: normalizeTime(b.time) };
+}
+function dedupAndSort(bars) {
+    const map = new Map();
+    for (const b of bars)
+        map.set(b.time, b);
+    return Array.from(map.values()).sort((a, b) => a.time - b.time);
+}
+/** barStore へバーをアップサート（同時刻は上書き、新時刻は追加） */
+function upsertBar(symbol, timeframe, rawBar) {
+    const key = storeKey(symbol, timeframe);
+    const bars = barStore.get(key) ?? [];
+    const last = bars[bars.length - 1];
+    const bar = normalizeBar(rawBar);
+    if (last && last.time === bar.time) {
+        bars[bars.length - 1] = { time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume };
+    }
+    else {
+        bars.push({ time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume });
+        if (bars.length > MAX_BARS)
+            bars.shift();
+    }
+    barStore.set(key, bars);
+}
+// -----------------------------------------------------------------
+// 起動
+// -----------------------------------------------------------------
+// Railway provides PORT env var. Fall back to MT5_WEBSOCKET_PORT for local dev.
+const PORT = parseInt(process.env.PORT ?? process.env.MT5_WEBSOCKET_PORT ?? "8080", 10);
+// 起動時にディスクからバーデータを復元
+persistLoad();
+// Railway requires binding to 0.0.0.0
+server.listen(PORT, "0.0.0.0", () => {
+    console.log("==============================================");
+    console.log("  AVL Market Server v3.0");
+    console.log("==============================================");
+    console.log(`  HTTP REST : http://0.0.0.0:${PORT}`);
+    console.log(`  WebSocket : ws://0.0.0.0:${PORT}/ws`);
+    console.log(`  Auth      : ${SECRET ? "✓ 有効" : "⚠ 未設定"}`);
+    console.log(`  Data      : ${PERSIST_FILE}`);
+    console.log("==============================================");
+});
+// シャットダウン時に保存
+process.on("SIGTERM", () => { persistSave(); server.close(() => process.exit(0)); });
+process.on("SIGINT", () => { persistSave(); server.close(() => process.exit(0)); });

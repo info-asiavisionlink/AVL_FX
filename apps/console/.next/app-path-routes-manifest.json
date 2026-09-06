@@ -1,0 +1,14 @@
+{
+  "/(admin)/dashboard/page": "/dashboard",
+  "/(admin)/gateway/page": "/gateway",
+  "/(admin)/historical/page": "/historical",
+  "/(admin)/market-data/page": "/market-data",
+  "/(admin)/mt5/page": "/mt5",
+  "/(admin)/system/page": "/system",
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/auth/callback/route": "/api/auth/callback",
+  "/api/auth/logout/route": "/api/auth/logout",
+  "/login/page": "/login",
+  "/page": "/"
+}

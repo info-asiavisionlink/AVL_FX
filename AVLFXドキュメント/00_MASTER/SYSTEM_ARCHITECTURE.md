@@ -1,289 +1,288 @@
 # SYSTEM ARCHITECTURE
 **Status:** IMPLEMENTED — reflects current codebase  
-**Last Updated:** 2026-08-22  
-**Source of Truth:** gateway/src/, ea/*.mq5, supabase/migrations/, src/infrastructure/
+**Last Updated:** 2026-09-06  
+**Source of Truth:** apps/, services/gateway/, mt5/, supabase/migrations/
+
+---
+
+## Overview: 2システム構成
+
+AVL-FXは以下の2つの独立したアプリケーションで構成されます。
+
+| System | 対象 | URL | 役割 |
+|--------|------|-----|------|
+| **AVLFX Trading View** | 一般ユーザー | avlfx.vercel.app (本番) | チャート・AI・バックテスト・Live Trading |
+| **AVLFX Console** | 管理者のみ | console.avlfx.vercel.app | Market Dataインフラ管理 |
+
+---
+
+## Repository Structure (after refactor 2026-09-06)
+
+```
+AVL_FX/
+├── apps/
+│   ├── trading-view/          ← AVLFX Trading View (Next.js)
+│   │   ├── src/
+│   │   │   ├── app/           ← Pages & API Routes
+│   │   │   ├── components/    ← UI Components
+│   │   │   ├── domain/        ← Business Logic
+│   │   │   └── infrastructure/← Supabase / Gateway clients
+│   │   ├── package.json
+│   │   └── vercel.json
+│   │
+│   └── console/               ← AVLFX Console (Next.js, Admin Only)
+│       ├── src/
+│       │   ├── app/
+│       │   │   ├── (admin)/   ← Admin pages (auth-guarded)
+│       │   │   │   ├── dashboard/
+│       │   │   │   ├── market-data/
+│       │   │   │   ├── historical/
+│       │   │   │   ├── mt5/
+│       │   │   │   ├── gateway/
+│       │   │   │   └── system/
+│       │   │   ├── login/
+│       │   │   └── api/auth/
+│       │   ├── lib/
+│       │   │   └── admin-auth.ts  ← Server-side admin check
+│       │   └── middleware.ts      ← Auth guard
+│       └── vercel.json
+│
+├── services/
+│   └── gateway/               ← MT5 ↔ Supabase Bridge (Node.js Express)
+│       ├── src/
+│       │   ├── index.ts       ← Main server
+│       │   ├── barDataStore.ts
+│       │   ├── executionStore.ts
+│       │   └── syncJobStore.ts
+│       ├── Dockerfile
+│       └── package.json
+│
+├── mt5/
+│   ├── data-manager/          ← Admin MT5専用 EA
+│   │   ├── AVL_DataManager_v2.mq5
+│   │   └── AVL_DataManager_v2.ex5
+│   └── execution-bridge/      ← User MT5専用 EA
+│       ├── AVL_ExecutionBridge.mq5
+│       ├── AVL_FX_Bridge.mq5
+│       └── AVL_FX_Bridge.ex5
+│
+├── supabase/                  ← Migrations (shared)
+├── ea/                        ← Legacy (mt5/に移行済み)
+├── scripts/                   ← Research & analysis scripts
+└── AVLFXドキュメント/
+```
 
 ---
 
 ## データフロー全体図
 
+### ADMIN MARKET DATA PIPELINE
+
 ```
-MT5 (XM Broker)
+Admin MT5 (管理者専用口座)
      │
-     │  HTTP POST / WebSocket
+     │  HTTP POST  (AVL_DataManager_v2.mq5)
      ↓
-Gateway [Node.js Express]  ←→  Browser (WebSocket)
+services/gateway  [Node.js Express on Railway]
      │
      │  Supabase SDK (UPSERT)
      ↓
 Supabase [PostgreSQL + RLS]
+  bar_data / ticks / market data
      │
-     │  Supabase SDK (SELECT/INSERT)
+     │  Supabase SDK (SELECT)
      ↓
-Next.js API Routes
+apps/trading-view
+  Chart / AI / Backtest / Research
+```
+
+### USER LIVE TRADING PIPELINE
+
+```
+apps/trading-view
+  User Strategy → Live Trading UI
      │
-     │  Function call
+     │  HTTP POST (Execution commands)
      ↓
-Research Engines [TypeScript]
+services/gateway
+     │
+     │  WebSocket / HTTP
+     ↓
+User MT5 (AVL_ExecutionBridge.mq5)
+     │
+     │  OrderSend()
+     ↓
+Broker (XM, etc.)
+```
+
+### CONSOLE → ADMIN MARKET DATA
+
+```
+AVLFX Console (Admin browser)
+     │
+     │  Direct Supabase query (service_role)
+     ↓
+Supabase
+     │
+     │  Gateway health check
+     ↓
+services/gateway /health
+     │
+     │  Real-time data
+     ↓
+Admin MT5 status
 ```
 
 ---
 
-## 1. MT5 Layer
+## 1. AVLFX Trading View
 
-### ファイル構成
+**役割:** 一般ユーザー向けトレーディングアプリ
 
-| ファイル | 役割 |
-|---------|------|
-| `ea/AVL_DataManager_v2.mq5` | メインData Manager EA。売買ロジックなし |
-| `ea/AVL_FX_Bridge.mq5` | UIリアルタイム表示専用 |
+### 主要機能
+- AVL AI チャット
+- Market Chart (Lightweight Charts)
+- Watchlist
+- Market Analysis
+- EA Command Center
+- AI EA Builder
+- Strategy作成 / Backtest / Analysis
+- Live Trading
+- Live Performance
+- User MT5 Connection
 
-### AVL_DataManager_v2.mq5 — 8ストリーム
+### データソース
+- **Market Data:** Supabase `bar_data` テーブル (Console管轄のAdmin MT5が蓄積)
+- **Live Data:** Gateway WebSocket (tick / positions)
+- **User Data:** Supabase (RLS で自分のデータのみ)
 
+### 重要原則
+Trading View自身はAdmin MT5へ直接接続しない。
+Market DataはConsoleが管理するパイプライン経由のみ。
+
+---
+
+## 2. AVLFX Console
+
+**役割:** 管理者専用 Platform Control Plane
+
+### アクセス制限
+- Supabase Auth + ADMIN_EMAILS環境変数 による2重確認
+- Middlewareで全ページをガード
+- ユーザーには非公開
+
+### 管理機能
+| ページ | 機能 |
+|--------|------|
+| `/dashboard` | システム全体の概要・Pipeline健全性 |
+| `/market-data` | Tick/Bar リアルタイム監視・ポジション・口座 |
+| `/historical` | bar_data統計・Symbol×TF別データ量 |
+| `/mt5` | Admin MT5接続状態・EA管理 |
+| `/gateway` | Gateway状態・APIエンドポイント一覧 |
+| `/system` | End-to-end pipeline健全性チェック |
+
+---
+
+## 3. Gateway (services/gateway)
+
+**役割:** MT5 ↔ Supabase ↔ Trading View データブリッジ
+
+**Deploy:** Railway (Docker)
+
+### EA → Server (認証あり)
+| Endpoint | 役割 |
+|----------|------|
+| `POST /connect` | EA起動通知 |
+| `POST /tick` | Tickストリーム |
+| `POST /bar` | リアルタイムBar |
+| `POST /bars/bulk` | Historical Bar一括 |
+| `POST /positions` | ポジションストリーム |
+| `POST /account` | 口座情報 |
+| `POST /heartbeat` | 死活監視 |
+
+### Browser → Server (読み取り専用)
+| Endpoint | 役割 |
+|----------|------|
+| `GET /health` | サーバー状態 |
+| `GET /bars/:sym/:tf` | 過去Bar (Trading View) |
+| `GET /tick/:sym` | 最新Tick |
+| `GET /positions` | ポジション一覧 |
+| `GET /account` | 口座情報 |
+| `GET /symbols` | シンボル一覧 |
+| `WS /ws` | リアルタイムストリーム |
+
+---
+
+## 4. MT5 Layer
+
+### data-manager (Admin MT5専用)
 ```
-Stream 1: Tick        → POST /tick        （100msスロットリング）
-Stream 2: OHLC        → POST /bar         （確定バー）
-                      → POST /bars/bulk   （起動時・再送）
-Stream 3: MarketWatch → POST /symbols/bulk （全MW symbol、3sec）
-Stream 4: Indicators  → POST /indicators  （30sec）
-Stream 5: Orders      → POST /positions   （5sec）
-Stream 6: Account     → POST /account     （5sec）
-Stream 7: History     → POST /history     （30日分、5min）
-Stream 8: Heartbeat   → POST /heartbeat
+mt5/data-manager/
+├── AVL_DataManager_v2.mq5   ← 8ストリーム送信EA
+└── AVL_DataManager_v2.ex5
+```
+- Admin MT5にのみインストール
+- Market Data取得 → Gateway POST
+
+### execution-bridge (User MT5専用)
+```
+mt5/execution-bridge/
+├── AVL_ExecutionBridge.mq5  ← Live Trading注文実行
+├── AVL_FX_Bridge.mq5        ← Gateway双方向ブリッジ
+└── AVL_FX_Bridge.ex5
+```
+- ユーザー自身のMT5にインストール
+- Trading View → Gateway → このEA → 注文実行
+
+---
+
+## 5. Supabase (共通Data Infrastructure)
+
+### 主要テーブル
+| テーブル | 書き込み元 | 読み取り元 |
+|---------|-----------|-----------|
+| `bar_data` | Gateway (Admin MT5経由) | Trading View, Console |
+| `ticks` | Gateway | Console |
+| `strategies` | Trading View | Trading View |
+| `backtest_results` | Trading View | Trading View |
+| `live_positions` | Trading View | Trading View |
+
+---
+
+## 環境変数分離
+
+### Trading View (.env.local)
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+NEXT_PUBLIC_MT5_GATEWAY_HTTP_URL=  ← 読み取り専用
+OPENAI_API_KEY=
+STRIPE_SECRET_KEY=
 ```
 
-### History Sync / DataSync
-
+### Console (.env.local)
 ```
-HistorySync（起動時）:
-  InpHistorySyncEnabled = true → 任意月数の過去OHLC一括取得
-  対象: g_Symbol のみ（チャートシンボル）
-  チャンク分割（InpHistorySyncChunkDays = 28日）
-
-DataSync（インクリメンタル）:
-  30秒毎にSupabase market_data_sync_jobs をポーリング
-  DataSync_Execute(symbol, tf, ...) 任意シンボル対応
-  CopyRates(symbol, tf, from, to, rates) → 任意MT5シンボル
-  FORWARD / BACKFILL モード両対応
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SERVICE_ROLE_KEY=         ← Console専用 (service_role)
+MT5_GATEWAY_URL=                   ← Admin Gateway URL
+MT5_GATEWAY_SECRET=                ← Admin認証secret
+ADMIN_EMAILS=admin@example.com     ← アクセス許可メール
 ```
 
-### 重要制約
-
-- `g_Symbol = Symbol()` = チャートにアタッチしたシンボルのみリアルタイムOHLC
-- 複数シンボルのリアルタイム収集には複数EA（複数チャート）が必要
-- DataSyncは任意シンボルをサポート（ブローカーのMarket Watchにあれば）
-
-### UTC タイムスタンプ保証
-
+### Gateway (.env)
 ```
-MqlRates.time → UTC秒 (ブローカー時刻ではない)
-検証済み: H4バーが 14400秒倍数(UTC境界) に整列
-→ barDataStore.ts: new Date(bar.time).toISOString() で直接保存
+SUPABASE_URL=
+SUPABASE_SERVICE_KEY=
+GATEWAY_SECRET=
+PORT=3002
 ```
 
 ---
 
-## 2. Gateway Layer
+## Security
 
-**ファイル:** `gateway/src/index.ts`  
-**起動:** `cd gateway && npm run dev` → Port 8080
-
-### 受信エンドポイント（EA → Gateway）
-
-```
-POST /connect       起動通知
-POST /tick          Tick受信
-POST /bar           単一確定バー
-POST /bars/bulk     過去バー一括（最大5000本/TF）
-POST /positions     ポジション
-POST /account       口座情報
-POST /heartbeat     ハートビート
-POST /event         切断通知
-```
-
-### 配信エンドポイント（Browser → Gateway）
-
-```
-GET  /bars/:sym/:tf    過去バー（全件）
-GET  /tick/:sym        最新Tick
-GET  /symbols          Market Watch全シンボル
-GET  /health           サーバー状態
-WS   /ws               リアルタイムストリーム
-```
-
-### DataSync エンドポイント（Gateway → EA polling時）
-
-```
-GET  /data-commands/pending            PENDING job取得
-POST /data-commands/:id/progress      進捗更新
-```
-
-### barDataStore.ts
-
-```typescript
-upsertBulkBars(symbol, timeframe, bars[])  // 起動時一括
-upsertSingleBar(symbol, timeframe, bar)    // 確定バー単体
-syncBarStoreToSupabase(barStore)           // 初回同期
-
-// symbol.toUpperCase() 正規化
-// BATCH_SIZE=500, BATCH_DELAY_MS=50ms
-// fire-and-forget (Gatewayをブロックしない)
-```
-
----
-
-## 3. Supabase Layer
-
-### 接続
-
-```typescript
-// サーバーサイド (API Routes, Research Engines)
-createAdminClient() → SUPABASE_SERVICE_ROLE_KEY使用
-
-// クライアントサイド
-createClient() → SUPABASE_ANON_KEY使用
-```
-
-### RLS設定
-
-```
-bar_data:
-  SELECT: authenticated ✅
-  INSERT/UPDATE: service_role only ✅
-
-strategy_registry / backtest_*:
-  RLS無効（Phase 1〜現在は認証ユーザー全員アクセス可）
-  ※ユーザー別分離は未実装
-```
-
-### 主要テーブル（全15 migrations）
-
-詳細は [DATABASE.md](../01_CURRENT_SYSTEM/DATABASE.md) 参照。
-
----
-
-## 4. Next.js API Layer
-
-**構成:** `src/app/api/`  
-**Runtime:** `export const runtime = "nodejs"` （Edge Runtimeは未使用）
-
-### Strategy研究APIグループ
-
-```
-/api/ai/strategy/build          自然言語→Strategy Spec (OpenAI)
-/api/strategies                 Strategy CRUD
-/api/strategies/[id]/backtest   バックテスト
-/api/strategies/[id]/analyze    AI分析
-/api/strategies/[id]/improve    AI改善提案
-/api/strategies/[id]/versions   バージョン管理
-/api/strategies/[id]/optimize   パラメーター最適化
-/api/strategies/[id]/walk-forward   Walk Forward
-/api/strategies/[id]/monte-carlo    Monte Carlo
-/api/strategies/[id]/interpret  Cross-Phase解釈
-```
-
-### Market Data APIグループ
-
-```
-/api/market-data/status         bar_data統計
-/api/market-data/health         データ健全性
-/api/market-data/gaps           ギャップ検出
-/api/market-data/history-sync   HistorySync Job作成
-```
-
----
-
-## 5. Research Engine Layer
-
-**ファイル:** `src/infrastructure/backtest/`
-
-### エンジン一覧
-
-| ファイル | 役割 | 状態 |
-|---------|------|------|
-| `BacktestEngine.ts` | シグナル評価→ポジション管理→統計 | IMPLEMENTED |
-| `BacktestService.ts` | DB読み込み→Engine呼び出し→DB保存 | IMPLEMENTED |
-| `BacktestReporter.ts` | 統計計算・verdict判定 | IMPLEMENTED |
-| `BacktestAnalyzer.ts` | AI分析コンテキスト構築 | IMPLEMENTED |
-| `OptimizationEngine.ts` | グリッドサーチ + Stable Zone | IMPLEMENTED |
-| `WalkForwardEngine.ts` | IS/OOS時系列分割検証 | IMPLEMENTED |
-| `MonteCarloEngine.ts` | Nイテレーション確率シミュレーション | IMPLEMENTED |
-| `InterpretationEngine.ts` | 全フェーズ統合AI解釈 | IMPLEMENTED |
-| `evaluator.ts` | シグナル評価ロジック（EvaluationContext） | IMPLEMENTED |
-| `indicators.ts` | EMA/ATR事前計算 | IMPLEMENTED |
-| `PositionManager.ts` | ポジション管理・PnL計算 | IMPLEMENTED |
-| `spreadConfig.ts` | シンボル別spread/slippage設定 | IMPLEMENTED |
-| `timeframe.ts` | confirmed-bar時刻計算 | IMPLEMENTED |
-
-### BacktestEngine の設計原則
-
-```
-1. _evaluatorOverride: 任意シグナルロジック注入可能
-2. confirmed-bar安全: getLastConfirmedBarIndex() でlook-ahead防止
-3. 単一シンボル設計: spec.symbols.length === 1 必須
-4. コスト込み: spread + slippage を entry/exit価格に反映
-5. 高速: 5,000本 ≈ 14ms
-```
-
----
-
-## 6. UI Layer
-
-**ファイル:** `src/presentation/components/`
-
-### コンポーネント構成
-
-```
-/ea/
-  EACommandCenter.tsx    メイン画面（MOCK上部 + REAL下部）
-  AIEABuilder.tsx        自然言語→Spec→Preview→Save モーダル
-  StrategyDetailModal.tsx  6タブ詳細画面（3489行）
-  mockData.ts            MOCK_EA_PROFILES（5件ハードコード）
-  types.ts               EAProfile型定義
-
-/layout/
-  DashboardShell.tsx     サイドバー付きレイアウト
-
-/chart/, /markets/, /watchlist/ etc.
-  → リアルタイムデータ表示系
-```
-
----
-
-## 7. データ流れ詳細図（Strategy研究フロー）
-
-```
-[USER] 自然言語入力
-   │
-   ↓ POST /api/ai/strategy/build
-[OpenAI] JSON生成 → ZodValidation
-   │
-   ↓ POST /api/strategies
-[Supabase] strategy_registry INSERT (status=DRAFT)
-   │
-   ↓ POST /api/strategies/[id]/backtest
-[BacktestService] bar_data SELECT → BacktestEngine
-   → backtest_jobs/results/trades INSERT
-   │
-   ↓ POST /api/strategies/[id]/analyze
-[OpenAI] Fact-based分析 → strategy_ai_analyses INSERT
-   │
-   ↓ POST /api/strategies/[id]/optimize
-[OptimizationEngine] GridSearch → optimization_jobs/candidates INSERT
-   │
-   ↓ POST /api/strategies/[id]/walk-forward
-[WalkForwardEngine] IS/OOS分割 → walk_forward_jobs INSERT
-   │
-   ↓ POST /api/strategies/[id]/monte-carlo
-[MonteCarloEngine] N iterations → monte_carlo_results INSERT
-   │
-   ↓ POST /api/strategies/[id]/interpret
-[InterpretationEngine] 全結果統合 → strategy_phase4d_interpretations INSERT
-   │
-   ↓ [手動判断] または [未実装: 自動判定]
-[VALIDATED / REJECTED]
-```
-
----
-
-*Architecture変更時は必ずこのファイルを更新すること。*
+- **Admin Secrets分離:** `MT5_GATEWAY_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` はConsoleのみ
+- **Trading View:** publicキーのみ。service_roleは一切保持しない
+- **Console:** ADMIN_EMAILS allowlist。Middlewareで全ページガード
+- **Gateway:** `x-gateway-secret` ヘッダー認証。EA→Gateway間のみ

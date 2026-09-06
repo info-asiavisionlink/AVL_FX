@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #0f1423;
+  --bg-card: #141928;
+  --border: rgba(255,255,255,0.08);
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --accent-green: #00ff88;
+  --accent-cyan: #00e5ff;
+  --accent-amber: #fbbf24;
+  --accent-red: #f87171;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
