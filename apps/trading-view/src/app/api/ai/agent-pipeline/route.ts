@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse }       from "next/server";
 import { Agent, tool, run }                from "@openai/agents";
-import { z }                               from "zod";
 import { getOpenAIClient, MODELS, KNOWLEDGE_STORE_ID } from "@/infrastructure/ai/openai-client";
 
 export const runtime = "nodejs";
@@ -18,6 +17,12 @@ async function gatewayFetch<T>(path: string): Promise<T | null> {
   } catch { return null; }
 }
 
+// Plain JSON schema for tool parameters (avoids Zod v3/v4 type conflict with @openai/agents)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const symbolSchema: any = { type: "object", properties: { symbol: { type: "string" } }, required: ["symbol"] };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const emptySchema: any = { type: "object", properties: {}, required: [] };
+
 export async function POST(req: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "OPENAI_API_KEY 未設定" }, { status: 500 });
@@ -28,9 +33,10 @@ export async function POST(req: NextRequest) {
   const getLiveMarketData = tool({
     name: "get_live_market_data",
     description: "指定シンボルのライブ価格・インジケーター・バーデータをGatewayから取得",
-    parameters: z.object({ symbol: z.string() }),
-    execute: async ({ symbol: s }) => {
-      const key = s.toUpperCase().replace("/", "");
+    parameters: symbolSchema,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    execute: async (input: any) => {
+      const key = input.symbol.toUpperCase().replace("/", "");
       const [tick, indicators, barsH4, barsD1] = await Promise.all([
         gatewayFetch<{bid:number;ask:number;spread:number}>(`/tick/${key}`),
         gatewayFetch<{spread:number;timeframes:Record<string,unknown>}>(`/indicators/${key}`),
@@ -44,9 +50,10 @@ export async function POST(req: NextRequest) {
   const getCorrelatedMarkets = tool({
     name: "get_correlated_markets",
     description: "相関する市場の現在価格を取得",
-    parameters: z.object({ symbol: z.string() }),
-    execute: async ({ symbol: s }) => {
-      const key = s.toUpperCase().replace("/", "");
+    parameters: symbolSchema,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    execute: async (input: any) => {
+      const key = input.symbol.toUpperCase().replace("/", "");
       const correlations: Record<string, string[]> = {
         EURUSD: ["GBPUSD", "USDJPY", "USDX-SEP26"],
         USDJPY: ["USDX-SEP26", "US30Cash", "JP225Cash"],
@@ -65,13 +72,14 @@ export async function POST(req: NextRequest) {
   const getFullAnalysis = tool({
     name: "get_full_analysis",
     description: "AVL FX分析エンジンの完全な多要素分析を実行",
-    parameters: z.object({ symbol: z.string() }),
-    execute: async ({ symbol: s }) => {
+    parameters: symbolSchema,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    execute: async (input: any) => {
       try {
         const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/api/ai/analysis/full`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ symbol: s }),
+          body: JSON.stringify({ symbol: input.symbol }),
         });
         if (!res.ok) return `Analysis failed: ${res.status}`;
         const data = await res.json() as {overall:{confidence:number;direction:string;tradeable:boolean};tradeSetup:unknown;aiSynthesis:string};
@@ -87,7 +95,7 @@ export async function POST(req: NextRequest) {
   const getEconomicEvents = tool({
     name: "get_economic_events",
     description: "今後24時間の高影響経済指標イベントを取得",
-    parameters: z.object({}),
+    parameters: emptySchema,
     execute: async () => {
       try {
         const { getUpcomingEvents } = await import("@/infrastructure/supabase/repository");
@@ -105,20 +113,18 @@ export async function POST(req: NextRequest) {
   const proposeTradeDecision = tool({
     name: "propose_trade_decision",
     description: "最終的なトレード判断を構造化データとして提案（実際の注文は行わない）",
-    parameters: z.object({
-      decision: z.enum(["BUY", "SELL", "HOLD"]),
-      confidence: z.number().min(0).max(100),
-      entry: z.number(),
-      sl: z.number(),
-      tp1: z.number(),
-      tp2: z.number(),
-      rr: z.string(),
-      volume: z.number().default(0.01),
-      reason: z.string(),
-      keyRisks: z.array(z.string()),
-      requiresHumanApproval: z.boolean().default(true),
-    }),
-    execute: async (params) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    parameters: { type: "object", properties: {
+        decision: { type: "string", enum: ["BUY", "SELL", "HOLD"] },
+        confidence: { type: "number" }, entry: { type: "number" }, sl: { type: "number" },
+        tp1: { type: "number" }, tp2: { type: "number" }, rr: { type: "string" },
+        volume: { type: "number" }, reason: { type: "string" },
+        keyRisks: { type: "array", items: { type: "string" } },
+        requiresHumanApproval: { type: "boolean" },
+      }, required: ["decision","confidence","entry","sl","tp1","tp2","rr","reason","keyRisks","requiresHumanApproval"],
+    } as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    execute: async (params: any) => {
       return JSON.stringify({ ...params, status: "proposed", requiresHumanApproval: true });
     },
   });
@@ -166,55 +172,46 @@ AnalysisAgentからの詳細分析を受け取り、最終的なトレード判�
    - S/Rレベル（エントリー・SL・TP候補）
    - 相関確認
    - 経済指標リスクレベル
-5. DecisionAgentにhandoffする
-
-分析は必ず複数の根拠を組み合わせること。`,
+5. DecisionAgentにhandoffする`,
+    tools: [getFullAnalysis, getCorrelatedMarkets, getEconomicEvents, getLiveMarketData],
     handoffs: [decisionAgent],
-    tools: [getFullAnalysis, getCorrelatedMarkets, getEconomicEvents],
   });
 
-  const marketAgent = new Agent({
-    name: "MarketAgent",
-    model,
-    instructions: `あなたはAVL FX市場データ収集エージェントです。
-${sym}の市場状況を収集しAnalysisAgentに引き渡します。
-
-【手順】
-1. get_live_market_data で${sym}のライブデータを取得
-2. データを整理してサマリーを作成
-3. AnalysisAgentにhandoffする
-
-効率的に動作し、必要なデータを素早く収集すること。`,
-    handoffs: [analysisAgent],
-    tools: [getLiveMarketData],
-  });
+  void getOpenAIClient(); // ensure configured
+  const knowledgeStoreId = KNOWLEDGE_STORE_ID;
 
   try {
-    const result = await run(marketAgent, `${sym}の完全な市場分析と取引判断を実行してください。`, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: any = await run(analysisAgent, `シンボル: ${sym}\n\n上記シンボルの完全な市場分析を実行し、トレード判断を提案してください。`, {
       maxTurns: 20,
+      ...(knowledgeStoreId ? { context: { knowledgeStoreId } } : {}),
     });
 
-    const output = result.finalOutput ?? "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const messages: any[] = result.messages ?? result.state?.messages ?? [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lastAssistant = [...messages].reverse().find((m: any) => m.role === "assistant");
+    const content = Array.isArray(lastAssistant?.content)
+      ? lastAssistant.content.map((c: {type?: string; text?: string}) => c.type === "text" ? c.text : "").join("")
+      : String(lastAssistant?.content ?? "");
 
-    let decision: Record<string, unknown> | null = null;
-
-    const jsonMatches = output.match(/\{[\s\S]*?"decision"[\s\S]*?"confidence"[\s\S]*?\}/g);
-    if (jsonMatches && jsonMatches.length > 0) {
-      try {
-        decision = JSON.parse(jsonMatches[jsonMatches.length - 1]) as Record<string, unknown>;
-      } catch { /* ignore */ }
-    }
+    // Find proposed trade from tool calls
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toolOutputs = messages.filter((m: any) => m.role === "tool").map((m: any) => {
+      try { return typeof m.content === "string" ? JSON.parse(m.content) : m.content; }
+      catch { return null; }
+    }).filter(Boolean);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const proposedTrade = toolOutputs.find((o: any) => o?.status === "proposed");
 
     return NextResponse.json({
-      output,
-      decision,
       symbol: sym,
-      runId: result.lastAgent?.name ?? "unknown",
-      ts: Date.now(),
+      analysis: content,
+      proposedTrade: proposedTrade ?? null,
+      requiresHumanApproval: true,
     });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[agent-pipeline]", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+  } catch (e) {
+    console.error("Agent pipeline error:", e);
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
