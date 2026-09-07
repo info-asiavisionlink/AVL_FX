@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   "/legal",           // 利用規約・プライバシー・特商法・お問い合わせ
   "/api/stripe/webhook",
   "/api/contact",
+  "/ea/",             // EAファイル (.ex5) ダウンロード — ログイン不要
 ];
 
 export async function middleware(request: NextRequest) {
