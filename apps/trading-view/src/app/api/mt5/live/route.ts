@@ -28,14 +28,15 @@ async function safeFetch<T>(path: string): Promise<T | null> {
 }
 
 export async function GET() {
-  const [symbols, account, indicators] = await Promise.all([
+  // Admin MT5の /account はユーザーに返さない (管理者の口座情報は非公開)
+  // 市場データ (symbols/indicators) のみ提供
+  const [symbols, indicators] = await Promise.all([
     safeFetch<unknown[]>("/symbols"),
-    safeFetch<unknown>("/account"),
     safeFetch<unknown[]>("/indicators"),
   ]);
 
   return NextResponse.json(
-    { symbols: symbols ?? [], account: account ?? null, indicators: indicators ?? [] },
+    { symbols: symbols ?? [], account: null, indicators: indicators ?? [] },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
