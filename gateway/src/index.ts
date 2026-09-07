@@ -898,8 +898,8 @@ app.get("/symbols", (_req, res) => {
   res.json(list);
 });
 
-/** 注文一覧（Pending + Position） */
-app.get("/orders/all", (_req, res) => {
+/** 注文一覧（Pending + Position）— 認証必須 */
+app.get("/orders/all", auth, (_req, res) => {
   res.json(Array.from(orderStore.values()));
 });
 
@@ -938,13 +938,13 @@ app.get("/bars/:symbol/:timeframe", (req, res) => {
   res.json(result);
 });
 
-/** ポジション一覧 */
-app.get("/positions", (_req, res) => {
+/** ポジション一覧 — 認証必須（口座情報保護） */
+app.get("/positions", auth, (_req, res) => {
   res.json(positions);
 });
 
-/** 口座情報 */
-app.get("/account", (_req, res) => {
+/** 口座情報 — 認証必須（ログインID・残高保護） */
+app.get("/account", auth, (_req, res) => {
   if (!account) { res.status(404).json({ error: "no account data" }); return; }
   res.json(account);
 });
