@@ -13,6 +13,7 @@
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomUUID } from "crypto";
+import { WebSocket as ws } from "ws";
 
 // ------------------------------------------------------------------
 // Supabase クライアント（遅延初期化）
@@ -35,7 +36,11 @@ function getClient(): SupabaseClient | null {
     return null;
   }
 
-  _client  = createClient(url, key, { global: { fetch: globalThis.fetch } });
+  _client  = createClient(url, key, {
+    global: { fetch: globalThis.fetch },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    realtime: { transport: ws as any },
+  });
   _enabled = true;
   console.log("[executionStore] Supabase接続 OK");
   return _client;
