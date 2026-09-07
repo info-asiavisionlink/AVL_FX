@@ -351,8 +351,11 @@ function broadcast(msg: WsMessage): void {
 const SECRET = process.env.MT5_GATEWAY_SECRET ?? "";
 
 function auth(req: Request, res: Response, next: NextFunction): void {
-  if (!SECRET) { next(); return; }
-  const token = (req.headers.authorization ?? "").replace("Bearer ", "");
+  if (!SECRET) { res.status(401).json({ error: "Unauthorized: SECRET not configured" }); return; }
+  // Authorization: Bearer {secret} または x-gateway-secret: {secret} の両方を受け付ける
+  const bearer = (req.headers.authorization ?? "").replace("Bearer ", "").trim();
+  const xSecret = (req.headers["x-gateway-secret"] ?? "") as string;
+  const token = bearer || xSecret;
   if (token !== SECRET) { res.status(401).json({ error: "Unauthorized" }); return; }
   next();
 }
