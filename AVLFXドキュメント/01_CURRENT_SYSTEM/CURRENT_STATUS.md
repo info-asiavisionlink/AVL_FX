@@ -1,6 +1,6 @@
 # CURRENT STATUS
 **Status:** REFERENCE — コードから直接検証済み  
-**Last Updated:** 2026-08-23 (EA Command Center Production化 / テストEA削除)  
+**Last Updated:** 2026-09-09 (Console App完成・Architecture Refactor完了)  
 **Source of Truth:** 実コード・Supabase migrations・実データ  
 
 > **このファイルはコードに基づいた事実のみを記載する。推測は書かない。**
@@ -172,6 +172,48 @@
 | 014 | market_data_sync_jobs | ✅ Applied |
 | 015 | sync_job_recovery | ✅ Applied |
 | 006 | **欠番** | migration 006は存在しない |
+
+---
+
+---
+
+## AVLFX Console（管理者専用コントロールパネル）
+
+**Deploy:** https://avl-fx-console.vercel.app (Vercel, Production ● Ready)  
+**GitHub:** git@github.com:info-asiavisionlink/AVL-FX-console.git  
+**認証:** Supabase Auth + ADMIN_EMAILS ENV (server-side 2重確認)
+
+| ページ | 状態 | 詳細 |
+|--------|------|------|
+| `/login` | `PRODUCTION_READY` | Server Action + Cookie + Admin email check |
+| `/dashboard` | `PRODUCTION_READY` | Gateway/Supabase/MarketData 総合サマリー (4カードグリッド) |
+| `/market-data` | `PRODUCTION_READY` | リアルタイムTick (30シンボル), Supabase最新バー, Admin口座情報 |
+| `/historical` | `PRODUCTION_READY` | Symbol×TF別バー数・期間 (get_bar_stats RPC集計, 全行対象) |
+| `/mt5` | `PRODUCTION_READY` | Admin MT5接続状態, EA管理 (3ファイル), 直近バーデータ |
+| `/gateway` | `PRODUCTION_READY` | Gateway状態, シンボルグリッド (Heartbeat表示), APIエンドポイント一覧 |
+| `/system` | `PRODUCTION_READY` | パイプライン5項目診断, 総合ステータス表示 |
+
+### Console 必須ENV (Vercel Dashboard で設定)
+
+| キー | 用途 |
+|------|------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase Publishable Key |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role (全テーブルアクセス) |
+| `MT5_GATEWAY_URL` | Railway Gateway URL |
+| `MT5_GATEWAY_SECRET` | Gateway認証シークレット |
+| `ADMIN_EMAILS` | アクセス許可メールアドレス (カンマ区切り) |
+
+---
+
+## Architecture Refactor (2026-09-06)
+
+| 項目 | 内容 |
+|------|------|
+| 旧構成 | 単一Next.jsアプリ (src/ ルート直下) |
+| 新構成 | `apps/trading-view/` + `apps/console/` Monorepo分割 |
+| Root git | メインAVL_FXリポジトリ (全ファイルをtracking) |
+| Console git | 独立リポジトリ (AVL-FX-console, Vercel CI連携) |
 
 ---
 

@@ -1,6 +1,6 @@
 # AVL-FX MASTER DOCUMENT
 **Status:** LIVING DOCUMENT  
-**Last Updated:** 2026-08-22  
+**Last Updated:** 2026-09-09  
 **Source of Truth:** Repository code + Supabase migrations + this document  
 **Authority:** This is the single source of truth for system understanding
 
@@ -175,6 +175,20 @@ market_data_sync_jobs  symbol / timeframe / mode(FORWARD|BACKFILL)
 | Research Scripts | Phase 5〜8 の手動研究スクリプト群 |
 | Legal Pages | 利用規約・プライバシー・特定商取引法・お問い合わせ（/legal/*） |
 | Contact API | Resend連携メール送信（RESEND_API_KEY・FROM_EMAIL設定済み） |
+
+### Architecture Refactor 完了 ✅ (2026-09-06)
+
+| カテゴリ | 内容 |
+|---------|------|
+| Monorepo分割 | `apps/trading-view/` (ユーザー向け) + `apps/console/` (管理者専用) に分離 |
+| AVLFX Console | 管理者専用コントロールパネル (avl-fx-console.vercel.app) |
+| Console: Dashboard | Gateway/Supabase/MarketData 総合ダッシュボード |
+| Console: Market Data | リアルタイムTick・Supabase最新バー監視 |
+| Console: Historical | bar_data Symbol×TF別統計 (get_bar_stats RPC) |
+| Console: MT5 | Admin MT5接続状態・EAファイル一覧 |
+| Console: Gateway | Gateway詳細・APIエンドポイント一覧 |
+| Console: System | End-to-End パイプライン診断 (5項目チェック) |
+| Console: 認証 | Supabase Auth + ADMIN_EMAILS ENV による2重確認 |
 
 ### STAGE 3-A 完了 ✅ (2026-09-03)
 

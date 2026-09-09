@@ -7,10 +7,11 @@ const GATEWAY_SECRET = process.env.MT5_GATEWAY_SECRET ?? "";
 
 async function getRealtimeData() {
   try {
+    const gwHeaders = { "x-gateway-secret": GATEWAY_SECRET };
     const [tickRes, posRes, accRes] = await Promise.all([
-      fetch(`${GATEWAY_URL}/symbols`, { headers: { Authorization: `Bearer ${GATEWAY_SECRET}` }, cache: "no-store", signal: AbortSignal.timeout(4000) }),
-      fetch(`${GATEWAY_URL}/positions`, { headers: { Authorization: `Bearer ${GATEWAY_SECRET}` }, cache: "no-store", signal: AbortSignal.timeout(4000) }),
-      fetch(`${GATEWAY_URL}/account`, { headers: { Authorization: `Bearer ${GATEWAY_SECRET}` }, cache: "no-store", signal: AbortSignal.timeout(4000) }),
+      fetch(`${GATEWAY_URL}/symbols`,   { headers: gwHeaders, cache: "no-store", signal: AbortSignal.timeout(4000) }),
+      fetch(`${GATEWAY_URL}/positions`, { headers: gwHeaders, cache: "no-store", signal: AbortSignal.timeout(4000) }),
+      fetch(`${GATEWAY_URL}/account`,   { headers: gwHeaders, cache: "no-store", signal: AbortSignal.timeout(4000) }),
     ]);
     return {
       symbols:   tickRes.ok  ? await tickRes.json()  : [],
@@ -58,8 +59,8 @@ export default async function MarketDataPage() {
           <p className="text-[9px] font-black tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>ADMIN MT5 ACCOUNT</p>
           <div className="grid grid-cols-2 gap-x-8 gap-y-1.5">
             {[
-              ["Broker",   account.broker ?? "―"],
-              ["Login",    account.login  ? "****" + String(account.login).slice(-4) : "―"],
+              ["ブローカー",   account.broker ?? "―"],
+              ["ログインID", account.login  ? "****" + String(account.login).slice(-4) : "―"],
               ["残高",     account.balance ? `${account.balance.toLocaleString()} ${account.currency}` : "―"],
               ["有効証拠金", account.equity ? `${account.equity.toLocaleString()} ${account.currency}` : "―"],
             ].map(([k, v]) => (
@@ -120,7 +121,7 @@ export default async function MarketDataPage() {
           <table className="w-full text-xs">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                {["Symbol:TF", "最新バー時刻", "終値"].map(h => (
+                {["シンボル/TF", "最新バー時刻", "終値"].map(h => (
                   <th key={h} className="px-4 py-2 text-left font-mono" style={{ color: "var(--text-muted)" }}>{h}</th>
                 ))}
               </tr>
