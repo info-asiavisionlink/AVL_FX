@@ -63,8 +63,8 @@ export async function POST(req: Request) {
       server_name:           serverName,
       mt5_login:             mt5Login,
       account_currency:      "USD",
-      account_type:          "real",
-      account_mode:          "live",
+      account_type:          "REAL",
+      account_mode:          "HEDGING",
       leverage:              100,
     })
     .select("id, broker, server_name, mt5_login, status, created_at")
