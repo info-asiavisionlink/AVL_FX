@@ -1,6 +1,6 @@
 # CURRENT STATUS
 **Status:** REFERENCE — コードから直接検証済み  
-**Last Updated:** 2026-09-09 (Console App完成・Architecture Refactor完了)  
+**Last Updated:** 2026-09-09 (Console完成 + MT5接続発行バグ修正)  
 **Source of Truth:** 実コード・Supabase migrations・実データ  
 
 > **このファイルはコードに基づいた事実のみを記載する。推測は書かない。**
@@ -135,6 +135,19 @@
 | Strategy Detail ANALYSIS | `PRODUCTION_READY` | AI分析・改善提案・Cross-Phase解釈 |
 | Strategy Detail VERSIONS | `PRODUCTION_READY` | バージョン履歴・比較・ロールバック |
 | Strategy Detail OPTIMIZE | `PRODUCTION_READY` | 最適化・Walk Forward・Monte Carlo |
+
+---
+
+## MT5接続 (ユーザー向け)
+
+| 機能 | 状態 | 詳細 |
+|-----|------|------|
+| MT5接続ページ (/mt5) | `PRODUCTION_READY` | 4ステップUI (EAダウンロード→配置→接続情報発行→アタッチ) |
+| 接続情報発行API (POST /api/user/mt5-setup) | `PRODUCTION_READY` | mt5_connections INSERT, account_type=REAL/account_mode=HEDGING |
+| Connection Token 発行 | `PRODUCTION_READY` | SHA-256 hash保存、平文は一度だけレスポンス |
+| EA オンライン確認 | `PRODUCTION_READY` | last_heartbeat_at から60秒以内で判定 |
+
+> **2026-09-09 Bugfix:** account_type="real"→"REAL", account_mode="live"→"HEDGING" のCHECK制約違反を修正（「発行に失敗しました」エラーの原因）
 
 ---
 
