@@ -1,6 +1,6 @@
 # AVL-FX システム仕様書
-**最終更新: 2026-08-22**
-**バージョン: Phase 8-A完了時点**
+**最終更新: 2026-09-10**
+**バージョン: Phase 8-A完了時点 + Console実装 + 環境変数更新**
 
 ---
 
@@ -797,19 +797,50 @@ Phase 5〜8では、Claude Codeを使って実際の市場データに対してA
 
 ## 13. 環境変数
 
-```bash
-# Next.js Web App
-NEXT_PUBLIC_SUPABASE_URL=         # Supabase プロジェクトURL
-NEXT_PUBLIC_SUPABASE_ANON_KEY=    # 公開用匿名キー
-SUPABASE_SERVICE_ROLE_KEY=        # サービスロールキー（サーバーサイド）
-OPENAI_API_KEY=                   # OpenAI APIキー
-OPENAI_MODEL_STRATEGY=            # Strategy Builder用モデル（省略可）
+> 詳細は `AVLFXドキュメント/03_PRODUCTION/ENV_VARIABLES.md` を参照。値は `.env.local`（gitignore済み）に記載。
 
-# Gateway
-SUPABASE_URL=                     # Supabase URL（Gatewayから）
-SUPABASE_SERVICE_KEY=             # サービスロールキー（Gatewayから）
-SUPABASE_BATCH_SIZE=500           # バッチサイズ（省略可）
-SUPABASE_BATCH_DELAY_MS=50        # バッチ間隔ms（省略可）
+```bash
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=              # Supabase プロジェクトURL（公開）
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=  # Supabase publishable key（ブラウザ用・公開）
+SUPABASE_SERVICE_ROLE_KEY=             # service_role key（API Routes / RLSバイパス・秘密）
+SUPABASE_PAT=                          # Personal Access Token（CLI・管理API用・秘密）
+
+# MT5 Gateway（Railway）
+NEXT_PUBLIC_MT5_GATEWAY_HTTP_URL=      # Gateway HTTP URL（公開）
+NEXT_PUBLIC_MT5_GATEWAY_WS_URL=        # Gateway WebSocket URL（公開）
+MT5_GATEWAY_URL=                       # Gateway HTTP URL（Server-side用）
+MT5_GATEWAY_SECRET=                    # Gateway 認証シークレット
+MT5_WEBSOCKET_PORT=8080                # WebSocket ポート
+
+# OpenAI
+OPENAI_API_KEY=                        # OpenAI APIキー（秘密）
+OPENAI_MODEL=gpt-4.1                   # 使用モデル
+OPENAI_REALTIME_MODEL=gpt-realtime-2.1 # Realtime APIモデル
+
+# Twelve Data（外部市場データ）
+TWELVE_DATA_API_KEY=                   # Twelve Data APIキー（秘密）
+
+# Stripe（決済）※テスト用プレースホルダー — 本番前要設定
+STRIPE_SECRET_KEY=                     # Stripe シークレットキー
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=    # Stripe 公開キー
+STRIPE_WEBHOOK_SECRET=                 # Webhook 署名検証シークレット
+STRIPE_PRICE_STARTER=                  # Starter プラン価格ID
+STRIPE_PRICE_PRO=                      # Pro プラン価格ID
+STRIPE_PRICE_BUSINESS=                 # Business プラン価格ID
+
+# Google OAuth（Supabase Auth Provider）
+GOOGLE_CLIENT_ID=                      # Google OAuth クライアントID
+GOOGLE_CLIENT_SECRET=                  # Google OAuth クライアントシークレット
+
+# Resend（コンタクトフォームメール）
+RESEND_API_KEY=                        # Resend APIキー（秘密）
+FROM_EMAIL=noreply@asiavision.link     # 送信元メールアドレス
+
+# Next.js / Vercel
+APP_URL=http://localhost:3000          # アプリURL（ローカル）
+NODE_ENV=development                   # 実行環境
+VERCEL_OIDC_TOKEN=                     # Vercel CLI 自動生成（手動設定不要）
 ```
 
 ---
