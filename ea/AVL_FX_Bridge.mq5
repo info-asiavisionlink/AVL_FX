@@ -514,15 +514,19 @@ void CommandStream_Poll()
       // Claim
       Command_Claim(commandId);
 
+      // シンボル正規化: コマンドのsymが "GOLD" → EA chart が "GOLD#" の場合はg_Symbolを使用
+      string tradeSym = sym;
+      if(StringLen(g_Symbol) > StringLen(sym) &&
+         StringSubstr(g_Symbol, 0, StringLen(sym)) == sym)
+         tradeSym = g_Symbol;  // ブローカーsuffix付きを使用
+
       g_Trade.SetExpertMagicNumber((ulong)magic);
       g_Trade.SetDeviationInPoints(30);
       // ブローカー対応: Filling Modeを自動設定
       ENUM_ORDER_TYPE_FILLING filling = ORDER_FILLING_FOK;
-      long fillFlags = SymbolInfoInteger(sym, SYMBOL_FILLING_MODE);
+      long fillFlags = SymbolInfoInteger(tradeSym, SYMBOL_FILLING_MODE);
       if((fillFlags & SYMBOL_FILLING_IOC) != 0) filling = ORDER_FILLING_IOC;
       if((fillFlags & SYMBOL_FILLING_FOK) != 0) filling = ORDER_FILLING_FOK;
-      // Return filling (no SL/TP = market return) の場合は RETURN を優先
-      if((fillFlags & SYMBOL_FILLING_BOC) == 0 && fillFlags == 0) filling = ORDER_FILLING_RETURN;
       g_Trade.SetTypeFilling(filling);
 
       bool   ok     = false;
@@ -532,13 +536,13 @@ void CommandStream_Poll()
 
       if(action == "BUY" && sym != "" && volume > 0)
       {
-         ok = g_Trade.Buy(volume, sym, 0, sl, tp, "AVL");
+         ok = g_Trade.Buy(volume, tradeSym, 0, sl, tp, "AVL");
          if(ok) { dealTkt = (long)g_Trade.ResultDeal(); posTkt = (long)g_Trade.ResultOrder(); status = "FILLED"; }
          else     status = "REJECTED";
       }
       else if(action == "SELL" && sym != "" && volume > 0)
       {
-         ok = g_Trade.Sell(volume, sym, 0, sl, tp, "AVL");
+         ok = g_Trade.Sell(volume, tradeSym, 0, sl, tp, "AVL");
          if(ok) { dealTkt = (long)g_Trade.ResultDeal(); posTkt = (long)g_Trade.ResultOrder(); status = "FILLED"; }
          else     status = "REJECTED";
       }

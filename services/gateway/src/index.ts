@@ -995,9 +995,20 @@ app.get("/connections/:connectionId/ticks/:symbol", auth, (req, res) => {
 app.get("/connections/:connectionId/bars/:symbol/:timeframe", auth, (req, res) => {
   const conn = connections.get(req.params.connectionId);
   if (!conn) { res.status(404).json({ error: "connection not found" }); return; }
-  const key  = storeKey(req.params.symbol, req.params.timeframe);
-  const bars = conn.bars.get(key) ?? [];
+
+  const sym  = req.params.symbol.toUpperCase();
+  const tf   = req.params.timeframe.toUpperCase();
   const count = Number(req.query.count ?? 500);
+
+  // ブローカーsymbol suffix対応: GOLD → GOLD, GOLD#, GOLDm, GOLD.I 等を試行
+  let bars: Bar[] = [];
+  const suffixes = ["", "#", "m", ".I", "_", "+"]; // 一般的なsuffix
+  for (const sfx of suffixes) {
+    const key = storeKey(sym + sfx, tf);
+    const found = conn.bars.get(key) ?? [];
+    if (found.length > 0) { bars = found; break; }
+  }
+
   res.json(dedupAndSort(bars).slice(-count));
 });
 
