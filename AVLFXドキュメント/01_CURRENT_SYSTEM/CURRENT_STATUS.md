@@ -1,6 +1,6 @@
 # CURRENT STATUS
 **Status:** REFERENCE — コードから直接検証済み  
-**Last Updated:** 2026-09-09 (Console完成 + MT5接続発行バグ修正)  
+**Last Updated:** 2026-09-10 (Multi-User MT5 Realtime Architecture実装)  
 **Source of Truth:** 実コード・Supabase migrations・実データ  
 
 > **このファイルはコードに基づいた事実のみを記載する。推測は書かない。**

@@ -204,6 +204,19 @@ interface Indicators {
   sessions?:  string[]; // Tokyo / London / New York / Sydney
 }
 
+/** Per-connection in-memory state（User Bridge専用） */
+interface ConnectionState {
+  connectionId:    string;
+  userId:          string;
+  ticks:           Map<string, Tick>;          // symbol → Tick
+  bars:            Map<string, Bar[]>;         // "SYMBOL:TF" → Bar[]
+  account:         Account | null;
+  positions:       Position[];
+  indicators:      Map<string, Indicators>;
+  lastHeartbeatAt: number;                     // Date.now()
+  isOnline:        boolean;
+}
+
 // セッション判定（UTC 時刻ベース）
 function getTradingSessions(brokerTimeSec: number): string[] {
   const d     = new Date(brokerTimeSec * 1000);
@@ -271,6 +284,22 @@ function persistLoad(): void {
 // 30秒ごとに自動保存
 setInterval(persistSave, 30_000);
 
+// Connection stale検出 + cleanup（5分ごと）
+const STALE_THRESHOLD_MS    = 120_000; // 2分応答なし → OFFLINE
+const CLEANUP_THRESHOLD_MS  = 600_000; // 10分後 → memory cleanup
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, conn] of connections) {
+    const age = now - conn.lastHeartbeatAt;
+    if (age > STALE_THRESHOLD_MS) conn.isOnline = false;
+    if (age > CLEANUP_THRESHOLD_MS) {
+      connections.delete(id);
+      connectionSubscribers.delete(id);
+      console.log(`[Cleanup] connection ${id.slice(0,8)} removed (age=${Math.floor(age/60000)}min)`);
+    }
+  }
+}, 60_000);
+
 // -----------------------------------------------------------------
 // インメモリストア（加工なし）
 // -----------------------------------------------------------------
@@ -297,6 +326,9 @@ const symbolStore   = new Map<string, MarketWatchSymbol>();
 const orderStore    = new Map<number, Order>();
 /** 注文キュー（AI → EA 発注用） */
 const orderQueue:   Array<Record<string, unknown>> = [];
+
+/** Per-connection state namespace（User Bridge用） */
+const connections = new Map<string, ConnectionState>();
 
 // Diagnostic timestamps for health endpoint
 let lastTickTs:      number = 0;
@@ -329,8 +361,30 @@ wss.on("connection", (ws, req) => {
     safeSend(ws, { type: "ORDERS", data: Array.from(orderStore.values()), ts: Date.now() });
   }
 
-  ws.on("close", () => { clients.delete(ws); });
-  ws.on("error", () => { clients.delete(ws); });
+  // Subscribeメッセージ処理を追加
+  ws.on("message", (data) => {
+    try {
+      const msg = JSON.parse(data.toString()) as { type: string; connectionId?: string };
+      if (msg.type === "SUBSCRIBE_CONNECTION" && msg.connectionId) {
+        subscribeToConnection(msg.connectionId, ws);
+        console.log(`[WS] subscribe connectionId=${msg.connectionId.slice(0,8)}`);
+        // 現在の状態を即時送信
+        const conn = connections.get(msg.connectionId);
+        if (conn?.account) {
+          safeSend(ws, { type: "ACCOUNT", data: conn.account, ts: Date.now() });
+        }
+      }
+    } catch { /* ignore malformed messages */ }
+  });
+
+  ws.on("close", () => {
+    clients.delete(ws);
+    unsubscribeFromAll(ws);
+  });
+  ws.on("error", () => {
+    clients.delete(ws);
+    unsubscribeFromAll(ws);
+  });
 });
 
 function safeSend(ws: WebSocket, msg: WsMessage): void {
@@ -341,6 +395,33 @@ function broadcast(msg: WsMessage): void {
   const str = JSON.stringify(msg);
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) ws.send(str);
+  }
+}
+
+/** WebSocket: connection_id別subscriber管理 */
+const connectionSubscribers = new Map<string, Set<WebSocket>>();
+
+/** WebSocket接続をconnection_idにsubscribe */
+function subscribeToConnection(connectionId: string, ws: WebSocket): void {
+  if (!connectionSubscribers.has(connectionId)) {
+    connectionSubscribers.set(connectionId, new Set());
+  }
+  connectionSubscribers.get(connectionId)!.add(ws);
+}
+
+/** WebSocket接続をconnection_idからunsubscribe */
+function unsubscribeFromAll(ws: WebSocket): void {
+  connectionSubscribers.forEach(subs => subs.delete(ws));
+}
+
+/** 特定connectionのsubscriberにのみbroadcast */
+function broadcastToConnection(connectionId: string, msg: WsMessage): void {
+  const subs = connectionSubscribers.get(connectionId);
+  if (!subs || subs.size === 0) return;
+  const str = JSON.stringify(msg);
+  for (const ws of subs) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(str);
+    else subs.delete(ws);
   }
 }
 
@@ -358,6 +439,74 @@ function auth(req: Request, res: Response, next: NextFunction): void {
   const token = bearer || xSecret;
   if (token !== SECRET) { res.status(401).json({ error: "Unauthorized" }); return; }
   next();
+}
+
+/** Bridge EA専用認証ミドルウェア
+ * X-Connection-Id + X-Connection-Token でユーザー接続を識別・認証する
+ * Supabase未設定時は gateway secret のみで通過（開発用）
+ */
+async function authenticateBridge(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  // まず共通secretで認証
+  const bearer  = (req.headers.authorization ?? "").replace("Bearer ", "").trim();
+  const xSecret = (req.headers["x-gateway-secret"] ?? "") as string;
+  const token   = bearer || xSecret;
+  if (SECRET && token !== SECRET) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const connectionId    = req.headers["x-connection-id"]    as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+
+  if (!connectionId || !connectionToken) {
+    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+
+  // Supabase有効時: token hash検証
+  if (isExecutionEnabled()) {
+    const flags = await verifyBridgeAuth(connectionId, connectionToken);
+    if (!flags) {
+      res.status(401).json({ error: "Connection Token認証失敗" });
+      return;
+    }
+    (req as Request & { connectionId: string; userId: string; connectionFlags: typeof flags })
+      .connectionId = flags.connectionId;
+    (req as Request & { connectionId: string; userId: string; connectionFlags: typeof flags })
+      .userId       = flags.userId;
+    (req as Request & { connectionId: string; userId: string; connectionFlags: typeof flags })
+      .connectionFlags = flags;
+  } else {
+    // Supabase未設定: connection_idだけをセット（開発用）
+    (req as Request & { connectionId: string; userId: string })
+      .connectionId = connectionId;
+    (req as Request & { connectionId: string; userId: string })
+      .userId       = "dev-user";
+  }
+
+  next();
+}
+
+/** connections Mapから接続を取得（なければ作成） */
+function getOrCreateConnection(connectionId: string, userId: string): ConnectionState {
+  if (!connections.has(connectionId)) {
+    connections.set(connectionId, {
+      connectionId,
+      userId,
+      ticks:           new Map(),
+      bars:            new Map(),
+      account:         null,
+      positions:       [],
+      indicators:      new Map(),
+      lastHeartbeatAt: Date.now(),
+      isOnline:        true,
+    });
+  }
+  return connections.get(connectionId)!;
 }
 
 // -----------------------------------------------------------------
@@ -692,6 +841,27 @@ app.post("/bridge/heartbeat", auth, async (req, res) => {
     return;
   }
 
+  // connection in-memory state の lastHeartbeatAt と isOnline も更新
+  if (flags) {
+    const conn = getOrCreateConnection(connectionId, flags.userId);
+    conn.lastHeartbeatAt = Date.now();
+    conn.isOnline = true;
+    // bodyにaccount情報が含まれる場合はconnection accountも更新
+    if (body.balance !== undefined) {
+      conn.account = {
+        login:       body.mt5Login ?? 0,
+        broker:      body.broker ?? "",
+        currency:    "USD",
+        balance:     body.balance ?? 0,
+        equity:      body.equity ?? 0,
+        margin:      body.margin ?? 0,
+        freeMargin:  body.freeMargin ?? 0,
+        marginLevel: body.equity && body.margin ? (body.equity / body.margin) * 100 : 0,
+        leverage:    body.leverage ?? 0,
+      } as Account;
+    }
+  }
+
   res.json({
     ok:             true,
     tradingEnabled: flags.tradingEnabled,
@@ -855,6 +1025,134 @@ app.post("/bridge/deals", auth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// =================================================================
+// BRIDGE MARKET DATA ENDPOINTS（User-scoped）
+// Bridge EA → Gateway: connection_idでnamespace化されたmarket data
+// =================================================================
+
+/** Bridge EA: Tick送信（connection-scoped） */
+app.post("/bridge/ticks", authenticateBridge, (req, res) => {
+  const r   = req as Request & { connectionId: string; userId: string };
+  const conn = getOrCreateConnection(r.connectionId, r.userId);
+  const tick = req.body as Tick;
+  if (!tick.symbol) { res.status(400).json({ error: "symbol required" }); return; }
+  conn.ticks.set(tick.symbol.toUpperCase(), tick);
+  conn.lastHeartbeatAt = Date.now();
+  conn.isOnline = true;
+  // connection-scoped WebSocket broadcast
+  broadcastToConnection(r.connectionId, { type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
+  res.json({ ok: true });
+});
+
+/** Bridge EA: Bar送信（connection-scoped、リアルタイム） */
+app.post("/bridge/bars", authenticateBridge, (req, res) => {
+  const r   = req as Request & { connectionId: string; userId: string };
+  const conn = getOrCreateConnection(r.connectionId, r.userId);
+  const bar  = req.body as Bar & { symbol: string; timeframe: string };
+  if (!bar.symbol || !bar.timeframe) { res.status(400).json({ error: "symbol/timeframe required" }); return; }
+  upsertConnectionBar(conn, bar.symbol, bar.timeframe, bar);
+  broadcastToConnection(r.connectionId, { type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
+  res.json({ ok: true });
+});
+
+/** Bridge EA: Bars一括送信（connection-scoped、起動時） */
+app.post("/bridge/bars/bulk", authenticateBridge, (req, res) => {
+  const r   = req as Request & { connectionId: string; userId: string };
+  const conn = getOrCreateConnection(r.connectionId, r.userId);
+  const { symbol, timeframe, bars } = req.body as { symbol: string; timeframe: string; bars: Bar[] };
+  if (!symbol || !timeframe || !Array.isArray(bars)) {
+    res.status(400).json({ error: "symbol/timeframe/bars required" });
+    return;
+  }
+  const key  = storeKey(symbol, timeframe);
+  const norm = bars.map(normalizeBar);
+  const sorted = dedupAndSort(norm);
+  conn.bars.set(key, sorted.slice(-MAX_BARS));
+  console.log(`[Bridge/Bulk] conn=${r.connectionId.slice(0,8)} ${key}: ${sorted.length}本`);
+  res.json({ ok: true });
+});
+
+/** Bridge EA: Account送信（connection-scoped） */
+app.post("/bridge/account", authenticateBridge, (req, res) => {
+  const r   = req as Request & { connectionId: string; userId: string };
+  const conn = getOrCreateConnection(r.connectionId, r.userId);
+  conn.account = req.body as Account;
+  broadcastToConnection(r.connectionId, { type: "ACCOUNT", data: conn.account, ts: Date.now() });
+  res.json({ ok: true });
+});
+
+// =================================================================
+// CONNECTION READ ENDPOINTS（Trading View API → Gateway）
+// auth: gateway secret のみ（Supabase sessionはTrading View側で確認済み）
+// =================================================================
+
+/** 接続のTick取得 */
+app.get("/connections/:connectionId/ticks/:symbol", auth, (req, res) => {
+  const conn = connections.get(req.params.connectionId);
+  if (!conn) { res.status(404).json({ error: "connection not found" }); return; }
+  const tick = conn.ticks.get(req.params.symbol.toUpperCase());
+  if (!tick) { res.status(404).json({ error: "symbol not found" }); return; }
+  const ageMs = Date.now() - conn.lastHeartbeatAt;
+  res.json({ ...tick, isStale: ageMs > 60_000 });
+});
+
+/** 接続のBars取得 */
+app.get("/connections/:connectionId/bars/:symbol/:timeframe", auth, (req, res) => {
+  const conn = connections.get(req.params.connectionId);
+  if (!conn) { res.status(404).json({ error: "connection not found" }); return; }
+  const key  = storeKey(req.params.symbol, req.params.timeframe);
+  const bars = conn.bars.get(key) ?? [];
+  const count = Number(req.query.count ?? 500);
+  res.json(dedupAndSort(bars).slice(-count));
+});
+
+/** 接続のAccount取得 */
+app.get("/connections/:connectionId/account", auth, (req, res) => {
+  const conn = connections.get(req.params.connectionId);
+  if (!conn || !conn.account) { res.status(404).json({ error: "no account data" }); return; }
+  const ageMs = Date.now() - conn.lastHeartbeatAt;
+  res.json({ ...conn.account, isStale: ageMs > 60_000 });
+});
+
+/** 接続のPositions取得 */
+app.get("/connections/:connectionId/positions", auth, (req, res) => {
+  const conn = connections.get(req.params.connectionId);
+  if (!conn) { res.status(404).json({ error: "connection not found" }); return; }
+  res.json(conn.positions);
+});
+
+/** 接続の状態確認 */
+app.get("/connections/:connectionId/status", auth, (req, res) => {
+  const conn = connections.get(req.params.connectionId);
+  if (!conn) { res.json({ online: false, connectionId: req.params.connectionId }); return; }
+  const ageMs = Date.now() - conn.lastHeartbeatAt;
+  res.json({
+    online:          ageMs < 60_000,
+    connectionId:    conn.connectionId,
+    lastHeartbeatAt: new Date(conn.lastHeartbeatAt).toISOString(),
+    ageSeconds:      Math.floor(ageMs / 1000),
+    tickSymbols:     Array.from(conn.ticks.keys()),
+    barKeys:         Array.from(conn.bars.keys()),
+    hasAccount:      conn.account !== null,
+    positionCount:   conn.positions.length,
+  });
+});
+
+/** 全接続一覧（admin用） */
+app.get("/connections", auth, (_req, res) => {
+  const list = Array.from(connections.values()).map(c => ({
+    connectionId:    c.connectionId,
+    userId:          c.userId,
+    isOnline:        Date.now() - c.lastHeartbeatAt < 60_000,
+    lastHeartbeatAt: new Date(c.lastHeartbeatAt).toISOString(),
+    tickSymbols:     Array.from(c.ticks.keys()),
+    barKeys:         Array.from(c.bars.keys()),
+    hasAccount:      c.account !== null,
+    positionCount:   c.positions.length,
+  }));
+  res.json(list);
+});
+
 // -----------------------------------------------------------------
 // Browser → Server: 読み取り専用 REST API
 // -----------------------------------------------------------------
@@ -1001,6 +1299,27 @@ function upsertBar(symbol: string, timeframe: string, rawBar: Bar & { symbol?: s
     if (bars.length > MAX_BARS) bars.shift();
   }
   barStore.set(key, bars);
+}
+
+/** Connection-scoped barをアップサート */
+function upsertConnectionBar(
+  conn: ConnectionState,
+  symbol: string,
+  timeframe: string,
+  rawBar: Bar & { symbol?: string; timeframe?: string }
+): void {
+  const key  = storeKey(symbol, timeframe);
+  const bars = conn.bars.get(key) ?? [];
+  const last = bars[bars.length - 1];
+  const bar  = normalizeBar(rawBar);
+
+  if (last && last.time === bar.time) {
+    bars[bars.length - 1] = { time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume };
+  } else {
+    bars.push({ time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume });
+    if (bars.length > MAX_BARS) bars.shift();
+  }
+  conn.bars.set(key, bars);
 }
 
 // -----------------------------------------------------------------

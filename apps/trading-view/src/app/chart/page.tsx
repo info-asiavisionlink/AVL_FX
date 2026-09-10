@@ -3,6 +3,7 @@ import { Header } from "@/presentation/components/layout/Header";
 import { WatchlistPanel } from "@/presentation/components/watchlist/WatchlistPanel";
 import { EconomicCalendarPanel } from "@/presentation/components/economic-calendar/EconomicCalendarPanel";
 import { AVLChart } from "@/presentation/components/chart/AVLChart";
+import { MT5Gate } from "@/presentation/components/common/MT5Gate";
 
 export default function ChartPage() {
   return (
@@ -18,7 +19,9 @@ export default function ChartPage() {
       <div className="flex flex-col flex-1 overflow-hidden">
         <Header />
         <div className="flex-1 overflow-hidden">
-          <AVLChart />
+          <MT5Gate feature="リアルタイムチャート">
+            <AVLChart />
+          </MT5Gate>
         </div>
       </div>
     </DashboardShell>
