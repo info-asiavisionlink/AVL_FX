@@ -790,17 +790,16 @@ app.post("/orders", auth, (req, res) => {
 // =================================================================
 
 /** Bridge EA: Heartbeat送信 + Safety Flags受信 */
-app.post("/bridge/heartbeat", auth, async (req, res) => {
-  const connectionId    = req.headers["x-connection-id"] as string | undefined;
-  const connectionToken = req.headers["x-connection-token"] as string | undefined;
-
-  if (!connectionId || !connectionToken) {
-    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
-    return;
-  }
+app.post("/bridge/heartbeat", authenticateBridge, async (req, res) => {
+  const r           = req as Request & { connectionId: string; userId: string };
+  const connectionId = r.connectionId;
 
   if (!isExecutionEnabled()) {
-    res.json({ ok: true, tradingEnabled: false, emergencyStop: true, note: "Supabase未設定" });
+    // Supabase未設定時もin-memory stateだけ更新して200を返す
+    const conn = getOrCreateConnection(connectionId, r.userId);
+    conn.lastHeartbeatAt = Date.now();
+    conn.isOnline = true;
+    res.json({ ok: true, tradingEnabled: false, emergencyStop: false, note: "Supabase未設定" });
     return;
   }
 
@@ -833,25 +832,21 @@ app.post("/bridge/heartbeat", auth, async (req, res) => {
     return;
   }
 
-  // connection in-memory state の lastHeartbeatAt と isOnline も更新
-  if (flags) {
-    const conn = getOrCreateConnection(connectionId, flags.userId);
-    conn.lastHeartbeatAt = Date.now();
-    conn.isOnline = true;
-    // bodyにaccount情報が含まれる場合はconnection accountも更新
-    if (body.balance !== undefined) {
-      conn.account = {
-        login:       body.mt5Login ?? 0,
-        broker:      body.broker ?? "",
-        currency:    "USD",
-        balance:     body.balance ?? 0,
-        equity:      body.equity ?? 0,
-        margin:      body.margin ?? 0,
-        freeMargin:  body.freeMargin ?? 0,
-        marginLevel: body.equity && body.margin ? (body.equity / body.margin) * 100 : 0,
-        leverage:    body.leverage ?? 0,
-      } as Account;
-    }
+  const conn = getOrCreateConnection(connectionId, flags.userId);
+  conn.lastHeartbeatAt = Date.now();
+  conn.isOnline = true;
+  if (body.balance !== undefined) {
+    conn.account = {
+      login:       body.mt5Login ?? 0,
+      broker:      body.broker ?? "",
+      currency:    "USD",
+      balance:     body.balance ?? 0,
+      equity:      body.equity ?? 0,
+      margin:      body.margin ?? 0,
+      freeMargin:  body.freeMargin ?? 0,
+      marginLevel: body.equity && body.margin ? (body.equity / body.margin) * 100 : 0,
+      leverage:    body.leverage ?? 0,
+    } as Account;
   }
 
   res.json({
@@ -865,155 +860,63 @@ app.post("/bridge/heartbeat", auth, async (req, res) => {
 });
 
 /** Bridge EA切断通知 */
-app.post("/bridge/disconnect", auth, async (req, res) => {
-  const connectionId = req.headers["x-connection-id"] as string | undefined;
-  if (connectionId && isExecutionEnabled()) {
-    await markConnectionDisconnected(connectionId);
+app.post("/bridge/disconnect", authenticateBridge, async (req, res) => {
+  const r = req as Request & { connectionId: string };
+  if (r.connectionId && isExecutionEnabled()) {
+    await markConnectionDisconnected(r.connectionId);
+    const conn = connections.get(r.connectionId);
+    if (conn) conn.isOnline = false;
   }
   res.json({ ok: true });
 });
 
 /** Bridge EA: Pending Execution Commands取得 */
-app.get("/execution-commands/pending", auth, async (req, res) => {
-  const connectionId    = req.headers["x-connection-id"] as string | undefined;
-  const connectionToken = req.headers["x-connection-token"] as string | undefined;
-
-  if (!connectionId || !connectionToken) {
-    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
-    return;
-  }
-
-  if (!isExecutionEnabled()) {
-    res.json([]);
-    return;
-  }
-
-  const flags = await verifyBridgeAuth(connectionId, connectionToken);
-  if (!flags) {
-    res.status(401).json({ error: "認証失敗" });
-    return;
-  }
-
-  const commands = await getPendingCommands(connectionId);
+app.get("/execution-commands/pending", authenticateBridge, async (req, res) => {
+  const r = req as Request & { connectionId: string };
+  if (!isExecutionEnabled()) { res.json([]); return; }
+  const commands = await getPendingCommands(r.connectionId);
   res.json(commands);
 });
 
 /** Bridge EA: Command Claim（PENDING → CLAIMED, Atomic） */
-app.post("/execution-commands/:commandId/claim", auth, async (req, res) => {
-  const { commandId } = req.params;
-  const connectionId    = req.headers["x-connection-id"] as string | undefined;
-  const connectionToken = req.headers["x-connection-token"] as string | undefined;
-
-  if (!connectionId || !connectionToken) {
-    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
-    return;
-  }
-
-  if (!isExecutionEnabled()) {
-    res.status(503).json({ error: "Supabase未設定" });
-    return;
-  }
-
-  const flags = await verifyBridgeAuth(connectionId, connectionToken);
-  if (!flags) {
-    res.status(401).json({ error: "認証失敗" });
-    return;
-  }
-
-  const claimed = await claimCommand(commandId, connectionId);
-  if (!claimed) {
-    res.status(409).json({ error: "Claim失敗（既に処理中または存在しない）" });
-    return;
-  }
-
-  res.json({ ok: true, commandId, status: "CLAIMED" });
+app.post("/execution-commands/:commandId/claim", authenticateBridge, async (req, res) => {
+  const r = req as Request & { connectionId: string };
+  if (!isExecutionEnabled()) { res.status(503).json({ error: "Supabase未設定" }); return; }
+  const claimed = await claimCommand(req.params.commandId, r.connectionId);
+  if (!claimed) { res.status(409).json({ error: "Claim失敗" }); return; }
+  res.json({ ok: true, commandId: req.params.commandId, status: "CLAIMED" });
 });
 
 /** Bridge EA: Execution Result提出 */
-app.post("/execution-commands/:commandId/result", auth, async (req, res) => {
-  const { commandId } = req.params;
-  const connectionId    = req.headers["x-connection-id"] as string | undefined;
-  const connectionToken = req.headers["x-connection-token"] as string | undefined;
-
-  if (!connectionId || !connectionToken) {
-    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
-    return;
-  }
-
-  if (!isExecutionEnabled()) {
-    res.status(503).json({ error: "Supabase未設定" });
-    return;
-  }
-
-  const flags = await verifyBridgeAuth(connectionId, connectionToken);
-  if (!flags) {
-    res.status(401).json({ error: "認証失敗" });
-    return;
-  }
-
+app.post("/execution-commands/:commandId/result", authenticateBridge, async (req, res) => {
+  const r = req as Request & { connectionId: string };
+  if (!isExecutionEnabled()) { res.status(503).json({ error: "Supabase未設定" }); return; }
   const result = req.body as BridgeResultInput;
-  result.commandId = commandId;
-
+  result.commandId = req.params.commandId;
   await submitCommandResult(result);
-
   broadcast({
     type: "EXECUTION_RESULT",
-    data: {
-      commandId,
-      status:       result.status,
-      success:      result.success,
-      orderTicket:  result.orderTicket,
-      dealTicket:   result.dealTicket,
-    },
+    data: { commandId: r.connectionId, status: result.status, success: result.success },
     ts: Date.now(),
   });
-
   res.json({ ok: true });
 });
 
 /** Bridge EA: Position同期 */
-app.post("/bridge/positions", auth, async (req, res) => {
-  const connectionId    = req.headers["x-connection-id"] as string | undefined;
-  const connectionToken = req.headers["x-connection-token"] as string | undefined;
-
-  if (!connectionId || !connectionToken || !isExecutionEnabled()) {
-    res.json({ ok: true });
-    return;
-  }
-
-  const flags = await verifyBridgeAuth(connectionId, connectionToken);
-  if (!flags) {
-    res.status(401).json({ error: "認証失敗" });
-    return;
-  }
-
+app.post("/bridge/positions", authenticateBridge, async (req, res) => {
+  const r = req as Request & { connectionId: string; userId: string };
+  if (!isExecutionEnabled()) { res.json({ ok: true }); return; }
   const { positions } = req.body as { positions: BridgePosition[] };
-  if (Array.isArray(positions)) {
-    await upsertPositions(connectionId, flags.userId, positions);
-  }
+  if (Array.isArray(positions)) await upsertPositions(r.connectionId, r.userId, positions);
   res.json({ ok: true });
 });
 
 /** Bridge EA: Deal同期 */
-app.post("/bridge/deals", auth, async (req, res) => {
-  const connectionId    = req.headers["x-connection-id"] as string | undefined;
-  const connectionToken = req.headers["x-connection-token"] as string | undefined;
-
-  if (!connectionId || !connectionToken || !isExecutionEnabled()) {
-    res.json({ ok: true });
-    return;
-  }
-
-  const flags = await verifyBridgeAuth(connectionId, connectionToken);
-  if (!flags) {
-    res.status(401).json({ error: "認証失敗" });
-    return;
-  }
-
+app.post("/bridge/deals", authenticateBridge, async (req, res) => {
+  const r = req as Request & { connectionId: string; userId: string };
+  if (!isExecutionEnabled()) { res.json({ ok: true }); return; }
   const { deals } = req.body as { deals: BridgeDeal[] };
-  if (Array.isArray(deals)) {
-    await upsertDeals(connectionId, flags.userId, deals);
-  }
+  if (Array.isArray(deals)) await upsertDeals(r.connectionId, r.userId, deals);
   res.json({ ok: true });
 });
 
