@@ -442,23 +442,16 @@ function auth(req: Request, res: Response, next: NextFunction): void {
 }
 
 /** Bridge EA専用認証ミドルウェア
- * X-Connection-Id + X-Connection-Token でユーザー接続を識別・認証する
- * Supabase未設定時は gateway secret のみで通過（開発用）
+ * X-Connection-Id + X-Connection-Token のみで認証する。
+ * Gateway共通secretは不要 — Userに MT5_GATEWAY_SECRET を公開しない。
+ * Supabase有効時: SHA-256 token hash照合
+ * Supabase無効時: connectionIdのみセット（開発用）
  */
 async function authenticateBridge(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  // まず共通secretで認証
-  const bearer  = (req.headers.authorization ?? "").replace("Bearer ", "").trim();
-  const xSecret = (req.headers["x-gateway-secret"] ?? "") as string;
-  const token   = bearer || xSecret;
-  if (SECRET && token !== SECRET) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-
   const connectionId    = req.headers["x-connection-id"]    as string | undefined;
   const connectionToken = req.headers["x-connection-token"] as string | undefined;
 
@@ -467,7 +460,6 @@ async function authenticateBridge(
     return;
   }
 
-  // Supabase有効時: token hash検証
   if (isExecutionEnabled()) {
     const flags = await verifyBridgeAuth(connectionId, connectionToken);
     if (!flags) {
@@ -475,13 +467,12 @@ async function authenticateBridge(
       return;
     }
     (req as Request & { connectionId: string; userId: string; connectionFlags: typeof flags })
-      .connectionId = flags.connectionId;
+      .connectionId    = flags.connectionId;
     (req as Request & { connectionId: string; userId: string; connectionFlags: typeof flags })
-      .userId       = flags.userId;
+      .userId          = flags.userId;
     (req as Request & { connectionId: string; userId: string; connectionFlags: typeof flags })
       .connectionFlags = flags;
   } else {
-    // Supabase未設定: connection_idだけをセット（開発用）
     (req as Request & { connectionId: string; userId: string })
       .connectionId = connectionId;
     (req as Request & { connectionId: string; userId: string })
@@ -775,7 +766,8 @@ app.post("/orders/:id/result", auth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/orders", (req, res) => {
+// SECURITY: auth必須 — 認証なしでOrderキューへInsert禁止
+app.post("/orders", auth, (req, res) => {
   const order = { id: `order_${Date.now()}`, status: "pending", createdAt: Date.now(), ...req.body };
   orderQueue.push(order);
   broadcast({ type: "ORDER_QUEUED", data: order, ts: Date.now() });

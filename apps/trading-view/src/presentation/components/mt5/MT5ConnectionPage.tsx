@@ -213,8 +213,29 @@ export function MT5ConnectionPage() {
           )}
         </Step>
 
-        {/* STEP 3: 接続情報を取得 */}
-        <Step num={3} title="接続情報を取得する" done={step >= 4 && hasToken} active={step === 3}>
+        {/* STEP 3: WebRequest許可 */}
+        <Step num={3} title="MT5にWebRequestを許可する" done={step >= 4} active={step === 3}>
+          <p className="text-xs mb-3" style={{ color: "#94a3b8" }}>
+            Bridge EAがAVL-FXサーバーへ通信するために必要な設定です。
+          </p>
+          <div className="space-y-2 text-xs" style={{ color: "#94a3b8" }}>
+            <p>① MT5 メニュー →「ツール」→「オプション」</p>
+            <p>② 「エキスパートアドバイザー」タブを開く</p>
+            <p>③ 「以下のURLへのWebRequestを許可する」にチェック</p>
+            <p>④ 下の Gateway URL をコピーして追加</p>
+          </div>
+          <div className="mt-3">
+            <ValueBox label="WebRequest 許可リストに追加するURL" value={GATEWAY_URL} />
+          </div>
+          {step === 3 && (
+            <button onClick={() => setStep(4)} className="mt-3 text-[11px] underline" style={{ color: "#475569" }}>
+              設定完了 → 次へ
+            </button>
+          )}
+        </Step>
+
+        {/* STEP 4: 接続情報を取得 */}
+        <Step num={4} title="接続情報を取得する" done={step >= 5 && hasToken} active={step === 4}>
           <p className="text-xs mb-3" style={{ color: "#94a3b8" }}>
             あなた専用の接続情報を発行します。EAの設定画面に入力します。
           </p>
@@ -228,7 +249,7 @@ export function MT5ConnectionPage() {
           ) : (
             <div className="space-y-2">
               <ValueBox label="Gateway URL (InpServerURL に入力)" value={GATEWAY_URL} />
-              <ValueBox label="接続ID (ConnectionId)" value={connection?.id ?? ""} />
+              <ValueBox label="Connection ID (InpConnectionId に入力)" value={connection?.id ?? ""} />
               {hasToken ? (
                 <div className="rounded-lg p-3" style={{ background: "#0a1a0a", border: "1px solid rgba(0,255,136,0.2)" }}>
                   <div className="flex items-center gap-2 mb-1.5">
@@ -254,8 +275,8 @@ export function MT5ConnectionPage() {
                   </button>
                 </div>
               )}
-              {step === 3 && hasToken && (
-                <button onClick={() => setStep(4)} className="mt-1 text-[11px] underline" style={{ color: "#475569" }}>
+              {step === 4 && hasToken && (
+                <button onClick={() => setStep(5)} className="mt-1 text-[11px] underline" style={{ color: "#475569" }}>
                   コピーした → 次へ
                 </button>
               )}
@@ -263,26 +284,30 @@ export function MT5ConnectionPage() {
           )}
         </Step>
 
-        {/* STEP 4: EAをチャートにアタッチ */}
-        <Step num={4} title="EAをチャートにアタッチ" done={isOnline} active={step >= 4}>
+        {/* STEP 5: EAをチャートにアタッチ */}
+        <Step num={5} title="EAをチャートにアタッチ" done={isOnline} active={step >= 5}>
           <div className="space-y-2 text-xs" style={{ color: "#94a3b8" }}>
             <p>① MT5でチャートを開く（EURUSDなど）</p>
             <p>② ナビゲーターから <span className="font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "#00e5ff" }}>AVL_FX_Bridge</span> をチャートにドラッグ</p>
-            <p>③ EA設定画面が開いたら以下を入力：</p>
-            <div className="ml-4 space-y-1.5 mt-2">
-              <div className="flex gap-2">
+            <p>③ EA設定画面が開いたら以下の <strong>3つ</strong> を入力：</p>
+            <div className="ml-4 space-y-1.5 mt-2 p-3 rounded-lg" style={{ background: "#0a0e1a", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="flex gap-2 items-center">
                 <span className="font-mono text-[10px] px-2 py-0.5 rounded flex-shrink-0" style={{ background: "rgba(0,229,255,0.08)", color: "#00e5ff" }}>InpServerURL</span>
-                <span style={{ color: "#64748b" }}>↑ STEP 3 の Gateway URL</span>
+                <span style={{ color: "#64748b" }}>← STEP 4 の Gateway URL</span>
               </div>
-              <div className="flex gap-2">
-                <span className="font-mono text-[10px] px-2 py-0.5 rounded flex-shrink-0" style={{ background: "rgba(0,229,255,0.08)", color: "#00e5ff" }}>InpServerSecret</span>
-                <span style={{ color: "#64748b" }}>↑ STEP 3 の Connection Token</span>
+              <div className="flex gap-2 items-center">
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded flex-shrink-0" style={{ background: "rgba(0,229,255,0.08)", color: "#00e5ff" }}>InpConnectionId</span>
+                <span style={{ color: "#64748b" }}>← STEP 4 の Connection ID</span>
+              </div>
+              <div className="flex gap-2 items-center">
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded flex-shrink-0" style={{ background: "rgba(0,255,136,0.08)", color: "#00ff88" }}>InpConnectionToken</span>
+                <span style={{ color: "#64748b" }}>← STEP 4 の Connection Token（緑文字）</span>
               </div>
             </div>
             <p className="mt-2">④「自動売買を許可する」にチェックを入れて OK</p>
             <p>⑤ このページに戻ると「EA接続中」になります</p>
           </div>
-          {!isOnline && step >= 4 && (
+          {!isOnline && step >= 5 && (
             <div className="flex items-center gap-2 mt-3">
               <div className="w-4 h-4 rounded-full border-2 border-gray-600 border-t-cyan-400 animate-spin" />
               <p className="text-[11px]" style={{ color: "#475569" }}>EA接続を待っています...</p>

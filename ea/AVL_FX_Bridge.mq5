@@ -33,12 +33,11 @@ CTrade g_Trade;
 
 #define BRIDGE_VERSION "4.0"
 
-//--- 接続設定
+//--- 接続設定（MT5接続ページからコピー）
 sinput group "=== AVL Gateway 接続設定 ==="
 input string InpServerURL       = "https://remarkable-cooperation-production-7341.up.railway.app"; // Gateway URL
-input string InpServerSecret    = "";   // Gateway Secret（管理者から入手）
-input string InpConnectionId    = "";   // Connection ID（MT5接続ページからコピー）
-input string InpConnectionToken = "";   // Connection Token（MT5接続ページからコピー、一度のみ表示）
+input string InpConnectionId    = "";   // Connection ID（/mt5ページからコピー）
+input string InpConnectionToken = "";   // Connection Token（/mt5ページで発行、一度のみ表示）
 
 //--- Tick Stream
 sinput group "=== Tick Stream ==="
@@ -93,12 +92,13 @@ int OnInit()
 
    if(StringLen(InpServerURL) == 0 || StringLen(InpConnectionId) == 0 || StringLen(InpConnectionToken) == 0)
    {
-      Alert("AVL Bridge: InpServerURL / InpConnectionId / InpConnectionToken を設定してください");
+      Alert("AVL Bridge: 以下の3つを設定してください:\n1. Gateway URL\n2. Connection ID\n3. Connection Token\n\navl-fx.vercel.app/mt5 からコピーできます");
       Print("=== セットアップ手順 ===");
-      Print("1. avl-fx.vercel.app/mt5 にログインして「接続情報を発行する」を押す");
-      Print("2. Gateway URL / Connection ID / Connection Token をコピーして");
-      Print("   EA設定画面にそれぞれ入力してください");
-      Print("3. ツール → オプション → EA → WebRequest許可リストに Gateway URL を追加");
+      Print("1. avl-fx.vercel.app/mt5 にログイン");
+      Print("2. 「接続情報を発行する」を押してConnection ID / Tokenを取得");
+      Print("3. ツール → オプション → EA → WebRequest許可リストに Gateway URL を追加:");
+      Print("   ", InpServerURL);
+      Print("4. EA設定画面にGateway URL / Connection ID / Connection Tokenを入力");
       return INIT_PARAMETERS_INCORRECT;
    }
 
@@ -743,9 +743,9 @@ void IndicatorStream_Send()
 
 string Bridge_Headers()
 {
+   // Gateway SecretはUserへ公開しない — Connection Token認証のみ使用
    return
       "Content-Type: application/json\r\n"
-      "Authorization: Bearer " + InpServerSecret + "\r\n"
       "X-Connection-Id: "    + InpConnectionId    + "\r\n"
       "X-Connection-Token: " + InpConnectionToken + "\r\n";
 }

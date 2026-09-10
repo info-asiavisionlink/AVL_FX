@@ -294,6 +294,22 @@ export class GatewayClient {
   // 購読 API
   // ---------------------------------------------------------------
 
+  /** Gateway WebSocketにconnectionIdをsubscribeする
+   * これにより、そのconnection固有のTick/Bar/Accountのみ届く
+   */
+  subscribeConnection(connectionId: string): void {
+    const send = () => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: "SUBSCRIBE_CONNECTION", connectionId }));
+      }
+    };
+    send(); // 既に接続済みなら即時送信
+    // 再接続後も自動subscribe
+    this.onStatusChange((status) => {
+      if (status === "connected") send();
+    });
+  }
+
   onTick(symbol: string, handler: TickHandler): Unsubscribe {
     const key = symbol.toUpperCase();
     if (!this.tickHandlers.has(key)) this.tickHandlers.set(key, new Set());

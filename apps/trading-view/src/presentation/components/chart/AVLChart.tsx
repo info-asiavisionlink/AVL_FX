@@ -1,17 +1,19 @@
 "use client";
 
 // =================================================================
-// AVLChart v3.1 — MT5 直結チャート
+// AVLChart v4.0 — User MT5 直結チャート
 // =================================================================
 //
 // 設計原則
 //   EAから送られたOHLC・時刻をそのままLightweight Chartsに渡す。
 //   このコンポーネントでOHLC生成・時刻補正・価格計算は行わない。
+//   Admin MT5のデータをUserのChartに表示しない。
 //
 // データフロー
-//   ① WebSocket onBar を先に購読（バーを取りこぼさない）
-//   ② GET /bars で過去バーを取得 → series.setData()
-//   ③ ① で受け取った差分バーを series.update()
+//   ① User MT5 connectionIdをWebSocketにSubscribe
+//   ② WebSocket onBar を先に購読（バーを取りこぼさない）
+//   ③ GET /api/live/connection/bars で過去バーを取得（User-specific）
+//   ④ ② で受け取った差分バーを series.update()
 //
 // 時刻について
 //   EAが送る rates[0].time は秒単位。
@@ -29,12 +31,13 @@ import {
   type CandlestickData,
   type Time,
 } from "lightweight-charts";
-import { usePriceStore }      from "@/application/stores/priceStore";
-import { useConnectionStore } from "@/application/stores/connectionStore";
-import { useMarketStore }     from "@/application/stores/marketStore";
-import { ConnectionManager }  from "@/infrastructure/connection/ConnectionManager";
-import type { Timeframe }     from "@/types";
-import { Loader2 }            from "lucide-react";
+import { usePriceStore }             from "@/application/stores/priceStore";
+import { useConnectionStore }        from "@/application/stores/connectionStore";
+import { useMarketStore }            from "@/application/stores/marketStore";
+import { ConnectionManager }         from "@/infrastructure/connection/ConnectionManager";
+import { useUserMT5Connection }      from "@/presentation/hooks/useUserMT5Connection";
+import type { Timeframe }            from "@/types";
+import { Loader2 }                   from "lucide-react";
 
 // -----------------------------------------------------------------
 // 時間足 → MT5 文字列
@@ -109,8 +112,11 @@ export function AVLChart() {
 
   const { activeSymbol, activeTimeframe } = usePriceStore();
   const { status }                        = useConnectionStore();
-  // SYMBOLSメッセージで更新される現在bid（TICKが来なくてもSYMBOLS経由で動く）
   const currentBid = useMarketStore(s => s.symbols.get(activeSymbol.toUpperCase())?.bid ?? 0);
+
+  // User MT5 connection状態（User-specific data sourceの判定に使用）
+  const { status: userConn } = useUserMT5Connection(15_000);
+  const connectionId = userConn.connectionId;
 
   // ---------------------------------------------------------------
   // チャート初期化 — ResizeObserver で確定サイズが取得できてから生成
@@ -191,6 +197,9 @@ export function AVLChart() {
     const client = ConnectionManager.instance.client;
     if (!client) return;
 
+    // User MT5 connectionをWebSocketにSubscribe（connection-scoped broadcast受信のため）
+    if (connectionId) client.subscribeConnection(connectionId);
+
     const tf = TF_TO_MT5[activeTimeframe] ?? "H1";
 
     // ── ① WebSocket 購読を先に開始 ──────────────────────────────
@@ -253,13 +262,17 @@ export function AVLChart() {
 
     let bars: Awaited<ReturnType<typeof client.getBars>> = [];
     try {
+      // User MT5 connection-specific bars（Admin MT5 dataは使用しない）
       const p = new URLSearchParams({ symbol: activeSymbol, tf, count: String(BAR_COUNT) });
-      const res = await fetch(`/api/mt5/bars/simple?${p}`, {
-        signal: abort.signal,
-      });
-      if (res.ok) bars = await res.json();
+      const endpoint = connectionId
+        ? `/api/live/connection/bars?${p}`
+        : `/api/mt5/bars/simple?${p}`; // fallback: 接続ID未取得時
+      const res = await fetch(endpoint, { signal: abort.signal });
+      if (res.ok) {
+        const data = await res.json() as unknown;
+        bars = Array.isArray(data) ? data : [];
+      }
     } catch (e) {
-      // AbortError = 新しいシンボルに切り替わった → このロードを破棄
       if ((e as Error)?.name === "AbortError") return;
       bars = [];
     }
@@ -297,7 +310,7 @@ export function AVLChart() {
     }
 
     pendingRef.current = [];
-  }, [activeSymbol, activeTimeframe, status]);
+  }, [activeSymbol, activeTimeframe, status, connectionId]);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => { loadChart().catch(console.error); });
@@ -334,7 +347,9 @@ export function AVLChart() {
   // ---------------------------------------------------------------
   // レンダリング
   // ---------------------------------------------------------------
-  const isLive = status === "connected";
+  const isGatewayConnected = status === "connected";
+  const isUserOnline       = userConn.online;
+  const isLive             = isGatewayConnected && isUserOnline;
 
   return (
     <div className="relative w-full h-full bg-[#131722]">
@@ -348,16 +363,23 @@ export function AVLChart() {
         </div>
       )}
 
+      {isGatewayConnected && !isUserOnline && !loading && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+          <p className="text-xs" style={{ color: "#fbbf24" }}>MT5との接続が切断されています</p>
+          <p className="text-[10px]" style={{ color: "#64748b" }}>MT5でBridge EAが起動しているか確認してください</p>
+        </div>
+      )}
+
       {isLive && !loading && noData && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
           <Loader2 size={20} className="text-blue-500/50 animate-spin" />
           <p className="text-xs text-gray-600">MT5 EA からのデータを待っています...</p>
-          <p className="text-[10px] text-gray-700">AVL_FX_Bridge.mq5 をチャートにアタッチしてください</p>
+          <p className="text-[10px] text-gray-700">チャートにBridge EAをアタッチしてください</p>
         </div>
       )}
 
-      <div className={`absolute bottom-2 right-3 text-[10px] font-mono pointer-events-none select-none ${isLive ? "text-green-700" : "text-gray-700"}`}>
-        {isLive ? "MT5 Live" : "切断中"}
+      <div className={`absolute bottom-2 right-3 text-[10px] font-mono pointer-events-none select-none ${isLive ? "text-green-700" : isUserOnline ? "text-yellow-700" : "text-gray-700"}`}>
+        {isLive ? `MT5 Live${userConn.broker ? ` · ${userConn.broker}` : ""}` : isUserOnline ? "接続中..." : "切断中"}
       </div>
     </div>
   );
