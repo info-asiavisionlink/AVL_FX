@@ -199,12 +199,32 @@ export function MT5ConnectionPage() {
 
         {/* STEP 2: MT5に配置 */}
         <Step num={2} title="MT5のフォルダに入れる" done={step >= 3} active={step === 2}>
+          {/* Mac向け: ターミナルコマンド（最も確実） */}
+          <div className="mb-4 rounded-lg p-3" style={{ background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.15)" }}>
+            <p className="text-[10px] font-bold tracking-widest mb-2" style={{ color: "#00e5ff" }}>
+              🍎 Mac をご利用の場合 — ターミナルにコピペするだけ
+            </p>
+            <p className="text-[10px] mb-2" style={{ color: "#64748b" }}>
+              .ex5 ファイルはダブルクリックで開けません。以下のコマンドを <strong>ターミナル</strong>（Launchpad → ターミナル）で実行してください。
+            </p>
+            <CopyButton
+              value={`find ~/Downloads -name "AVL_FX_Bridge*.ex5" | sort | tail -1 | xargs -I{} cp {} ~/Library/Application\\ Support/net.metaquotes.wine.metatrader5/drive_c/Program\\ Files/MetaTrader\\ 5/MQL5/Experts/Advisors/AVL_FX_Bridge.ex5 && echo "コピー完了"`}
+              label="Macターミナルコマンド"
+            />
+            <p className="text-[10px] mt-2" style={{ color: "#475569" }}>
+              実行後「コピー完了」と表示されたら成功です
+            </p>
+          </div>
+
+          {/* Windows / 手動インストール */}
+          <p className="text-[10px] font-bold tracking-widest mb-2" style={{ color: "#475569" }}>
+            Windows または手動インストール
+          </p>
           <div className="space-y-2 text-xs" style={{ color: "#94a3b8" }}>
-            <p>① MT5を開く</p>
-            <p>② メニュー →「ファイル」→「データフォルダを開く」</p>
-            <p>③ <span className="font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "#00e5ff" }}>MQL5 → Experts</span> フォルダを開く</p>
-            <p>④ ダウンロードした <span className="font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "#00e5ff" }}>AVL_FX_Bridge.ex5</span> をそのフォルダに入れる</p>
-            <p>⑤ MT5のナビゲーターで「エキスパートアドバイザー」を右クリック →「更新」</p>
+            <p>① MT5 メニュー →「ファイル」→「データフォルダを開く」</p>
+            <p>② <span className="font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "#00e5ff" }}>MQL5 → Experts</span> フォルダを開く</p>
+            <p>③ ダウンロードした <span className="font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "#00e5ff" }}>AVL_FX_Bridge.ex5</span> をそのフォルダにコピー</p>
+            <p>④ MT5 ナビゲーター →「エキスパートアドバイザー」右クリック →「更新」</p>
           </div>
           {step === 2 && (
             <button onClick={() => setStep(3)} className="mt-3 text-[11px] underline" style={{ color: "#475569" }}>
