@@ -198,7 +198,7 @@ export async function getPendingCommands(
 
   return data.map(r => ({
     id:             r.id,
-    commandId:      r.command_id,
+    commandId:      r.id,        // Bridge EAはidをURLパラメーターとして使用
     action:         r.action,
     symbol:         r.symbol,
     volume:         r.volume,
@@ -233,10 +233,10 @@ export async function claimCommand(
       status:     "CLAIMED",
       claimed_at: new Date().toISOString(),
     })
-    .eq("command_id", commandId)
+    .eq("id", commandId)           // Bridge EAはidをURLパスに使用
     .eq("connection_id", connectionId)
-    .eq("status", "PENDING")   // Atomic: statusがPENDINGのものだけ更新
-    .select("command_id")
+    .eq("status", "PENDING")       // Atomic: statusがPENDINGのものだけ更新
+    .select("id")
     .single();
 
   if (error || !data) return false;
@@ -274,10 +274,10 @@ export async function submitCommandResult(
   await sb
     .from("execution_commands")
     .update(update)
-    .eq("command_id", result.commandId)
-    .in("status", ["CLAIMED", "EXECUTING"]);  // Terminal Stateには書き込まない
+    .eq("id", result.commandId)               // Bridge EAはidをURLパスに使用
+    .in("status", ["CLAIMED", "EXECUTING", "PENDING"]); // REJECTED/ERRORも許容
 
-  console.log(`[executionStore] result commandId=${result.commandId} status=${result.status}`);
+  console.log(`[executionStore] result id=${result.commandId} status=${result.status}`);
 }
 
 // ------------------------------------------------------------------

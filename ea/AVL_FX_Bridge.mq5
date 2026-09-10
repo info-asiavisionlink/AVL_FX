@@ -516,6 +516,14 @@ void CommandStream_Poll()
 
       g_Trade.SetExpertMagicNumber((ulong)magic);
       g_Trade.SetDeviationInPoints(30);
+      // ブローカー対応: Filling Modeを自動設定
+      ENUM_ORDER_TYPE_FILLING filling = ORDER_FILLING_FOK;
+      long fillFlags = SymbolInfoInteger(sym, SYMBOL_FILLING_MODE);
+      if((fillFlags & SYMBOL_FILLING_IOC) != 0) filling = ORDER_FILLING_IOC;
+      if((fillFlags & SYMBOL_FILLING_FOK) != 0) filling = ORDER_FILLING_FOK;
+      // Return filling (no SL/TP = market return) の場合は RETURN を優先
+      if((fillFlags & SYMBOL_FILLING_BOC) == 0 && fillFlags == 0) filling = ORDER_FILLING_RETURN;
+      g_Trade.SetTypeFilling(filling);
 
       bool   ok     = false;
       string status = "REJECTED";
