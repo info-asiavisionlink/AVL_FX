@@ -5,6 +5,9 @@ import { toast } from "sonner";
 import { AIEABuilder } from "./AIEABuilder";
 import { StrategyDetailModal } from "./StrategyDetailModal";
 import { type StrategyRecord } from "@/lib/strategySchema";
+import { useUserMT5Connection } from "@/presentation/hooks/useUserMT5Connection";
+
+type RuntimeStatus = "STOPPED" | "STARTING" | "RUNNING" | "PAUSED" | "ERROR";
 
 // ── Color constants ──────────────────────────────────────────────────────────
 const NG      = "#00ff88";
@@ -54,8 +57,51 @@ function StrategyDraftCard({
     profitFactor?:   number | null;
     maxDrawdownPct?: number;
   } | null>(null);
-  const [btLoading, setBtLoading] = useState(false);
+  const [btLoading,      setBtLoading]      = useState(false);
+  const [runtimeStatus,  setRuntimeStatus]  = useState<RuntimeStatus>("STOPPED");
+  const [runtimeLoading, setRuntimeLoading] = useState(false);
+  const { status: mt5 } = useUserMT5Connection(15_000);
   const bts = strategy.backtest_status;
+
+  // Runtime状態を取得
+  useEffect(() => {
+    fetch(`/api/live/strategies/${strategy.id}/runtime`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { runtime?: { runtime_status?: string } } | null) => {
+        if (d?.runtime?.runtime_status) {
+          setRuntimeStatus(d.runtime.runtime_status as RuntimeStatus);
+        }
+      })
+      .catch(() => {});
+  }, [strategy.id]);
+
+  const handleStart = async () => {
+    if (!mt5.online) { toast.error("MT5を接続してください"); return; }
+    setRuntimeLoading(true);
+    try {
+      const res = await fetch(`/api/live/strategies/${strategy.id}/runtime`, { method: "POST" });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (res.ok) {
+        setRuntimeStatus("RUNNING");
+        toast.success("EA起動しました");
+      } else {
+        toast.error(data.error ?? "起動失敗");
+      }
+    } catch { toast.error("エラーが発生しました"); }
+    finally { setRuntimeLoading(false); }
+  };
+
+  const handleStop = async () => {
+    setRuntimeLoading(true);
+    try {
+      const res = await fetch(`/api/live/strategies/${strategy.id}/runtime`, { method: "DELETE" });
+      if (res.ok) {
+        setRuntimeStatus("STOPPED");
+        toast.success("EA停止しました");
+      }
+    } catch { toast.error("エラーが発生しました"); }
+    finally { setRuntimeLoading(false); }
+  };
 
   useEffect(() => {
     if (bts === "NOT_TESTED") return;
@@ -104,8 +150,10 @@ function StrategyDraftCard({
               {strategy.name}
             </h3>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-[9px] font-mono tracking-widest" style={{ color: "#4b5563" }}>
-                ○ 停止中
+              <span className="text-[9px] font-mono tracking-widest" style={{
+                color: runtimeStatus === "RUNNING" ? NG : runtimeStatus === "ERROR" ? RED : "#4b5563"
+              }}>
+                {runtimeStatus === "RUNNING" ? "● 稼働中" : runtimeStatus === "ERROR" ? "⚠ エラー" : "○ 停止中"}
               </span>
               {strategy.magic_number && (
                 <span className="text-[8px] font-mono" style={{ color: "#334155" }}>
@@ -234,19 +282,32 @@ function StrategyDraftCard({
 
       {/* ── CTA ── */}
       <div className="px-4 pb-4 pt-3 flex flex-col gap-2">
-        {/* 起動: Live Trading 未実装のため disabled */}
-        <button
-          disabled
-          className="w-full h-8 rounded font-mono font-black text-[10px] tracking-widest cursor-not-allowed"
-          style={{
-            background: "rgba(255,255,255,0.03)",
-            border:     "1px solid rgba(255,255,255,0.07)",
-            color:      "#334155",
-          }}
-          title="ライブトレード: 未実装 (STAGE 5 で実装予定)"
-        >
-          ▶ 起動（準備中）
-        </button>
+        {runtimeStatus === "RUNNING" ? (
+          <button
+            onClick={handleStop}
+            disabled={runtimeLoading}
+            className="w-full h-8 rounded font-mono font-black text-[10px] tracking-widest transition-opacity hover:opacity-70"
+            style={{ background: "rgba(255,68,102,0.12)", border: "1px solid rgba(255,68,102,0.3)", color: RED, opacity: runtimeLoading ? 0.5 : 1 }}
+          >
+            {runtimeLoading ? "停止中..." : "■ 停止"}
+          </button>
+        ) : (
+          <button
+            onClick={handleStart}
+            disabled={runtimeLoading || !mt5.online}
+            className="w-full h-8 rounded font-mono font-black text-[10px] tracking-widest transition-opacity hover:opacity-70"
+            style={{
+              background: mt5.online ? "rgba(0,255,136,0.12)" : "rgba(255,255,255,0.03)",
+              border:     mt5.online ? "1px solid rgba(0,255,136,0.3)" : "1px solid rgba(255,255,255,0.07)",
+              color:      mt5.online ? NG : "#334155",
+              opacity:    runtimeLoading ? 0.5 : 1,
+              cursor:     mt5.online ? "pointer" : "not-allowed",
+            }}
+            title={mt5.online ? "EA起動" : "MT5を接続してください"}
+          >
+            {runtimeLoading ? "起動中..." : mt5.online ? "▶ 起動" : "▶ 起動（MT5未接続）"}
+          </button>
+        )}
         <button
           className="w-full h-8 rounded font-mono font-black text-[10px] tracking-widest transition-opacity hover:opacity-70"
           style={{
