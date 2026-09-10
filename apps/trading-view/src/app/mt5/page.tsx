@@ -4,7 +4,9 @@ import { MT5ConnectionPage } from "@/presentation/components/mt5/MT5ConnectionPa
 export default function MT5Page() {
   return (
     <DashboardShell>
-      <MT5ConnectionPage />
+      <div className="flex-1 overflow-y-auto">
+        <MT5ConnectionPage />
+      </div>
     </DashboardShell>
   );
 }
