@@ -24,11 +24,11 @@ const DEFAULT_WATCHLIST: WatchlistItem[] = [
   { symbol: "USDJPY", bid: 0, ask: 0, spread: 0, dailyChange: 0, dailyChangePercent: 0, isConnected: false },
   { symbol: "GBPUSD", bid: 0, ask: 0, spread: 0, dailyChange: 0, dailyChangePercent: 0, isConnected: false },
   { symbol: "AUDUSD", bid: 0, ask: 0, spread: 0, dailyChange: 0, dailyChangePercent: 0, isConnected: false },
-  { symbol: "XAUUSD", bid: 0, ask: 0, spread: 0, dailyChange: 0, dailyChangePercent: 0, isConnected: false },
+  { symbol: "GOLD#",  bid: 0, ask: 0, spread: 0, dailyChange: 0, dailyChangePercent: 0, isConnected: false },
 ];
 
 export const usePriceStore = create<PriceState>((set) => ({
-  activeSymbol:    "XAUUSD",
+  activeSymbol:    "GOLD#",
   activeTimeframe: "H1",
   watchlist:       DEFAULT_WATCHLIST,
   ticks:           {},
