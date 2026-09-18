@@ -56,7 +56,7 @@ function getDataStatus(ind: IndicatorData, hasTick: boolean): {
   const fresh   = ageMs < 15_000;
   const stale   = ageMs > 60_000;
 
-  if (!hasTick && tfCount === 0) return { label: "NO DATA",    color: "text-gray-700",   dot: "bg-[#f0efec]"   };
+  if (!hasTick && tfCount === 0) return { label: "NO DATA",    color: "text-[#9a9a9a]",   dot: "bg-[#f0efec]"   };
   if (!hasTick)                  return { label: "IND ONLY",   color: "text-blue-500/70", dot: "bg-blue-600/50" };
   if (stale)                     return { label: "STALE",      color: "text-yellow-600", dot: "bg-yellow-600"  };
   if (fresh && tfCount >= 3)     return { label: "LIVE",       color: "text-green-400",  dot: "bg-green-400"   };
@@ -100,17 +100,17 @@ const SymbolRow = ({
     <button
       onClick={onClick}
       className={cn(
-        "w-full text-left px-2.5 py-2 border-b border-[#12161e] transition-all duration-200",
+        "w-full text-left px-2.5 py-2 border-b border-[rgba(0,0,0,0.06)] transition-all duration-200",
         "border-l-2 relative overflow-hidden",
         isActive
-          ? "bg-cyan-950/20 border-l-cyan-400"
-          : "border-l-transparent hover:bg-[#12161e]"
+          ? "bg-orange-50 border-l-orange-400"
+          : "border-l-transparent hover:bg-[rgba(0,0,0,0.04)]"
       )}
-      style={isActive ? { boxShadow: "inset 1px 0 8px rgba(0,229,255,0.05)" } : undefined}
+      style={isActive ? { boxShadow: "inset 1px 0 8px rgba(249,115,22,0.05)" } : undefined}
     >
       {/* Tick flash overlay */}
       <div className="absolute inset-0 pointer-events-none transition-opacity duration-300"
-        style={{ background: "rgba(0,229,255,0.04)", opacity: flash ? 1 : 0 }}/>
+        style={{ background: "rgba(249,115,22,0.04)", opacity: flash ? 1 : 0 }}/>
 
       {/* Row 1: Status dot + Symbol + Bias */}
       <div className="flex items-center justify-between mb-1">
@@ -118,7 +118,7 @@ const SymbolRow = ({
           <div className={cn("w-1.5 h-1.5 rounded-full shrink-0 transition-all", status_.dot)}
             style={status_.label === "LIVE" ? { animation: flash ? "avl-blink 0.3s ease-in-out 3" : "none" } : undefined}/>
           <span className={cn("text-[11px] font-black font-mono tracking-wider truncate",
-            isActive ? "text-cyan-300" : "text-gray-200")}>
+            isActive ? "text-[#ea580c]" : "text-[#1a1a1a]")}>
             {ind.symbol}
           </span>
         </div>
@@ -131,28 +131,28 @@ const SymbolRow = ({
         <div className="flex items-center justify-between mb-0.5">
           <div className="flex items-center gap-2">
             <div>
-              <span className="text-[6.5px] font-mono text-gray-700 mr-0.5">BID</span>
+              <span className="text-[6.5px] font-mono text-[#9a9a9a] mr-0.5">BID</span>
               <span className={cn("text-[10px] font-mono font-bold tabular-nums transition-all duration-300",
-                flash ? "text-cyan-300" : isActive ? "text-gray-100" : "text-gray-300")}>
+                flash ? "text-[#ea580c]" : isActive ? "text-[#1a1a1a]" : "text-[#4a4a4a]")}>
                 {fmtPrice(bid, ind.digits)}
               </span>
             </div>
             <div>
-              <span className="text-[6.5px] font-mono text-gray-700 mr-0.5">ASK</span>
-              <span className="text-[10px] font-mono tabular-nums text-gray-500">
+              <span className="text-[6.5px] font-mono text-[#9a9a9a] mr-0.5">ASK</span>
+              <span className="text-[10px] font-mono tabular-nums text-[#9a9a9a]">
                 {fmtPrice(ask, ind.digits)}
               </span>
             </div>
           </div>
           <div className="text-right shrink-0">
             <span className={cn("text-[8px] font-mono tabular-nums",
-              spread > 5 ? "text-red-400/70" : spread > 2.5 ? "text-yellow-400/70" : "text-gray-600")}>
+              spread > 5 ? "text-red-400/70" : spread > 2.5 ? "text-yellow-400/70" : "text-[#9a9a9a]")}>
               {spread > 0 ? `${spread.toFixed(1)}p` : "—"}
             </span>
           </div>
         </div>
       ) : (
-        <div className="text-[8px] font-mono text-gray-800 mb-0.5">PRICE UNAVAILABLE</div>
+        <div className="text-[8px] font-mono text-[#9a9a9a] mb-0.5">PRICE UNAVAILABLE</div>
       )}
 
       {/* Row 3: Data status + changePct */}
@@ -199,19 +199,19 @@ export function WatchlistPanel() {
   }, [setActiveSymbol]);
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0d12]">
+    <div className="flex flex-col h-full bg-white">
       {/* Header */}
-      <div className="flex items-center justify-between px-2.5 py-2 border-b border-[#12161e] shrink-0">
+      <div className="flex items-center justify-between px-2.5 py-2 border-b border-[rgba(0,0,0,0.06)] shrink-0">
         <div>
-          <p className="text-[6.5px] font-mono text-gray-700 tracking-[0.25em] leading-none mb-0.5">AVL EA</p>
-          <p className="text-[9px] font-bold font-mono text-gray-400 tracking-wider leading-none">ACTIVE SYMBOLS</p>
+          <p className="text-[6.5px] font-mono text-[#9a9a9a] tracking-[0.25em] leading-none mb-0.5">AVL EA</p>
+          <p className="text-[9px] font-bold font-mono text-[#4a4a4a] tracking-wider leading-none">ACTIVE SYMBOLS</p>
         </div>
         <div className="flex items-center gap-1">
           <div className={cn("w-1.5 h-1.5 rounded-full",
             isConnected ? "bg-green-400" : "bg-gray-700")}
-            style={isConnected ? { animation: "avl-blink 2s ease-in-out infinite", boxShadow: "0 0 4px rgba(0,255,136,0.5)" } : undefined}/>
+            style={isConnected ? { animation: "avl-blink 2s ease-in-out infinite", boxShadow: "0 0 4px rgba(22,163,74,0.5)" } : undefined}/>
           <span className={cn("text-[7px] font-mono",
-            isConnected ? "text-green-400/70" : "text-gray-700")}>
+            isConnected ? "text-green-400/70" : "text-[#9a9a9a]")}>
             {isConnected ? "MT5" : "OFFLINE"}
           </span>
         </div>
@@ -219,11 +219,11 @@ export function WatchlistPanel() {
 
       {/* Symbol count */}
       {eaSymbols.length > 0 && (
-        <div className="px-2.5 py-1 border-b border-[#12161e] shrink-0 flex items-center justify-between">
-          <span className="text-[6.5px] font-mono text-gray-800 tracking-wider">
+        <div className="px-2.5 py-1 border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center justify-between">
+          <span className="text-[6.5px] font-mono text-[#9a9a9a] tracking-wider">
             {eaSymbols.length} SYMBOL{eaSymbols.length > 1 ? "S" : ""}
           </span>
-          <span className="text-[6px] font-mono text-gray-800">EA INDICATORS</span>
+          <span className="text-[6px] font-mono text-[#9a9a9a]">EA INDICATORS</span>
         </div>
       )}
 
@@ -231,13 +231,13 @@ export function WatchlistPanel() {
       <div className="flex-1 overflow-y-auto avl-scroll">
         {eaSymbols.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 px-3">
-            <Radio size={16} className="text-gray-800"/>
-            <p className="text-[9px] text-gray-700 font-mono text-center leading-relaxed">
+            <Radio size={16} className="text-[#9a9a9a]"/>
+            <p className="text-[9px] text-[#9a9a9a] font-mono text-center leading-relaxed">
               {isConnected
                 ? "EA稼働銘柄を\n待機中..."
                 : "MT5に\n接続してください"}
             </p>
-            <p className="text-[7.5px] text-gray-800 font-mono text-center">
+            <p className="text-[7.5px] text-[#9a9a9a] font-mono text-center">
               AVL_FX_Bridge.mq5
             </p>
           </div>
@@ -268,8 +268,8 @@ export function WatchlistPanel() {
 
       {/* Footer — EA connection info */}
       {isConnected && eaSymbols.length > 0 && (
-        <div className="shrink-0 px-2.5 py-1.5 border-t border-[#12161e]">
-          <p className="text-[6px] font-mono text-gray-800 tracking-wider">
+        <div className="shrink-0 px-2.5 py-1.5 border-t border-[rgba(0,0,0,0.06)]">
+          <p className="text-[6px] font-mono text-[#9a9a9a] tracking-wider">
             RAILWAY GATEWAY · WEBSOCKET LIVE
           </p>
         </div>
