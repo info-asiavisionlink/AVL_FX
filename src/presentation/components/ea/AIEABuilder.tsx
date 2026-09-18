@@ -109,9 +109,50 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
   const [candidates,  setCandidates]  = useState<Candidate[]>([]);
   const [genError,    setGenError]    = useState<string | null>(null);
   const [addedCount,  setAddedCount]  = useState(0);
-  const btAbortRef = useRef<boolean>(false);
-
+  const btAbortRef   = useRef<boolean>(false);
   const rawPromptRef = useRef("");
+
+  // ── 個別 EA 追加（hooks ルール: useCallback は条件分岐の前に置く）──
+  const handleAdd = useCallback(async (idx: number) => {
+    setCandidates(prev => prev.map((c, ci) => ci === idx ? { ...c, saving: true } : c));
+
+    setCandidates(prev => {
+      const cand = prev[idx];
+      if (!cand) return prev;
+
+      void (async () => {
+        try {
+          const res  = await fetch("/api/strategies", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({
+              spec:       cand.spec,
+              raw_prompt: rawPromptRef.current,
+              ...(cand.report ? {
+                previewBacktestData: { report: cand.report, trades: [], barCount: 0 },
+              } : {}),
+            }),
+          });
+          const data = await res.json() as { strategy?: StrategyRecord; error?: string };
+
+          if (!data.strategy) {
+            toast.error(data.error ?? "保存に失敗しました");
+            setCandidates(p => p.map((c, ci) => ci === idx ? { ...c, saving: false } : c));
+            return;
+          }
+
+          setCandidates(p => p.map((c, ci) => ci === idx ? { ...c, saving: false, added: true } : c));
+          setAddedCount(p => p + 1);
+          toast.success(`「${cand.spec.name}」を追加しました`);
+          onSaved(data.strategy);
+        } catch {
+          toast.error("保存エラーが発生しました");
+          setCandidates(p => p.map((c, ci) => ci === idx ? { ...c, saving: false } : c));
+        }
+      })();
+      return prev;
+    });
+  }, [onSaved]);
 
   if (!open) return null;
 
@@ -201,46 +242,6 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
     }
   }
 
-  // ── 個別 EA 追加 ─────────────────────────────────────────────────
-  const handleAdd = useCallback(async (idx: number) => {
-    setCandidates(prev => prev.map((c, ci) => ci === idx ? { ...c, saving: true } : c));
-
-    const cand = candidates[idx];
-    if (!cand) return;
-
-    try {
-      const res  = await fetch("/api/strategies", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          spec:       cand.spec,
-          raw_prompt: rawPromptRef.current,
-          ...(cand.report ? {
-            previewBacktestData: {
-              report:   cand.report,
-              trades:   [],
-              barCount: 0,
-            },
-          } : {}),
-        }),
-      });
-      const data = await res.json() as { strategy?: StrategyRecord; error?: string };
-
-      if (!data.strategy) {
-        toast.error(data.error ?? "保存に失敗しました");
-        setCandidates(prev => prev.map((c, ci) => ci === idx ? { ...c, saving: false } : c));
-        return;
-      }
-
-      setCandidates(prev => prev.map((c, ci) => ci === idx ? { ...c, saving: false, added: true } : c));
-      setAddedCount(p => p + 1);
-      toast.success(`「${cand.spec.name}」を追加しました`);
-      onSaved(data.strategy);
-    } catch {
-      toast.error("保存エラーが発生しました");
-      setCandidates(prev => prev.map((c, ci) => ci === idx ? { ...c, saving: false } : c));
-    }
-  }, [candidates, onSaved]);
 
   // =================================================================
   // レンダリング
