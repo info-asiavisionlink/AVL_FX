@@ -42,7 +42,7 @@ function SectionHeader({ icon: Icon, title, desc }: { icon: typeof Brain; title:
 // -----------------------------------------------------------------
 function Field({ label, desc, children }: { label: string; desc?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-2 border-b border-[#0d1520] last:border-0">
+    <div className="flex items-start justify-between gap-4 py-2 border-b border-[rgba(0,0,0,0.06)] last:border-0">
       <div className="min-w-0">
         <p className="text-[9px] text-gray-300 font-mono">{label}</p>
         {desc && <p className="text-[7px] text-gray-700 font-mono mt-0.5">{desc}</p>}
@@ -63,7 +63,7 @@ function TextInput({ value, onChange, placeholder, password }: {
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-48 bg-[#060a12] border border-[#0d1520] text-gray-300 text-[9px] font-mono px-2 py-1 focus:outline-none focus:border-cyan-700/50"
+        className="w-48 bg-white border border-[rgba(0,0,0,0.06)] text-gray-300 text-[9px] font-mono px-2 py-1 focus:outline-none focus:border-cyan-700/50"
       />
       {password && (
         <button type="button" onClick={() => setShow(s => !s)} className="absolute right-1.5 text-gray-600 hover:text-gray-400">
@@ -81,7 +81,7 @@ function NumberInput({ value, onChange, min, max, step }: {
     <input
       type="number" value={value} min={min} max={max} step={step ?? 0.01}
       onChange={e => onChange(parseFloat(e.target.value) || 0)}
-      className="w-24 bg-[#060a12] border border-[#0d1520] text-gray-300 text-[9px] font-mono px-2 py-1 text-right focus:outline-none focus:border-cyan-700/50"
+      className="w-24 bg-white border border-[rgba(0,0,0,0.06)] text-gray-300 text-[9px] font-mono px-2 py-1 text-right focus:outline-none focus:border-cyan-700/50"
     />
   );
 }
@@ -107,7 +107,7 @@ function SelectInput({ value, onChange, options }: {
   return (
     <select
       value={value} onChange={e => onChange(e.target.value)}
-      className="w-48 bg-[#060a12] border border-[#0d1520] text-gray-300 text-[9px] font-mono px-2 py-1 focus:outline-none focus:border-cyan-700/50"
+      className="w-48 bg-white border border-[rgba(0,0,0,0.06)] text-gray-300 text-[9px] font-mono px-2 py-1 focus:outline-none focus:border-cyan-700/50"
     >
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
@@ -157,9 +157,9 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden bg-[#04060d]">
+    <div className="flex flex-col flex-1 overflow-hidden bg-[#f8f7f4]">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between pl-14 pr-4 md:px-6 py-3 border-b border-[#0d1520] shrink-0">
+      <div className="flex items-center justify-between pl-14 pr-4 md:px-6 py-3 border-b border-[rgba(0,0,0,0.06)] shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-0.5 h-4 bg-cyan-500/60" />
           <span className="text-[9px] text-cyan-500/70 font-mono tracking-widest">AVL AI OS — SETTINGS</span>
@@ -177,7 +177,7 @@ export function SettingsPage() {
         <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6">
 
           {/* === ACCOUNT STATUS === */}
-          <div className="border border-cyan-700/30 bg-[#060a12] p-4">
+          <div className="border border-cyan-700/30 bg-white p-4">
             <SectionHeader icon={Activity} title="ACCOUNT STATUS" desc="MT5 リアルタイム口座情報" />
 
             <div className="flex items-center gap-2 mb-4">
@@ -201,7 +201,7 @@ export function SettingsPage() {
                     { label: "UNREALIZED P&L", value: `${(account.equity - account.balance) >= 0 ? "+" : ""}${(account.equity - account.balance).toFixed(2)} ${account.currency}`, col: (account.equity - account.balance) >= 0 ? "text-green-400" : "text-red-400" },
                     { label: "FREE MARGIN",  value: `${account.freeMargin.toFixed(0)} ${account.currency}`,     col: "text-gray-300" },
                   ].map(({ label, value, col }) => (
-                    <div key={label} className="border border-cyan-900/20 px-3 py-2">
+                    <div key={label} className="border border-[rgba(0,0,0,0.06)] px-3 py-2">
                       <p className="text-[7px] text-gray-700 font-mono mb-0.5">{label}</p>
                       <p className={cn("text-[10px] font-mono font-semibold tabular-nums", col)}>{value}</p>
                     </div>
@@ -215,7 +215,7 @@ export function SettingsPage() {
                     { label: "LEVERAGE",     value: `1:${account.leverage}` },
                     { label: "CURRENCY",     value: account.currency },
                   ].map(({ label, value }) => (
-                    <div key={label} className="border border-[#0d1520] px-2 py-1.5 text-center">
+                    <div key={label} className="border border-[rgba(0,0,0,0.06)] px-2 py-1.5 text-center">
                       <p className="text-[6.5px] text-gray-700 font-mono">{label}</p>
                       <p className="text-[9px] text-gray-300 font-mono font-semibold">{value}</p>
                     </div>
@@ -230,12 +230,12 @@ export function SettingsPage() {
                       {account.equity >= account.balance ? "+" : ""}{((account.equity - account.balance) / Math.max(1, account.balance) * 100).toFixed(2)}%
                     </span>
                   </div>
-                  <div className="h-1.5 bg-[#0d1520] rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-[rgba(0,0,0,0.04)] rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-1000"
                       style={{
                         width: `${Math.min(100, (account.equity / Math.max(1, account.balance)) * 100)}%`,
                         background: account.equity >= account.balance
-                          ? "linear-gradient(90deg,#00ff8840,#00ff88)"
+                          ? "linear-gradient(90deg,#f9731640,#f97316)"
                           : "linear-gradient(90deg,#ff1a4e40,#ff1a4e)",
                       }}/>
                   </div>
@@ -254,7 +254,7 @@ export function SettingsPage() {
           </div>
 
           {/* === システムプロンプト === */}
-          <div className="border border-cyan-700/30 bg-[#060a12] p-4">
+          <div className="border border-cyan-700/30 bg-white p-4">
             <SectionHeader icon={MessageSquare} title="AI PERSONA" desc="AIの人格・話し方・あなたの呼び名を設定" />
 
             <Field label="あなたの呼び名" desc="AIがあなたを何と呼ぶか（例: ボス、さん付け、名前）">
@@ -265,7 +265,7 @@ export function SettingsPage() {
                 onBlur={e => { if (!e.target.value.trim()) s({ operatorName: "ボス" }); }}
                 placeholder="ボス"
                 maxLength={20}
-                className="w-full bg-[#04060d] border border-[#0d1520] px-3 py-1.5 text-[9px] font-mono text-cyan-300 outline-none focus:border-cyan-700/60 transition-colors"
+                className="w-full bg-[#f8f7f4] border border-[rgba(0,0,0,0.06)] px-3 py-1.5 text-[9px] font-mono text-cyan-300 outline-none focus:border-cyan-700/60 transition-colors"
               />
             </Field>
 
@@ -296,12 +296,12 @@ export function SettingsPage() {
                 onChange={e => s({ customSystemPrompt: e.target.value })}
                 placeholder={"例：\n・返答は必ず箇条書きにする\n・エントリー提案時は必ずリスクを先に伝える\n・毎回最後に「ご確認ください」と付け加える"}
                 rows={5}
-                className="w-full bg-[#04060d] border border-[#0d1520] px-3 py-2 text-[9px] font-mono text-cyan-300 outline-none focus:border-cyan-700/60 transition-colors resize-none placeholder-gray-700 leading-relaxed"
+                className="w-full bg-[#f8f7f4] border border-[rgba(0,0,0,0.06)] px-3 py-2 text-[9px] font-mono text-cyan-300 outline-none focus:border-cyan-700/60 transition-colors resize-none placeholder-gray-700 leading-relaxed"
               />
             </Field>
 
             {/* Preview */}
-            <div className="mt-3 p-3 border border-cyan-900/20 bg-[#02040a]">
+            <div className="mt-3 p-3 border border-[rgba(0,0,0,0.06)] bg-[#f8f7f4]">
               <p className="text-[7px] text-gray-700 font-mono mb-1.5 tracking-wider">— プレビュー —</p>
               <p className="text-[8.5px] font-mono text-cyan-300/80 leading-relaxed">
                 {settings.aiPersonality === "professional" &&
@@ -319,7 +319,7 @@ export function SettingsPage() {
           </div>
 
           {/* === AI 設定 === */}
-          <div className="border border-[#0d1520] bg-[#060a12] p-4">
+          <div className="border border-[rgba(0,0,0,0.06)] bg-white p-4">
             <SectionHeader icon={Brain} title="AI ENGINE" desc="AVL AI が使用するモデル設定" />
             <Field label="Chat モデル" desc="市場分析・テキスト応答に使用">
               <SelectInput value={settings.aiModel} onChange={v => s({ aiModel: v })}
@@ -351,7 +351,7 @@ export function SettingsPage() {
           </div>
 
           {/* === リスク管理 === */}
-          <div className="border border-[#0d1520] bg-[#060a12] p-4">
+          <div className="border border-[rgba(0,0,0,0.06)] bg-white p-4">
             <SectionHeader icon={Shield} title="RISK MANAGEMENT" desc="取引リスクの上限設定" />
             <Field label="デフォルトロット数" desc="AI が注文する際のデフォルト量">
               <NumberInput value={settings.defaultLotSize} onChange={v => s({ defaultLotSize: v })} min={0.01} max={10} step={0.01} />
@@ -368,7 +368,7 @@ export function SettingsPage() {
           </div>
 
           {/* === 外部データ (Twelve Data) === */}
-          <div className="border border-[#0d1520] bg-[#060a12] p-4">
+          <div className="border border-[rgba(0,0,0,0.06)] bg-white p-4">
             <SectionHeader icon={Wifi} title="EXTERNAL MARKET DATA" desc="Twelve Data API — 外部市場データ（DXY, VIX, US30 等）" />
             <Field label="Twelve Data API Key" desc="twelvedata.com で取得">
               <TextInput
@@ -384,7 +384,7 @@ export function SettingsPage() {
           </div>
 
           {/* === 通知 === */}
-          <div className="border border-[#0d1520] bg-[#060a12] p-4">
+          <div className="border border-[rgba(0,0,0,0.06)] bg-white p-4">
             <SectionHeader icon={Bell} title="NOTIFICATIONS" />
             <Field label="シグナル通知" desc="EMAクロス・トレンドアラインを通知">
               <Toggle value={settings.notifySignals} onChange={v => s({ notifySignals: v })} />
@@ -401,7 +401,7 @@ export function SettingsPage() {
           </div>
 
           {/* === UI === */}
-          <div className="border border-[#0d1520] bg-[#060a12] p-4">
+          <div className="border border-[rgba(0,0,0,0.06)] bg-white p-4">
             <SectionHeader icon={Monitor} title="UI / DISPLAY" />
             <Field label="レーダーサイズ">
               <SelectInput value={settings.radarSize} onChange={v => s({ radarSize: v as AVLSettings["radarSize"] })}
@@ -418,7 +418,7 @@ export function SettingsPage() {
           </div>
 
           {/* === アプリ情報 === */}
-          <div className="border border-[#0d1520] bg-[#060a12] p-4">
+          <div className="border border-[rgba(0,0,0,0.06)] bg-white p-4">
             <SectionHeader icon={RefreshCw} title="SYSTEM" />
             <div className="space-y-1 mb-4">
               {[
@@ -438,7 +438,7 @@ export function SettingsPage() {
               className={cn("flex items-center gap-1.5 px-3 py-1.5 text-[8px] font-mono border transition-all",
                 confirmReset
                   ? "border-red-700/50 text-red-300 bg-red-900/20 hover:bg-red-900/40"
-                  : "border-[#0d1520] text-gray-600 hover:text-gray-400 hover:border-gray-700"
+                  : "border-[rgba(0,0,0,0.06)] text-gray-600 hover:text-gray-400 hover:border-gray-700"
               )}>
               <Trash2 size={10} />
               {confirmReset ? "本当にリセットしますか？（もう一度クリック）" : "全設定をリセット"}

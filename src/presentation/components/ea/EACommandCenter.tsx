@@ -423,7 +423,7 @@ function FilterBar({
   );
 
   return (
-    <div className="space-y-2 p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(0,0,0,0.04)" }}>
+    <div className="space-y-2 p-3 rounded-lg" style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.04)" }}>
       {/* 検索バー + リセット */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
@@ -593,7 +593,7 @@ export function EACommandCenter() {
 
   return (
     <div className="relative flex flex-col flex-1 h-full overflow-hidden font-mono"
-      style={{ background: "#04060d" }}>
+      style={{ background: "#f8f7f4" }}>
 
       <div className="absolute inset-0 avl-grid-bg opacity-[0.03] pointer-events-none" />
 
