@@ -89,7 +89,7 @@ export async function POST(req: Request) {
         broker,
         server_name:   serverName,
         mt5_login:     mt5Login,
-        status:        "PENDING",
+        status:        "DISCONNECTED",
       })
       .eq("user_id", user.id)
       .select("id, broker, server_name, mt5_login, status, created_at")
