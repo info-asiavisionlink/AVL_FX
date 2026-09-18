@@ -110,18 +110,23 @@ function StrategyDraftCard({
       .then(r => r.json())
       .then((d: { status: string; result?: Record<string, unknown> }) => {
         if (d.status === "HAS_RESULT" && d.result) {
-          const wr = Number(d.result.win_rate ?? 0);
+          const wr  = Number(d.result.win_rate ?? 0);
           const pips = Number(d.result.total_pips ?? 0);
-          const pf = d.result.profit_factor != null ? Number(d.result.profit_factor) : null;
+          const pf  = d.result.profit_factor != null ? Number(d.result.profit_factor) : null;
+          const mdd = Number(d.result.max_drawdown_pct ?? 0);
+          // ペイオフレシオ = PF × (1-WR) / WR
+          const payoff = (pf != null && wr > 0 && wr < 100)
+            ? pf * (1 - wr / 100) / (wr / 100)
+            : null;
           setBtData({
             verdict:        d.result.verdict as "PASSED" | "CONDITIONAL" | "FAILED",
             totalPips:      pips,
             winRate:        wr,
             profitFactor:   pf,
-            maxDrawdownPct: Number(d.result.max_drawdown_pct ?? 0),
+            maxDrawdownPct: mdd,
           });
           // 親に btStats を報告
-          onBtLoad?.(strategy.id, { winRate: wr, pips, pf });
+          onBtLoad?.(strategy.id, { winRate: wr, pips, pf, mdd, payoff });
         }
       })
       .catch(() => {})
@@ -368,26 +373,39 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 
 // ── Main EACommandCenter ─────────────────────────────────────────────────────
 // ── BtStats (親コンポーネントで一元管理) ──────────────────────────────────
-interface BtStat { winRate: number; pips: number; pf: number | null }
+interface BtStat {
+  winRate: number;
+  pips:    number;
+  pf:      number | null;
+  mdd:     number;       // maxDrawdownPct
+  payoff:  number | null; // ペイオフレシオ
+}
 
 // ── FilterBar ─────────────────────────────────────────────────────────────────
 interface Filters {
-  search:      string;
-  symbols:     string[];
-  indicators:  string[];
-  direction:   "" | "BUY" | "SELL";
-  stratType:   "" | "SCALPING" | "DAY_TRADE" | "SWING";
-  minWR:       number;   // 0=無制限
-  minPips:     number;   // 0=無制限
+  search:     string;
+  symbols:    string[];
+  indicators: string[];
+  direction:  "" | "BUY" | "SELL";
+  stratType:  "" | "SCALPING" | "DAY_TRADE" | "SWING";
+  minWR:      number;    // 0=無制限
+  minPips:    number;    // 0=無制限
+  minPF:      number;    // 0=無制限
+  maxMDD:     number;    // 0=無制限
+  minPayoff:  number;    // 0=無制限
 }
 
 const EMPTY_FILTERS: Filters = {
-  search: "", symbols: [], indicators: [], direction: "", stratType: "", minWR: 0, minPips: 0,
+  search: "", symbols: [], indicators: [], direction: "", stratType: "",
+  minWR: 0, minPips: 0, minPF: 0, maxMDD: 0, minPayoff: 0,
 };
 
 const INDICATOR_TAGS = ["ICHIMOKU", "EMA", "MACD", "RSI", "ADX", "AO", "BB", "ATR", "PSAR", "STOCH"];
-const WR_OPTIONS     = [0, 30, 33, 35, 38, 40];
+const WR_OPTIONS     = [0, 40, 45, 50, 55, 60];
 const PIPS_OPTIONS   = [0, 100, 500, 1000];
+const PF_OPTIONS     = [0, 1.0, 1.2, 1.5, 2.0];
+const MDD_OPTIONS    = [0, 10, 15, 20, 30];
+const PAYOFF_OPTIONS = [0, 1.0, 1.2, 1.5, 2.0];
 
 function FilterBar({
   strategies,
@@ -404,7 +422,8 @@ function FilterBar({
 }) {
   const allSymbols = [...new Set(strategies.flatMap(s => s.symbols as string[]))].sort();
   const hasFilters = filters.search || filters.symbols.length || filters.indicators.length
-    || filters.direction || filters.stratType || filters.minWR || filters.minPips;
+    || filters.direction || filters.stratType || filters.minWR || filters.minPips
+    || filters.minPF || filters.maxMDD || filters.minPayoff;
 
   function toggleArr<T>(arr: T[], val: T): T[] {
     return arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val];
@@ -467,7 +486,7 @@ function FilterBar({
         ))}
       </div>
 
-      {/* 方向・種別・勝率・PIPS */}
+      {/* 方向・種別 */}
       <div className="flex flex-wrap gap-1.5 items-center">
         <span className="text-[7px] font-mono tracking-widest shrink-0" style={{ color: "#9a9a9a" }}>方向</span>
         {(["BUY", "SELL"] as const).map(d => (
@@ -481,7 +500,11 @@ function FilterBar({
             color={AMBER} active={filters.stratType === t}
             onClick={() => setFilters({ ...filters, stratType: filters.stratType === t ? "" : t })} />
         ))}
-        <span className="text-[7px] font-mono tracking-widest ml-2 shrink-0" style={{ color: "#9a9a9a" }}>勝率≥</span>
+      </div>
+
+      {/* 勝率・PIPS・PF・MDD・ペイオフ */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[7px] font-mono tracking-widest shrink-0" style={{ color: "#9a9a9a" }}>勝率≥</span>
         {WR_OPTIONS.filter(v => v > 0).map(v => (
           <Chip key={v} label={`${v}%`} color={CYAN}
             active={filters.minWR === v}
@@ -492,6 +515,28 @@ function FilterBar({
           <Chip key={v} label={`+${v}`} color={NG}
             active={filters.minPips === v}
             onClick={() => setFilters({ ...filters, minPips: filters.minPips === v ? 0 : v })} />
+        ))}
+      </div>
+
+      {/* PF・MDD・ペイオフレシオ */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[7px] font-mono tracking-widest shrink-0" style={{ color: "#9a9a9a" }}>PF≥</span>
+        {PF_OPTIONS.filter(v => v > 0).map(v => (
+          <Chip key={v} label={String(v)} color={NG}
+            active={filters.minPF === v}
+            onClick={() => setFilters({ ...filters, minPF: filters.minPF === v ? 0 : v })} />
+        ))}
+        <span className="text-[7px] font-mono tracking-widest ml-2 shrink-0" style={{ color: "#9a9a9a" }}>MDD≤</span>
+        {MDD_OPTIONS.filter(v => v > 0).map(v => (
+          <Chip key={v} label={`${v}%`} color={AMBER}
+            active={filters.maxMDD === v}
+            onClick={() => setFilters({ ...filters, maxMDD: filters.maxMDD === v ? 0 : v })} />
+        ))}
+        <span className="text-[7px] font-mono tracking-widest ml-2 shrink-0" style={{ color: "#9a9a9a" }}>ペイオフ≥</span>
+        {PAYOFF_OPTIONS.filter(v => v > 0).map(v => (
+          <Chip key={v} label={String(v)} color={CYAN}
+            active={filters.minPayoff === v}
+            onClick={() => setFilters({ ...filters, minPayoff: filters.minPayoff === v ? 0 : v })} />
         ))}
       </div>
     </div>
@@ -547,7 +592,7 @@ export function EACommandCenter() {
 
   // ── フィルタリングロジック ────────────────────────────────────────
   const filteredStrategies = strategies.filter(s => {
-    const { search, symbols, indicators, direction, stratType, minWR, minPips } = filters;
+    const { search, symbols, indicators, direction, stratType, minWR, minPips, minPF, maxMDD, minPayoff } = filters;
 
     // テキスト検索
     if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -576,17 +621,13 @@ export function EACommandCenter() {
       if (!passInd) return false;
     }
 
-    // 勝率フィルター（btStats に読み込まれていれば適用）
-    if (minWR > 0) {
-      const stat = btStats[s.id];
-      if (stat && stat.winRate < minWR) return false;
-    }
-
-    // PIPs フィルター
-    if (minPips > 0) {
-      const stat = btStats[s.id];
-      if (stat && stat.pips < minPips) return false;
-    }
+    // btStats ベースフィルター
+    const stat = btStats[s.id];
+    if (minWR > 0    && stat && stat.winRate < minWR)                   return false;
+    if (minPips > 0  && stat && stat.pips < minPips)                    return false;
+    if (minPF > 0    && stat && (stat.pf ?? 0) < minPF)                 return false;
+    if (maxMDD > 0   && stat && stat.mdd > maxMDD)                      return false;
+    if (minPayoff > 0 && stat && (stat.payoff ?? 0) < minPayoff)        return false;
 
     return true;
   });

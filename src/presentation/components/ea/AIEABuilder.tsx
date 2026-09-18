@@ -1,138 +1,72 @@
 "use client";
 
 // =================================================================
-// AIEABuilder — AI EA Builder ダイアログ
+// AIEABuilder v2 — GOLD# 専用 AI EA 一括生成
 //
 // フロー:
-//   input → generating → backtesting → result → saving → done
+//   input → generating → results（5候補を並べてバックテスト逐次実行）
 //
 // 設計原則:
-//   - AI設計 → Preview Backtest → ユーザー承認 → 正式登録
-//   - 承認前に strategy_registry に書き込まない
-//   - Preview Backtest 結果を正式登録時に昇格（再実行なし）
+//   - 自然言語（曖昧 OK）+ 指標目標（PF/MDD/勝率/ペイオフ）で入力
+//   - AI が 5 つの多様な GOLD# 戦略を生成
+//   - バックテストを逐次実行してカードを更新
+//   - 各カードに独立した「EA を追加する」ボタン
 // =================================================================
 
-import { useState } from "react";
-import { toast }    from "sonner";
+import { useState, useRef, useCallback } from "react";
+import { toast } from "sonner";
 import {
   conditionToJapanese,
   type StrategySpec,
   type StrategyRecord,
 } from "@/lib/strategySchema";
-import { StrategyResearchAssistant } from "./StrategyResearchAssistant";
 
-// ── カラー定数 ─────────────────────────────────────────────────────
+// ── Color constants ────────────────────────────────────────────────
 const NG      = "#f97316";
 const NG_rgba = "rgba(249,115,22,";
-const CYAN    = "#f97316";
 const AMBER   = "#fbbf24";
 const RED     = "#ff4466";
+const GREEN   = "#4ade80";
 
-// ── ステップ型 ─────────────────────────────────────────────────────
-type Step =
-  | "input"        // 3欄入力
-  | "generating"   // AI Spec生成中
-  | "backtesting"  // Preview Backtest実行中
-  | "result"       // Spec + Backtest結果表示
-  | "saving"       // 正式保存中
-  | "done";        // 完了
+// ── Step ──────────────────────────────────────────────────────────
+type Step = "input" | "generating" | "results";
 
-// ── 入力状態 ──────────────────────────────────────────────────────
-interface InputState {
-  entry:      string;
-  takeProfit: string;
-  stopLoss:   string;
+// ── Metric targets ────────────────────────────────────────────────
+interface MetricTargets {
+  minPF:     string;   // "" = 指定なし
+  maxMDD:    string;   // "" = 指定なし
+  minWR:     string;   // "" = 指定なし
+  minPayoff: string;   // "" = 指定なし
 }
 
-const EMPTY_INPUT: InputState = { entry: "", takeProfit: "", stopLoss: "" };
+const EMPTY_TARGETS: MetricTargets = { minPF: "", maxMDD: "", minWR: "", minPayoff: "" };
 
-// ── Backtest結果型（client側定義） ─────────────────────────────────
-interface SessionStat {
-  tradeCount:   number;
-  wins:         number;
-  losses:       number;
-  winRate:      number;
-  totalPips:    number;
-  profitFactor: number | null;
-}
-
-interface PreviewReport {
-  periodLabel:          string;
-  dataFrom:             number;
-  dataTo:               number;
-  dataCoverageDays:     number;
-  totalTrades:          number;
-  wins:                 number;
-  losses:               number;
-  winRate:              number;
-  totalPips:            number;
-  avgPips:              number;
-  profitFactor:         number | null;
-  maxDrawdown:          number;
-  maxDrawdownPct:       number;
-  sampleSizeWarning:    boolean;
+// ── Backtest result ───────────────────────────────────────────────
+interface BtReport {
+  totalTrades:      number;
+  wins:             number;
+  losses:           number;
+  winRate:          number;
+  totalPips:        number;
+  avgPips:          number;
+  profitFactor:     number | null;
+  maxDrawdownPct:   number;
+  verdict:          "PASSED" | "CONDITIONAL" | "FAILED";
+  verdictReason:    string;
+  sampleSizeWarning: boolean;
   minRecommendedTrades: number;
-  verdict:              "PASSED" | "CONDITIONAL" | "FAILED";
-  verdictReason:        string;
-  sessionStats:         Record<string, SessionStat>;
-  bestSession:          string | null;
-  worstSession:         string | null;
 }
 
-interface TradeForPromotion {
-  symbol:       string;
-  timeframe:    string;
-  direction:    string;
-  entryTime:    number;
-  entryPrice:   number;
-  exitTime:     number;
-  exitPrice:    number;
-  sl:           number;
-  tp:           number;
-  lot:          number;
-  pips:         number;
-  result:       string;
-  exitReason:   string;
-  durationMin:  number;
-  spreadPips:   number;
-  slippagePips: number;
-  entryBarIdx:  number;
-  exitBarIdx:   number;
+// ── Per-candidate state ───────────────────────────────────────────
+interface Candidate {
+  idx:      number;
+  spec:     StrategySpec;
+  btStatus: "pending" | "testing" | "done" | "error";
+  report:   BtReport | null;
+  btError:  string | null;
+  added:    boolean;
+  saving:   boolean;
 }
-
-interface DirStat {
-  trades:  number;
-  wins:    number;
-  pips:    number;
-  winRate: number;
-}
-
-interface BacktestResultState {
-  report:             PreviewReport;
-  trades:             TradeForPromotion[];
-  barCount:           number;
-  directionBreakdown: { buy: DirStat; sell: DirStat };
-  warnings:           string[];
-}
-
-// ── 例文（GOLD専用）────────────────────────────────────────────────
-const EXAMPLES: InputState[] = [
-  {
-    entry:      "GOLD#のH1。一目均衡表の雲の上にいる上昇トレンド。RSIが50を上抜けたらBUY。NY時間のみ。スプレッド5pips以下。",
-    takeProfit: "直近高値またはATR14の3倍で利確。",
-    stopLoss:   "一目均衡表の雲の下端またはATR14の2倍で損切り。",
-  },
-  {
-    entry:      "GOLD#のH4。EMA21がEMA200より上でBUY。MACDがシグナルを上抜けたタイミングでエントリー。ADX20以上。",
-    takeProfit: "リスクリワード1:2",
-    stopLoss:   "直近安値",
-  },
-  {
-    entry:      "GOLD#のM30。ロンドン・NY時間に限定。RSIが30以下から反発したらBUY。RSIが70以上から反落したらSELL。",
-    takeProfit: "ATR14 × 2.5",
-    stopLoss:   "ATR14 × 1.5",
-  },
-];
 
 // ── Props ─────────────────────────────────────────────────────────
 interface Props {
@@ -141,256 +75,172 @@ interface Props {
   onSaved: (strategy: StrategyRecord) => void;
 }
 
-// ── ラベルヘルパー ─────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────
+function pipsColor(p: number)    { return p >= 0 ? NG : RED; }
+function verdictColor(v: string) { return v === "PASSED" ? GREEN : v === "CONDITIONAL" ? AMBER : RED; }
+function verdictLabel(v: string) { return v === "PASSED" ? "合格" : v === "CONDITIONAL" ? "条件付" : "不合格"; }
+
 function typeLabel(t: string) {
-  if (t === "SCALPING")  return "スキャルピング";
-  if (t === "DAY_TRADE") return "デイトレード";
+  if (t === "SCALPING")  return "スキャル";
+  if (t === "DAY_TRADE") return "デイトレ";
   if (t === "SWING")     return "スイング";
   return t;
 }
 
-function sessionLabel(s: string) {
-  if (s === "TOKYO")    return "東京";
-  if (s === "LONDON")   return "ロンドン";
-  if (s === "NEW_YORK") return "NY";
-  if (s === "SYDNEY")   return "シドニー";
-  return s;
+function typeColor(t: string) {
+  if (t === "SCALPING")  return "#2563eb";
+  if (t === "DAY_TRADE") return AMBER;
+  return NG;
 }
 
-function slToJapanese(sl: { method: string; period?: number; multiplier?: number; pips?: number; pct?: number }) {
-  if (sl.method === "ATR")        return `ATR(${sl.period ?? 14}) × ${sl.multiplier ?? 2}`;
-  if (sl.method === "FIXED_PIPS") return `${sl.pips} pips`;
-  if (sl.method === "SWING_LOW")  return "直近安値";
-  if (sl.method === "SWING_HIGH") return "直近高値";
-  if (sl.method === "PERCENTAGE") return `${sl.pct}%`;
-  return sl.method;
+function payoffRatio(pf: number | null, wr: number): number | null {
+  if (pf === null || wr <= 0 || wr >= 100) return null;
+  const wrDec = wr / 100;
+  return pf * (1 - wrDec) / wrDec;
 }
-
-function tpToJapanese(tp: { method: string; period?: number; multiplier?: number; pips?: number; rr_ratio?: number; pct?: number }) {
-  if (tp.method === "ATR")        return `ATR(${tp.period ?? 14}) × ${tp.multiplier ?? 3}`;
-  if (tp.method === "FIXED_PIPS") return `${tp.pips} pips`;
-  if (tp.method === "SWING_LOW")  return "直近安値";
-  if (tp.method === "SWING_HIGH") return "直近高値";
-  if (tp.method === "RR_RATIO")   return `RR 1:${tp.rr_ratio}`;
-  if (tp.method === "PERCENTAGE") return `${tp.pct}%`;
-  return tp.method;
-}
-
-function verdictColor(v: string) {
-  if (v === "PASSED")      return NG;
-  if (v === "CONDITIONAL") return AMBER;
-  return RED;
-}
-
-function verdictLabel(v: string) {
-  if (v === "PASSED")      return "合格";
-  if (v === "CONDITIONAL") return "条件付";
-  return "不合格";
-}
-
-function pipsColor(pips: number) { return pips >= 0 ? NG : RED; }
 
 // =================================================================
 // メインコンポーネント
 // =================================================================
-
 export function AIEABuilder({ open, onClose, onSaved }: Props) {
-  const [step,                  setStep]                  = useState<Step>("input");
-  const [input,                 setInput]                 = useState<InputState>(EMPTY_INPUT);
-  const [spec,                  setSpec]                  = useState<StrategySpec | null>(null);
-  const [backtestResult,        setBacktestResult]        = useState<BacktestResultState | null>(null);
-  const [hasUnsupported,        setHasUnsupported]        = useState(false);
-  const [unsupportedList,       setUnsupportedList]       = useState<string[]>([]);
-  const [showFailedWarning,     setShowFailedWarning]     = useState(false);
-  const [error,                 setError]                 = useState<string | null>(null);
-  const [showResearchAssistant, setShowResearchAssistant] = useState(false);
+  const [step,        setStep]        = useState<Step>("input");
+  const [description, setDescription] = useState("");
+  const [targets,     setTargets]     = useState<MetricTargets>(EMPTY_TARGETS);
+  const [candidates,  setCandidates]  = useState<Candidate[]>([]);
+  const [genError,    setGenError]    = useState<string | null>(null);
+  const [addedCount,  setAddedCount]  = useState(0);
+  const btAbortRef = useRef<boolean>(false);
+
+  const rawPromptRef = useRef("");
 
   if (!open) return null;
 
-  const isReady =
-    input.entry.trim().length >= 10 &&
-    input.takeProfit.trim().length >= 3 &&
-    input.stopLoss.trim().length >= 3;
+  const isReady = description.trim().length >= 3;
 
-  // ── メインフロー: AI設計 → Preview Backtest ─────────────────────
+  // ── リセット ─────────────────────────────────────────────────────
+  function handleClose() {
+    btAbortRef.current = true;
+    setStep("input");
+    setDescription("");
+    setTargets(EMPTY_TARGETS);
+    setCandidates([]);
+    setGenError(null);
+    setAddedCount(0);
+    onClose();
+  }
 
-  async function handleBuild() {
+  // ── 5戦略を生成 ──────────────────────────────────────────────────
+  async function handleGenerate() {
     if (!isReady) return;
-    setError(null);
-    setHasUnsupported(false);
-    setUnsupportedList([]);
-    setBacktestResult(null);
-    setShowFailedWarning(false);
+    setGenError(null);
     setStep("generating");
+    btAbortRef.current = false;
+
+    const t: Record<string, number> = {};
+    if (targets.minPF     && !isNaN(Number(targets.minPF)))     t.minPF     = Number(targets.minPF);
+    if (targets.maxMDD    && !isNaN(Number(targets.maxMDD)))    t.maxMDD    = Number(targets.maxMDD);
+    if (targets.minWR     && !isNaN(Number(targets.minWR)))     t.minWR     = Number(targets.minWR);
+    if (targets.minPayoff && !isNaN(Number(targets.minPayoff))) t.minPayoff = Number(targets.minPayoff);
+
+    rawPromptRef.current = description.trim();
 
     try {
-      // STEP 1: AI Spec生成
-      const res  = await fetch("/api/ai/strategy/build", {
+      const res  = await fetch("/api/ai/strategy/build-multi", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          entry_conditions_text:       input.entry.trim(),
-          take_profit_conditions_text: input.takeProfit.trim(),
-          stop_loss_conditions_text:   input.stopLoss.trim(),
-        }),
+        body:    JSON.stringify({ description: description.trim(), targets: t }),
       });
-      const data = await res.json() as {
-        success:  boolean;
-        spec?:    StrategySpec;
-        error?:   string;
-        details?: string[];
-      };
+      const data = await res.json() as { success: boolean; specs?: StrategySpec[]; error?: string };
 
-      if (!data.success || !data.spec) {
-        const msg = data.details?.length
-          ? data.details.join(" / ")
-          : (data.error ?? "生成に失敗しました");
-        setError(msg);
+      if (!data.success || !data.specs || data.specs.length === 0) {
+        setGenError(data.error ?? "生成に失敗しました。再試行してください。");
         setStep("input");
         return;
       }
 
-      const generatedSpec = data.spec;
-      setSpec(generatedSpec);
+      const initialCandidates: Candidate[] = data.specs.map((spec, idx) => ({
+        idx, spec, btStatus: "pending", report: null, btError: null, added: false, saving: false,
+      }));
+      setCandidates(initialCandidates);
+      setStep("results");
 
-      // STEP 2: UNSUPPORTED 条件チェック
-      const unsupported = generatedSpec.entry_conditions.conditions
-        .filter(c => c.condition?.startsWith("UNSUPPORTED:"))
-        .map(c => c.condition!.replace("UNSUPPORTED:", "").trim());
+      // バックテストを逐次実行
+      for (let i = 0; i < initialCandidates.length; i++) {
+        if (btAbortRef.current) break;
 
-      if (unsupported.length > 0) {
-        setHasUnsupported(true);
-        setUnsupportedList(unsupported);
-        setStep("result");
-        return;
+        setCandidates(prev => prev.map((c, ci) => ci === i ? { ...c, btStatus: "testing" } : c));
+
+        try {
+          const btRes  = await fetch("/api/ai/strategy/preview-backtest", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ spec: initialCandidates[i].spec }),
+          });
+          const btData = await btRes.json() as {
+            success: boolean;
+            report?: BtReport;
+            error?:  string;
+          };
+
+          setCandidates(prev => prev.map((c, ci) => ci === i ? {
+            ...c,
+            btStatus: btData.success && btData.report ? "done" : "error",
+            report:   btData.report ?? null,
+            btError:  btData.success ? null : (btData.error ?? "バックテスト失敗"),
+          } : c));
+        } catch {
+          setCandidates(prev => prev.map((c, ci) => ci === i ? {
+            ...c, btStatus: "error", btError: "ネットワークエラー",
+          } : c));
+        }
       }
-
-      // STEP 3: Preview Backtest 自動実行
-      setStep("backtesting");
-
-      const btRes  = await fetch("/api/ai/strategy/preview-backtest", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ spec: generatedSpec }),
-      });
-      const btData = await btRes.json() as {
-        success:            boolean;
-        report?:            PreviewReport;
-        trades?:            TradeForPromotion[];
-        barCount?:          number;
-        directionBreakdown?: { buy: DirStat; sell: DirStat };
-        warnings?:          string[];
-        error?:             string;
-        unsupported?:       string[];
-      };
-
-      if (!btData.success || !btData.report) {
-        setError(btData.error ?? "バックテストに失敗しました");
-        setStep("input");
-        return;
-      }
-
-      setBacktestResult({
-        report:             btData.report,
-        trades:             btData.trades ?? [],
-        barCount:           btData.barCount ?? 0,
-        directionBreakdown: btData.directionBreakdown ?? { buy: { trades:0, wins:0, pips:0, winRate:0 }, sell: { trades:0, wins:0, pips:0, winRate:0 } },
-        warnings:           btData.warnings ?? [],
-      });
-      setStep("result");
 
     } catch (e) {
-      setError(e instanceof Error ? e.message : "ネットワークエラー");
+      setGenError(e instanceof Error ? e.message : "ネットワークエラー");
       setStep("input");
     }
   }
 
-  // ── EAを追加する（FAILED警告ありの場合）───────────────────────────
+  // ── 個別 EA 追加 ─────────────────────────────────────────────────
+  const handleAdd = useCallback(async (idx: number) => {
+    setCandidates(prev => prev.map((c, ci) => ci === idx ? { ...c, saving: true } : c));
 
-  async function handleEAAdd() {
-    if (!spec || !backtestResult) return;
-    if (backtestResult.report.verdict === "FAILED" && !showFailedWarning) {
-      setShowFailedWarning(true);
-      return;
-    }
-    await handleFormalSave();
-  }
-
-  // ── 正式保存（Backtest結果を昇格）─ パラメータ直接受取り版 ──────
-
-  async function handleFormalSaveWith(
-    saveSpec:   StrategySpec,
-    saveResult: BacktestResultState,
-  ) {
-    setStep("saving");
-    setShowFailedWarning(false);
-
-    const rawPrompt = `[ENTRY]\n${input.entry}\n\n[TAKE_PROFIT]\n${input.takeProfit}\n\n[STOP_LOSS]\n${input.stopLoss}`;
+    const cand = candidates[idx];
+    if (!cand) return;
 
     try {
       const res  = await fetch("/api/strategies", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
-          spec:         saveSpec,
-          raw_prompt:   rawPrompt,
-          previewBacktestData: {
-            report:   saveResult.report,
-            trades:   saveResult.trades,
-            barCount: saveResult.barCount,
-          },
+          spec:       cand.spec,
+          raw_prompt: rawPromptRef.current,
+          ...(cand.report ? {
+            previewBacktestData: {
+              report:   cand.report,
+              trades:   [],
+              barCount: 0,
+            },
+          } : {}),
         }),
       });
       const data = await res.json() as { strategy?: StrategyRecord; error?: string };
 
       if (!data.strategy) {
-        setError(data.error ?? "保存に失敗しました");
-        setStep("result");
+        toast.error(data.error ?? "保存に失敗しました");
+        setCandidates(prev => prev.map((c, ci) => ci === idx ? { ...c, saving: false } : c));
         return;
       }
 
-      setStep("done");
-      toast.success(`「${saveSpec.name}」をEAに追加しました`);
+      setCandidates(prev => prev.map((c, ci) => ci === idx ? { ...c, saving: false, added: true } : c));
+      setAddedCount(p => p + 1);
+      toast.success(`「${cand.spec.name}」を追加しました`);
       onSaved(data.strategy);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "保存エラー");
-      setStep("result");
+    } catch {
+      toast.error("保存エラーが発生しました");
+      setCandidates(prev => prev.map((c, ci) => ci === idx ? { ...c, saving: false } : c));
     }
-  }
-
-  // ── 正式保存（State から呼び出す版） ────────────────────────────
-
-  async function handleFormalSave() {
-    if (!spec || !backtestResult) return;
-    await handleFormalSaveWith(spec, backtestResult);
-  }
-
-  function handleClose() {
-    setStep("input");
-    setInput(EMPTY_INPUT);
-    setSpec(null);
-    setBacktestResult(null);
-    setHasUnsupported(false);
-    setUnsupportedList([]);
-    setShowFailedWarning(false);
-    setError(null);
-    onClose();
-  }
-
-  function handleBack() {
-    setStep("input");
-    setError(null);
-    setShowFailedWarning(false);
-  }
-
-  // ── ヘッダーラベル ────────────────────────────────────────────────
-  function stepBadge() {
-    if (step === "generating")  return "AI設計中...";
-    if (step === "backtesting") return "バックテスト実行中...";
-    if (step === "result")      return "結果";
-    if (step === "saving")      return "保存中...";
-    return null;
-  }
+  }, [candidates, onSaved]);
 
   // =================================================================
   // レンダリング
@@ -402,525 +252,171 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
       onClick={e => { if (e.target === e.currentTarget) handleClose(); }}
     >
       <div
-        className="relative w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden rounded-lg font-mono"
+        className="relative w-full font-mono flex flex-col overflow-hidden rounded-lg"
         style={{
+          maxWidth:   step === "results" ? "900px" : "560px",
+          maxHeight:  "92vh",
           background: "#ffffff",
           border:     `1px solid ${NG_rgba}0.20)`,
           boxShadow:  `0 0 60px ${NG_rgba}0.06), 0 0 120px rgba(0,0,0,0.8)`,
+          transition: "max-width 0.3s ease",
         }}
       >
-        {/* ヘッダー */}
-        <div
-          className="flex items-center justify-between px-5 py-3 shrink-0"
-          style={{ borderBottom: `1px solid ${NG_rgba}0.10)` }}
-        >
+        {/* ── ヘッダー ── */}
+        <div className="flex items-center justify-between px-5 py-3 shrink-0"
+          style={{ borderBottom: `1px solid ${NG_rgba}0.10)` }}>
           <div className="flex items-center gap-3">
             <span className="text-[10px] tracking-[0.3em] font-black" style={{ color: NG }}>
-              AI EA BUILDER
+              AI EA BUILDER · GOLD#
             </span>
-            {stepBadge() && (
-              <span
-                className="text-[8px] tracking-widest px-2 py-0.5 rounded"
-                style={{ background: `${NG_rgba}0.08)`, border: `1px solid ${NG_rgba}0.20)`, color: NG }}
-              >
-                {stepBadge()}
+            {step === "generating" && (
+              <span className="text-[8px] tracking-widest px-2 py-0.5 rounded"
+                style={{ background: `${NG_rgba}0.08)`, border: `1px solid ${NG_rgba}0.20)`, color: NG }}>
+                5 戦略を設計中...
+              </span>
+            )}
+            {step === "results" && (
+              <span className="text-[8px] tracking-widest px-2 py-0.5 rounded"
+                style={{ background: `rgba(74,222,128,0.08)`, border: `1px solid rgba(74,222,128,0.25)`, color: GREEN }}>
+                {addedCount > 0 ? `${addedCount} 件追加済み` : "候補を選択してください"}
               </span>
             )}
           </div>
-          <button
-            onClick={handleClose}
-            className="text-[16px] leading-none transition-opacity hover:opacity-60"
-            style={{ color: "#4b5563" }}
-          >
-            ×
-          </button>
+          <button onClick={handleClose} className="text-[16px] leading-none transition-opacity hover:opacity-60"
+            style={{ color: "#4b5563" }}>×</button>
         </div>
 
-        {/* コンテンツ */}
+        {/* ── コンテンツ ── */}
         <div className="flex-1 overflow-y-auto px-5 py-5">
 
           {/* ─── INPUT ─── */}
           {(step === "input" || step === "generating") && (
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-5 max-w-xl mx-auto">
 
-              <InputSection
-                label="エントリー条件"
-                sublabel="ENTRY CONDITIONS"
-                accentColor={NG}
-                description="時間足・売買条件・インジケーター・フィルターを自然言語で入力（シンボルは GOLD# 固定）"
-                placeholder={"例：GOLD#のH1。\n一目均衡表の雲の上で上昇トレンド。\nRSIが50を上抜けたらBUY。\nNY時間のみ。スプレッド5pips以下。"}
-                value={input.entry}
-                onChange={v => setInput(p => ({ ...p, entry: v }))}
-                disabled={step === "generating"}
-                minLength={10}
-                rows={5}
-              />
-
-              <InputSection
-                label="利確条件"
-                sublabel="TAKE PROFIT"
-                accentColor={NG}
-                description="GOLD の利益確定条件を入力（例：ATR×3、直近高値、RR 1:2）"
-                placeholder={"例：ATR14の3倍で利確。\nまたは直近高値（スイング高値）に到達したら利確。"}
-                value={input.takeProfit}
-                onChange={v => setInput(p => ({ ...p, takeProfit: v }))}
-                disabled={step === "generating"}
-                minLength={3}
-                rows={3}
-              />
-
-              <InputSection
-                label="損切り条件"
-                sublabel="STOP LOSS"
-                accentColor={RED}
-                description="GOLD の損切り条件を入力（例：ATR×2、直近安値、一目雲の下端）"
-                placeholder={"例：ATR14の2倍で損切り。\nまたは直近安値（スイング安値）を下抜けたら損切り。"}
-                value={input.stopLoss}
-                onChange={v => setInput(p => ({ ...p, stopLoss: v }))}
-                disabled={step === "generating"}
-                minLength={3}
-                rows={3}
-              />
-
-              {error && (
-                <div className="text-[10px] leading-relaxed px-3 py-2 rounded"
-                  style={{ background: `${RED}10`, border: `1px solid ${RED}30`, color: RED }}>
-                  ⚠ {error}
+              {/* 自然言語 */}
+              <div>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-[10px] tracking-[0.15em] font-black" style={{ color: NG }}>
+                    戦略の方向性
+                  </span>
+                  <span className="text-[7px] tracking-widest" style={{ color: "#9a9a9a" }}>STRATEGY CONCEPT</span>
                 </div>
-              )}
-
-              {step === "input" && (
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-[9px] tracking-widest" style={{ color: "#9a9a9a" }}>
-                    例文（クリックで3欄に入力）
+                <p className="text-[9px] mb-1.5" style={{ color: "#9a9a9a" }}>
+                  GOLD のトレードスタイルを自由に記述（曖昧でも OK）
+                </p>
+                <textarea
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  disabled={step === "generating"}
+                  rows={4}
+                  placeholder={"例：GOLDのデイトレで上昇トレンドに乗るものがほしい\n　　一目均衡表を使ったスイング\n　　勝率重視でリスク少なめ\n　　RSIとMACDで両建て戦略"}
+                  className="w-full rounded resize-none text-[11px] leading-relaxed outline-none transition-all"
+                  style={{
+                    background: step === "generating" ? "rgba(249,115,22,0.02)" : "rgba(0,0,0,0.04)",
+                    border:     description.length >= 3 ? `1px solid ${NG_rgba}0.30)` : "1px solid rgba(71,85,105,0.35)",
+                    color:      "#cbd5e1",
+                    padding:    "10px 12px",
+                    caretColor: NG,
+                  }}
+                />
+                {/* 法的免責事項 */}
+                <div className="mt-2 px-3 py-2 rounded"
+                  style={{ background: "rgba(255,68,102,0.04)", border: "1px solid rgba(255,68,102,0.15)" }}>
+                  <p className="text-[8px] leading-relaxed" style={{ color: RED }}>
+                    ⚠ 本ツールはトレード戦略の自動生成を行うものであり、利益を保証するものではありません。
+                    過去のバックテスト結果は将来の収益を約束するものではなく、実際の取引には損失リスクが伴います。
+                    投資判断はご自身の責任で行ってください。（金融商品取引法第37条の3に基づく注意事項）
                   </p>
-                  {EXAMPLES.map((ex, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setInput(ex)}
-                      className="text-left text-[9px] leading-relaxed px-3 py-2 rounded transition-all hover:opacity-80"
-                      style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.10)", color: "#4a4a4a" }}
-                    >
-                      <span className="text-[7px] tracking-widest" style={{ color: CYAN }}>ENTRY</span>{" "}
-                      {ex.entry.length > 55 ? ex.entry.slice(0, 55) + "…" : ex.entry}
-                    </button>
+                </div>
+              </div>
+
+              {/* 指標目標（4つ） */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-px flex-1" style={{ background: `${NG_rgba}0.10)` }} />
+                  <span className="text-[8px] tracking-[0.25em] font-black" style={{ color: "#9a9a9a" }}>
+                    パフォーマンス目標（任意）
+                  </span>
+                  <div className="h-px flex-1" style={{ background: `${NG_rgba}0.10)` }} />
+                </div>
+
+                <div className="grid grid-cols-4 gap-2">
+                  {([
+                    { key: "minPF",     label: "PF",    unit: "≥",  placeholder: "1.5", hint: "プロフィットファクター" },
+                    { key: "maxMDD",    label: "MDD",   unit: "≤",  placeholder: "20",  hint: "最大ドローダウン（%）" },
+                    { key: "minWR",     label: "勝率",  unit: "≥",  placeholder: "50",  hint: "勝率（%）" },
+                    { key: "minPayoff", label: "ペイオフ", unit: "≥", placeholder: "1.2", hint: "ペイオフレシオ" },
+                  ] as const).map(({ key, label, unit, placeholder, hint }) => (
+                    <div key={key} className="flex flex-col gap-1">
+                      <p className="text-[7px] tracking-widest text-center" style={{ color: "#9a9a9a" }}>{hint}</p>
+                      <div className="flex flex-col items-center gap-0.5 px-2 py-2 rounded"
+                        style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.07)" }}>
+                        <span className="text-[8px] font-black" style={{ color: NG }}>{label}</span>
+                        <span className="text-[7px]" style={{ color: "#9a9a9a" }}>{unit}</span>
+                        <input
+                          type="number"
+                          value={targets[key]}
+                          onChange={e => setTargets(p => ({ ...p, [key]: e.target.value }))}
+                          disabled={step === "generating"}
+                          placeholder={placeholder}
+                          className="w-full text-center rounded text-[11px] font-bold outline-none mt-0.5"
+                          style={{
+                            background:  "transparent",
+                            border:      "none",
+                            color:       targets[key] ? NG : "#4a4a4a",
+                            caretColor:  NG,
+                          }}
+                        />
+                      </div>
+                    </div>
                   ))}
                 </div>
-              )}
-
-              {step === "generating" && <LoadingDots label="AI が Strategy を設計しています..." />}
-            </div>
-          )}
-
-          {/* ─── BACKTESTING ─── */}
-          {step === "backtesting" && (
-            <div className="flex flex-col gap-4">
-              {/* 完了ステップ */}
-              <div
-                className="flex items-center gap-3 px-3 py-2.5 rounded"
-                style={{ background: `${NG}08`, border: `1px solid ${NG}20` }}
-              >
-                <span className="text-[14px]" style={{ color: NG }}>✓</span>
-                <div>
-                  <p className="text-[10px] font-black tracking-widest" style={{ color: NG }}>
-                    Strategy Spec 生成完了
-                  </p>
-                  <p className="text-[9px]" style={{ color: "#4a4a4a" }}>{spec?.name}</p>
-                </div>
-              </div>
-
-              {/* バックテスト実行中 */}
-              <LoadingDots label="過去データでバックテスト実行中..." sub="実際の市場データで性能を検証しています" />
-            </div>
-          )}
-
-          {/* ─── RESULT ─── */}
-          {step === "result" && spec && (
-            <div className="flex flex-col gap-5">
-
-              {/* Strategy名 + タイプ */}
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[13px] font-black tracking-wider" style={{ color: "#f0f9ff" }}>
-                    {spec.name}
-                  </span>
-                  <span
-                    className="text-[8px] font-black tracking-widest px-2 py-0.5 rounded"
-                    style={{ background: `${CYAN}15`, border: `1px solid ${CYAN}30`, color: CYAN }}
-                  >
-                    {typeLabel(spec.strategy_type)}
-                  </span>
-                </div>
-                {spec.description && (
-                  <p className="text-[9px] leading-relaxed" style={{ color: "#4a4a4a" }}>
-                    {spec.description}
-                  </p>
-                )}
-              </div>
-
-              {/* ── ENTRY CONDITIONS ── */}
-              <PreviewSection title="ENTRY CONDITIONS" accentColor={NG}>
-                <div className="flex gap-6 mb-3">
-                  <div>
-                    <p className="text-[7px] tracking-widest mb-1.5" style={{ color: "#9a9a9a" }}>SYMBOL</p>
-                    <div className="flex flex-wrap gap-1">
-                      {spec.symbols.map(s => <Tag key={s} color={NG}>{s}</Tag>)}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[7px] tracking-widest mb-1.5" style={{ color: "#9a9a9a" }}>TIMEFRAME</p>
-                    <div className="flex flex-wrap gap-1">
-                      {spec.timeframes.map(t => <Tag key={t} color={CYAN}>{t}</Tag>)}
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-[7px] tracking-widest mb-1.5" style={{ color: "#9a9a9a" }}>
-                  CONDITIONS — {spec.entry_conditions.logic}
+                <p className="text-[8px] mt-1.5 text-center" style={{ color: "#9a9a9a" }}>
+                  空欄の場合は制約なし。AI が目標を達成できる戦略を設計します。
                 </p>
-                <div className="flex flex-col gap-1 mb-3">
-                  {spec.entry_conditions.conditions.map((c, i) => {
-                    const isUnsup = c.condition?.startsWith("UNSUPPORTED:");
-                    return (
-                      <div key={i} className="flex items-start gap-2">
-                        <span className="text-[8px] mt-0.5 shrink-0" style={{ color: isUnsup ? AMBER : NG }}>
-                          {isUnsup ? "⚠" : "●"}
-                        </span>
-                        {isUnsup ? (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px]" style={{ color: AMBER }}>
-                              {c.condition!.replace("UNSUPPORTED:", "").trim()}
-                            </span>
-                            <span
-                              className="text-[7px] tracking-widest px-1.5 py-0.5 rounded shrink-0"
-                              style={{ background: `${AMBER}15`, border: `1px solid ${AMBER}30`, color: AMBER }}
-                            >
-                              REQUIRES EXTENSION
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-[10px]" style={{ color: "#9a9a9a" }}>
-                            {conditionToJapanese(c)}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {spec.filters && (
-                  <>
-                    <p className="text-[7px] tracking-widest mb-1.5" style={{ color: "#9a9a9a" }}>FILTERS</p>
-                    {spec.filters.max_spread_pips !== undefined && (
-                      <FilterRow icon="SPREAD">最大 {spec.filters.max_spread_pips} pips</FilterRow>
-                    )}
-                    {spec.filters.sessions && spec.filters.sessions.length > 0 && (
-                      <FilterRow icon="SESSION">{spec.filters.sessions.map(sessionLabel).join(" / ")}</FilterRow>
-                    )}
-                    {spec.filters.trend_filter && (
-                      <FilterRow icon="TREND">
-                        {spec.filters.trend_filter.timeframe}{" "}
-                        {spec.filters.trend_filter.indicator}
-                        {spec.filters.trend_filter.period ? `(${spec.filters.trend_filter.period})` : ""}{" "}
-                        {spec.filters.trend_filter.direction === "BULLISH" ? "↗ 上昇" : "↘ 下降"}
-                      </FilterRow>
-                    )}
-                    {spec.filters.trend_filters?.map((tf, i) => (
-                      <FilterRow key={`tf-${i}`} icon="TREND">
-                        {tf.timeframe} {tf.indicator}{tf.period ? `(${tf.period})` : ""}{" "}
-                        {tf.direction === "BULLISH" ? "↗ 上昇" : "↘ 下降"}
-                      </FilterRow>
-                    ))}
-                    {spec.filters.min_adx !== undefined && (
-                      <FilterRow icon="ADX">ADX &gt; {spec.filters.min_adx}</FilterRow>
-                    )}
-                  </>
-                )}
-              </PreviewSection>
-
-              {/* ── TAKE PROFIT ── */}
-              <PreviewSection title="TAKE PROFIT" accentColor={NG}>
-                {spec.exit_conditions?.take_profit ? (
-                  <p className="text-[11px]" style={{ color: "#9a9a9a" }}>
-                    {tpToJapanese(spec.exit_conditions.take_profit)}
-                  </p>
-                ) : (
-                  <p className="text-[10px]" style={{ color: AMBER }}>⚠ 利確条件なし</p>
-                )}
-              </PreviewSection>
-
-              {/* ── STOP LOSS ── */}
-              <PreviewSection title="STOP LOSS" accentColor={RED}>
-                {spec.exit_conditions?.stop_loss ? (
-                  <p className="text-[11px]" style={{ color: "#9a9a9a" }}>
-                    {slToJapanese(spec.exit_conditions.stop_loss)}
-                  </p>
-                ) : (
-                  <p className="text-[10px]" style={{ color: RED }}>⚠ 損切り条件なし</p>
-                )}
-              </PreviewSection>
-
-              {/* ── UNSUPPORTED エラー ── */}
-              {hasUnsupported && (
-                <div
-                  className="px-4 py-3 rounded flex flex-col gap-2"
-                  style={{ background: `${AMBER}08`, border: `1px solid ${AMBER}25` }}
-                >
-                  <p className="text-[10px] font-black tracking-widest" style={{ color: AMBER }}>
-                    ⚠ この条件は現在 AVL-FX で検証できません
-                  </p>
-                  <p className="text-[9px] leading-relaxed" style={{ color: "#4a4a4a" }}>
-                    バックテスト未対応の条件が含まれています。エントリー条件を修正してください。
-                  </p>
-                  {unsupportedList.length > 0 && (
-                    <ul className="flex flex-col gap-0.5">
-                      {unsupportedList.map((u, i) => (
-                        <li key={i} className="text-[9px]" style={{ color: AMBER }}>
-                          • {u}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-
-              {/* ── BACKTEST RESULT ── */}
-              {backtestResult && (
-                <div className="flex flex-col gap-3">
-                  {/* セクションヘッダー + Verdict */}
-                  <div className="flex items-center gap-2">
-                    <div className="h-px flex-1" style={{ background: "rgba(0,0,0,0.04)" }} />
-                    <span className="text-[8px] tracking-[0.3em] font-black" style={{ color: "#4a4a4a" }}>
-                      バックテスト結果
-                    </span>
-                    <span
-                      className="text-[8px] font-black tracking-widest px-2 py-0.5 rounded"
-                      style={{
-                        color:       verdictColor(backtestResult.report.verdict),
-                        background:  `${verdictColor(backtestResult.report.verdict)}15`,
-                        border:      `1px solid ${verdictColor(backtestResult.report.verdict)}35`,
-                      }}
-                    >
-                      {verdictLabel(backtestResult.report.verdict)}
-                    </span>
-                    <div className="h-px flex-1" style={{ background: "rgba(0,0,0,0.04)" }} />
-                  </div>
-
-                  {/* データ期間 */}
-                  <p className="text-[9px] text-center" style={{ color: "#9a9a9a" }}>
-                    {spec.symbols[0]} {spec.timeframes[0]} ·{" "}
-                    {Math.round(backtestResult.report.dataCoverageDays)}日間 ·{" "}
-                    {backtestResult.barCount.toLocaleString()} bars
-                  </p>
-
-                  {/* Total Pips（大きく表示） */}
-                  <div
-                    className="px-4 py-3 rounded text-center"
-                    style={{
-                      background: `${pipsColor(backtestResult.report.totalPips)}06`,
-                      border:     `1px solid ${pipsColor(backtestResult.report.totalPips)}20`,
-                    }}
-                  >
-                    <p className="text-[8px] tracking-widest mb-1" style={{ color: "#9a9a9a" }}>
-                      合計 PIPS
-                    </p>
-                    <p
-                      className="text-[28px] font-black leading-none"
-                      style={{
-                        color:      pipsColor(backtestResult.report.totalPips),
-                        textShadow: `0 0 16px ${pipsColor(backtestResult.report.totalPips)}50`,
-                      }}
-                    >
-                      {backtestResult.report.totalPips >= 0 ? "+" : ""}
-                      {backtestResult.report.totalPips.toFixed(1)}
-                    </p>
-                  </div>
-
-                  {/* Stats グリッド */}
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[
-                      { label: "取引数",   value: String(backtestResult.report.totalTrades), color: "#9a9a9a" },
-                      { label: "勝ち",     value: String(backtestResult.report.wins),         color: NG        },
-                      { label: "負け",     value: String(backtestResult.report.losses),       color: RED       },
-                      {
-                        label: "勝率",
-                        value: `${backtestResult.report.winRate.toFixed(1)}%`,
-                        color: backtestResult.report.winRate >= 55 ? NG : backtestResult.report.winRate >= 50 ? AMBER : RED,
-                      },
-                      {
-                        label: "PF",
-                        value: backtestResult.report.profitFactor != null ? backtestResult.report.profitFactor.toFixed(2) : "∞",
-                        color: (backtestResult.report.profitFactor ?? 0) >= 1.2 ? NG : (backtestResult.report.profitFactor ?? 0) >= 1 ? AMBER : RED,
-                      },
-                      {
-                        label: "最大DD",
-                        value: `${backtestResult.report.maxDrawdownPct.toFixed(1)}%`,
-                        color: backtestResult.report.maxDrawdownPct < 10 ? NG : backtestResult.report.maxDrawdownPct < 20 ? AMBER : RED,
-                      },
-                      {
-                        label: "平均PIPS",
-                        value: `${backtestResult.report.avgPips >= 0 ? "+" : ""}${backtestResult.report.avgPips.toFixed(1)}`,
-                        color: pipsColor(backtestResult.report.avgPips),
-                      },
-                    ].map(({ label, value, color }) => (
-                      <div key={label} className="px-2 py-1.5 rounded"
-                        style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.05)" }}>
-                        <p className="text-[6px] font-mono tracking-widest" style={{ color: "#9a9a9a" }}>{label}</p>
-                        <p className="text-[10px] font-mono font-bold mt-0.5" style={{ color }}>{value}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* BUY / SELL 方向別 */}
-                  {backtestResult.directionBreakdown && (
-                    backtestResult.directionBreakdown.buy.trades > 0 || backtestResult.directionBreakdown.sell.trades > 0
-                  ) && (
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["buy", "sell"] as const).map(dir => {
-                        const d = backtestResult.directionBreakdown[dir];
-                        return (
-                          <div key={dir} className="px-2.5 py-2 rounded"
-                            style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.05)" }}>
-                            <p className="text-[7px] tracking-widest font-black mb-1.5"
-                              style={{ color: dir === "buy" ? NG : RED }}>
-                              {dir === "buy" ? "BUY / LONG" : "SELL / SHORT"}
-                            </p>
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[9px]" style={{ color: "#4a4a4a" }}>
-                                {d.trades} trades · {d.winRate.toFixed(0)}% WR
-                              </span>
-                              <span className="text-[10px] font-bold"
-                                style={{ color: pipsColor(d.pips) }}>
-                                {d.pips >= 0 ? "+" : ""}{d.pips.toFixed(1)} pips
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* セッション別 */}
-                  {backtestResult.report.sessionStats &&
-                   Object.keys(backtestResult.report.sessionStats).length > 0 && (
-                    <div>
-                      <p className="text-[7px] tracking-widest mb-1.5" style={{ color: "#9a9a9a" }}>
-                        セッション別
-                      </p>
-                      <div className="flex flex-col gap-1">
-                        {Object.entries(backtestResult.report.sessionStats)
-                          .sort((a, b) => b[1].totalPips - a[1].totalPips)
-                          .slice(0, 4)
-                          .map(([sess, stat]) => (
-                            <div key={sess} className="flex items-center gap-2">
-                              <span className="text-[8px] w-16 shrink-0" style={{ color: "#4a4a4a" }}>
-                                {sessionLabel(sess)}
-                              </span>
-                              <div className="flex-1 h-1 rounded-full" style={{ background: "rgba(0,0,0,0.05)" }}>
-                                <div className="h-full rounded-full"
-                                  style={{ width: `${Math.min(stat.winRate, 100)}%`, background: NG_rgba + "0.5)" }} />
-                              </div>
-                              <span className="text-[8px] w-8 text-right shrink-0" style={{ color: NG }}>
-                                {stat.winRate.toFixed(0)}%
-                              </span>
-                              <span className="text-[8px] w-14 text-right shrink-0"
-                                style={{ color: pipsColor(stat.totalPips) }}>
-                                {stat.totalPips >= 0 ? "+" : ""}{stat.totalPips.toFixed(1)}p
-                              </span>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Sample Size Warning */}
-                  {backtestResult.report.sampleSizeWarning && (
-                    <div className="px-3 py-2 rounded text-[9px] leading-relaxed"
-                      style={{ background: `${AMBER}08`, border: `1px solid ${AMBER}20`, color: AMBER }}>
-                      ⚠ サンプル数が少なすぎます（{backtestResult.report.totalTrades}件 / 推奨{backtestResult.report.minRecommendedTrades}件以上）。結果の信頼性が低い可能性があります。
-                    </div>
-                  )}
-
-                  {/* Verdict reason */}
-                  {backtestResult.report.verdictReason && (
-                    <p className="text-[9px] leading-relaxed px-3 py-2 rounded"
-                      style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.05)", color: "#4a4a4a" }}>
-                      {backtestResult.report.verdictReason}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* RISK */}
-              <div className="flex items-center gap-3">
-                <p className="text-[8px] tracking-[0.2em] font-black w-20 shrink-0" style={{ color: "#9a9a9a" }}>
-                  リスク
-                </p>
-                <span className="text-[11px]" style={{ color: AMBER }}>
-                  {spec.risk.risk_per_trade}% / トレード
-                </span>
               </div>
 
-              {error && (
+              {genError && (
                 <div className="text-[10px] px-3 py-2 rounded"
                   style={{ background: `${RED}10`, border: `1px solid ${RED}30`, color: RED }}>
-                  ⚠ {error}
+                  ⚠ {genError}
                 </div>
+              )}
+
+              {step === "generating" && (
+                <LoadingDots label="5 つの GOLD# 戦略を設計しています..." sub="バックテストデータに合わせて最適化中" />
               )}
             </div>
           )}
 
-          {/* ─── SAVING ─── */}
-          {step === "saving" && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <LoadingDots label="EA を登録しています..." sub="バックテスト結果と一緒に保存中" />
-            </div>
-          )}
-
-          {/* ─── DONE ─── */}
-          {step === "done" && (
-            <div className="flex flex-col items-center gap-4 py-8">
-              <div
-                className="text-[32px] font-black tracking-widest"
-                style={{ color: NG, textShadow: `0 0 20px ${NG}` }}
-              >
-                ✓
+          {/* ─── RESULTS ─── */}
+          {step === "results" && (
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+                {candidates.map((c, i) => (
+                  <CandidateCard
+                    key={i}
+                    candidate={c}
+                    onAdd={() => handleAdd(i)}
+                  />
+                ))}
               </div>
-              <p className="text-[13px] font-black tracking-[0.2em]" style={{ color: "#f0f9ff" }}>
-                EA 追加完了
-              </p>
-              <p className="text-[10px]" style={{ color: "#4a4a4a" }}>
-                EA コマンドセンターに追加されました
-              </p>
-              <button
-                onClick={handleClose}
-                className="mt-2 text-[10px] tracking-widest font-bold px-4 py-2 rounded transition-opacity hover:opacity-70"
-                style={{ background: `${NG_rgba}0.12)`, border: `1px solid ${NG_rgba}0.30)`, color: NG }}
-              >
-                閉じる
-              </button>
             </div>
           )}
         </div>
 
-        {/* ─── フッター ─── */}
-        {step !== "done" && step !== "saving" && (
-          <div
-            className="shrink-0 px-5 py-3"
-            style={{ borderTop: `1px solid ${NG_rgba}0.08)` }}
-          >
-            {/* INPUT フッター */}
+        {/* ── フッター ── */}
+        {step !== "generating" && (
+          <div className="shrink-0 px-5 py-3" style={{ borderTop: `1px solid ${NG_rgba}0.08)` }}>
             {step === "input" && (
               <div className="flex items-center justify-between gap-3">
-                <button
-                  onClick={handleClose}
+                <button onClick={handleClose}
                   className="text-[10px] tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-60"
-                  style={{ color: "#4b5563" }}
-                >
+                  style={{ color: "#4b5563" }}>
                   キャンセル
                 </button>
                 <button
-                  onClick={handleBuild}
+                  onClick={handleGenerate}
                   disabled={!isReady}
                   className="text-[10px] font-black tracking-widest px-5 py-2 rounded transition-all hover:opacity-80 disabled:opacity-30"
                   style={{
@@ -928,112 +424,31 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                     border:     `1px solid ${NG_rgba}0.35)`,
                     color:      NG,
                     boxShadow:  isReady ? `0 0 12px ${NG_rgba}0.15)` : "none",
-                  }}
-                >
-                  ▶ AI で設計する
+                  }}>
+                  ▶ AI で 5 戦略を生成する
                 </button>
               </div>
             )}
 
-            {/* GENERATING / BACKTESTING フッター */}
-            {(step === "generating" || step === "backtesting") && (
-              <div className="flex justify-center">
-                <span className="text-[9px] tracking-widest" style={{ color: "#9a9a9a" }}>処理中...</span>
+            {step === "results" && (
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  onClick={() => { btAbortRef.current = true; setStep("input"); setCandidates([]); setGenError(null); }}
+                  className="text-[10px] tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-60"
+                  style={{ color: "#4a4a4a", border: "1px solid rgba(71,85,105,0.25)" }}>
+                  ← 再生成する
+                </button>
+                <button
+                  onClick={handleClose}
+                  className="text-[10px] font-black tracking-widest px-4 py-2 rounded transition-opacity hover:opacity-70"
+                  style={{
+                    background: `${NG_rgba}0.10)`,
+                    border:     `1px solid ${NG_rgba}0.30)`,
+                    color:      NG,
+                  }}>
+                  完了（{addedCount} 件追加）
+                </button>
               </div>
-            )}
-
-            {/* RESULT フッター */}
-            {step === "result" && (
-              showFailedWarning ? (
-                /* FAILED 警告確認 */
-                <div className="flex flex-col gap-2">
-                  <div
-                    className="px-3 py-2 rounded text-[9px] leading-relaxed"
-                    style={{ background: `${RED}10`, border: `1px solid ${RED}30`, color: RED }}
-                  >
-                    ⚠ バックテスト基準未達のStrategyです。それでも追加しますか？
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => setShowFailedWarning(false)}
-                      className="text-[10px] tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-60"
-                      style={{ color: "#4a4a4a", border: "1px solid #1e293b" }}
-                    >
-                      ← 追加しない
-                    </button>
-                    <button
-                      onClick={handleFormalSave}
-                      className="text-[10px] font-black tracking-widest px-4 py-1.5 rounded transition-all hover:opacity-80"
-                      style={{ background: `${RED}14`, border: `1px solid ${RED}35`, color: RED }}
-                    >
-                      それでも追加する
-                    </button>
-                  </div>
-                </div>
-              ) : hasUnsupported ? (
-                /* UNSUPPORTED: 修正するのみ */
-                <div className="flex items-center justify-between">
-                  <button
-                    onClick={handleBack}
-                    className="text-[10px] tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-60"
-                    style={{ color: "#4a4a4a", border: "1px solid #1e293b" }}
-                  >
-                    ← 修正する
-                  </button>
-                  <span className="text-[9px]" style={{ color: "#9a9a9a" }}>
-                    条件を修正後に再設計してください
-                  </span>
-                </div>
-              ) : (
-                /* 通常: キャンセル / AI分析 / EAを追加する */
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <button
-                      onClick={handleClose}
-                      className="text-[10px] tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-60"
-                      style={{ color: "#4b5563" }}
-                    >
-                      キャンセル
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleBack}
-                        className="text-[10px] tracking-widest px-3 py-1.5 rounded transition-opacity hover:opacity-60"
-                        style={{ color: "#4a4a4a", border: "1px solid #1e293b" }}
-                      >
-                        ← 修正する
-                      </button>
-                      <button
-                        onClick={handleEAAdd}
-                        className="text-[10px] font-black tracking-widest px-5 py-2 rounded transition-all hover:opacity-80"
-                        style={{
-                          background: `${NG_rgba}0.14)`,
-                          border:     `1px solid ${NG_rgba}0.35)`,
-                          color:      NG,
-                          boxShadow:  `0 0 12px ${NG_rgba}0.15)`,
-                        }}
-                      >
-                        EA を追加する
-                      </button>
-                    </div>
-                  </div>
-                  {backtestResult && (
-                    <div className="flex justify-center">
-                      <button
-                        onClick={() => setShowResearchAssistant(true)}
-                        className="text-[9px] tracking-widest px-4 py-1.5 rounded transition-all hover:opacity-80"
-                        style={{
-                          background: "rgba(249,115,22,0.06)",
-                          border:     "1px solid rgba(249,115,22,0.18)",
-                          color:      CYAN,
-                        }}
-                      >
-                        AI戦略アシスタントで分析・改善
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
             )}
           </div>
         )}
@@ -1045,20 +460,195 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
           50%       { opacity: 1;   transform: scale(1.2); }
         }
       `}</style>
+    </div>
+  );
+}
 
-      {/* ── AI戦略アシスタント（フルスクリーンモーダル） ── */}
-      {showResearchAssistant && spec && backtestResult && (
-        <StrategyResearchAssistant
-          spec={spec}
-          initialBacktestResult={backtestResult}
-          onAddEA={(finalSpec, finalResult) => {
-            setShowResearchAssistant(false);
-            // 承認されたSpecとBacktestResultを直接パラメータとして正式保存
-            void handleFormalSaveWith(finalSpec as StrategySpec, finalResult);
-          }}
-          onDiscard={() => setShowResearchAssistant(false)}
-        />
-      )}
+// =================================================================
+// CandidateCard — 1候補ごとのカード
+// =================================================================
+function CandidateCard({ candidate, onAdd }: { candidate: Candidate; onAdd: () => void }) {
+  const { spec, btStatus, report, btError, added, saving } = candidate;
+  const col = typeColor(spec.strategy_type);
+
+  // 勝率からペイオフ計算
+  const pf      = report?.profitFactor ?? null;
+  const wr      = report?.winRate ?? 0;
+  const payoff  = payoffRatio(pf, wr);
+
+  const isTesting = btStatus === "testing";
+  const isDone    = btStatus === "done";
+  const isError   = btStatus === "error";
+
+  // エントリー条件を最大2件表示
+  const mainConds = spec.entry_conditions.conditions
+    .filter(c => !c.condition?.startsWith("UNSUPPORTED:"))
+    .slice(0, 2);
+
+  return (
+    <div className="flex flex-col rounded-lg overflow-hidden"
+      style={{
+        background: "#fff",
+        border:     `1px solid ${col}25`,
+        boxShadow:  "0 2px 8px rgba(0,0,0,0.05)",
+        opacity:    added ? 0.65 : 1,
+      }}>
+
+      {/* ヘッダー */}
+      <div className="px-3 pt-3 pb-2">
+        <div className="flex items-start justify-between gap-1 mb-1">
+          <h3 className="font-black text-[12px] leading-tight" style={{ color: "#1a1a1a" }}>
+            {spec.name}
+          </h3>
+          <span className="text-[7px] font-black tracking-widest px-1.5 py-0.5 rounded shrink-0"
+            style={{ background: `${col}10`, border: `1px solid ${col}25`, color: col }}>
+            {typeLabel(spec.strategy_type)}
+          </span>
+        </div>
+        {/* シンボル / TF */}
+        <div className="flex gap-1 flex-wrap">
+          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded"
+            style={{ background: `${NG_rgba}0.08)`, color: NG, border: `1px solid ${NG_rgba}0.20)` }}>
+            GOLD#
+          </span>
+          {spec.timeframes.map(tf => (
+            <span key={tf} className="text-[8px] px-1.5 py-0.5 rounded"
+              style={{ background: "rgba(0,0,0,0.04)", color: "#64748b", border: "1px solid rgba(0,0,0,0.06)" }}>
+              {tf}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mx-3 h-px" style={{ background: "rgba(0,0,0,0.06)" }} />
+
+      {/* エントリー条件サマリー */}
+      <div className="px-3 py-2">
+        <p className="text-[6px] tracking-widest mb-1" style={{ color: "#9a9a9a" }}>ENTRY CONDITIONS</p>
+        {mainConds.length > 0 ? (
+          <div className="flex flex-col gap-0.5">
+            {mainConds.map((c, i) => (
+              <div key={i} className="flex items-start gap-1">
+                <span className="text-[7px] mt-0.5 shrink-0" style={{ color: NG }}>●</span>
+                <span className="text-[9px] leading-snug" style={{ color: "#4a4a4a" }}>
+                  {conditionToJapanese(c)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[9px]" style={{ color: "#9a9a9a" }}>{spec.description}</p>
+        )}
+      </div>
+
+      <div className="mx-3 h-px" style={{ background: "rgba(0,0,0,0.06)" }} />
+
+      {/* バックテスト結果 */}
+      <div className="px-3 py-2.5">
+        {btStatus === "pending" && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#9a9a9a" }} />
+            <span className="text-[8px]" style={{ color: "#9a9a9a" }}>バックテスト待機中...</span>
+          </div>
+        )}
+        {isTesting && (
+          <div className="flex items-center gap-1.5">
+            <div className="flex gap-0.5">
+              {[0,1,2].map(i => (
+                <div key={i} className="w-1 h-1 rounded-full"
+                  style={{ background: NG, animation: `pulse 1s ease-in-out ${i*0.2}s infinite` }} />
+              ))}
+            </div>
+            <span className="text-[8px]" style={{ color: NG }}>バックテスト実行中...</span>
+          </div>
+        )}
+        {isError && (
+          <p className="text-[8px]" style={{ color: AMBER }}>⚠ {btError ?? "バックテストデータ不足"}</p>
+        )}
+        {isDone && report && (
+          <div className="flex flex-col gap-1.5">
+            {/* Verdict */}
+            <div className="flex items-center justify-between">
+              <span className="text-[7px] tracking-widest" style={{ color: "#9a9a9a" }}>BACKTEST</span>
+              <span className="text-[7px] font-black tracking-widest px-1.5 py-0.5 rounded"
+                style={{
+                  color:       verdictColor(report.verdict),
+                  background:  `${verdictColor(report.verdict)}15`,
+                  border:      `1px solid ${verdictColor(report.verdict)}30`,
+                }}>
+                {verdictLabel(report.verdict)}
+              </span>
+            </div>
+            {/* Pips */}
+            <div className="text-center py-1 rounded"
+              style={{ background: `${pipsColor(report.totalPips)}06`, border: `1px solid ${pipsColor(report.totalPips)}15` }}>
+              <p className="text-[20px] font-black leading-none" style={{ color: pipsColor(report.totalPips) }}>
+                {report.totalPips >= 0 ? "+" : ""}{report.totalPips.toFixed(1)}
+              </p>
+              <p className="text-[6px] tracking-widest mt-0.5" style={{ color: "#9a9a9a" }}>合計 PIPS</p>
+            </div>
+            {/* 4指標グリッド */}
+            <div className="grid grid-cols-4 gap-1">
+              {[
+                {
+                  label: "PF",
+                  value: pf != null ? pf.toFixed(2) : "—",
+                  color: (pf ?? 0) >= 1.2 ? NG : (pf ?? 0) >= 1 ? AMBER : RED,
+                },
+                {
+                  label: "MDD",
+                  value: `${report.maxDrawdownPct.toFixed(1)}%`,
+                  color: report.maxDrawdownPct < 10 ? NG : report.maxDrawdownPct < 20 ? AMBER : RED,
+                },
+                {
+                  label: "勝率",
+                  value: `${wr.toFixed(0)}%`,
+                  color: wr >= 55 ? NG : wr >= 50 ? AMBER : RED,
+                },
+                {
+                  label: "ペイオフ",
+                  value: payoff != null ? payoff.toFixed(2) : "—",
+                  color: (payoff ?? 0) >= 1.2 ? NG : (payoff ?? 0) >= 1 ? AMBER : RED,
+                },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="px-1 py-1 rounded text-center"
+                  style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.05)" }}>
+                  <p className="text-[6px] tracking-widest" style={{ color: "#9a9a9a" }}>{label}</p>
+                  <p className="text-[9px] font-bold mt-0.5" style={{ color }}>{value}</p>
+                </div>
+              ))}
+            </div>
+            {/* 取引数 */}
+            <p className="text-[7px] text-center" style={{ color: "#9a9a9a" }}>
+              {report.totalTrades} 取引 · {report.wins}勝 {report.losses}敗
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="mx-3 h-px" style={{ background: "rgba(0,0,0,0.06)" }} />
+
+      {/* CTA */}
+      <div className="px-3 pb-3 pt-2">
+        {added ? (
+          <div className="w-full h-8 rounded flex items-center justify-center gap-2"
+            style={{ background: "rgba(74,222,128,0.10)", border: "1px solid rgba(74,222,128,0.30)" }}>
+            <span className="text-[10px] font-black tracking-widest" style={{ color: GREEN }}>✓ 追加済み</span>
+          </div>
+        ) : (
+          <button
+            onClick={onAdd}
+            disabled={saving}
+            className="w-full h-8 rounded font-black text-[10px] tracking-widest transition-all hover:opacity-80 disabled:opacity-50"
+            style={{
+              background: `${NG_rgba}0.12)`,
+              border:     `1px solid ${NG_rgba}0.35)`,
+              color:      NG,
+            }}>
+            {saving ? "追加中..." : "EA を追加する"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1066,104 +656,6 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
 // =================================================================
 // 小コンポーネント
 // =================================================================
-
-interface InputSectionProps {
-  label:       string;
-  sublabel:    string;
-  accentColor: string;
-  description: string;
-  placeholder: string;
-  value:       string;
-  onChange:    (v: string) => void;
-  disabled:    boolean;
-  minLength:   number;
-  rows:        number;
-}
-
-function InputSection({
-  label, sublabel, accentColor, description,
-  placeholder, value, onChange, disabled, minLength, rows,
-}: InputSectionProps) {
-  const filled   = value.trim().length >= minLength;
-  const tooShort = value.trim().length > 0 && !filled;
-
-  return (
-    <div>
-      <div className="flex items-baseline gap-2 mb-1">
-        <span className="text-[10px] tracking-[0.15em] font-black" style={{ color: accentColor }}>
-          {label}
-        </span>
-        <span className="text-[7px] tracking-widest" style={{ color: "#9a9a9a" }}>{sublabel}</span>
-        <span className="text-[7px] tracking-widest ml-auto" style={{ color: accentColor, opacity: 0.55 }}>
-          必須
-        </span>
-      </div>
-      <p className="text-[9px] mb-1.5 tracking-wide" style={{ color: "#9a9a9a" }}>{description}</p>
-      <textarea
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        disabled={disabled}
-        rows={rows}
-        placeholder={placeholder}
-        className="w-full rounded resize-none text-[11px] leading-relaxed tracking-wide outline-none transition-all"
-        style={{
-          background:  disabled ? "rgba(249,115,22,0.02)" : "rgba(0,0,0,0.04)",
-          border:      disabled ? `1px solid ${accentColor}12` : filled ? `1px solid ${accentColor}30` : "1px solid rgba(71,85,105,0.35)",
-          color:       disabled ? "#9a9a9a" : "#cbd5e1",
-          padding:     "10px 12px",
-          caretColor:  accentColor,
-        }}
-      />
-      {tooShort && (
-        <p className="text-[8px] mt-1" style={{ color: "#4a4a4a" }}>{minLength}文字以上入力してください</p>
-      )}
-    </div>
-  );
-}
-
-interface PreviewSectionProps {
-  title:       string;
-  accentColor: string;
-  children:    React.ReactNode;
-}
-
-function PreviewSection({ title, accentColor, children }: PreviewSectionProps) {
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <div className="h-px flex-1" style={{ background: `${accentColor}18` }} />
-        <span className="text-[8px] tracking-[0.3em] font-black px-2" style={{ color: accentColor }}>
-          {title}
-        </span>
-        <div className="h-px flex-1" style={{ background: `${accentColor}18` }} />
-      </div>
-      <div className="rounded px-3 py-3" style={{ background: `${accentColor}03`, border: `1px solid ${accentColor}10` }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function Tag({ color, children }: { color: string; children: React.ReactNode }) {
-  return (
-    <span
-      className="text-[9px] font-black tracking-widest px-2 py-0.5 rounded"
-      style={{ background: `${color}12`, border: `1px solid ${color}30`, color }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function FilterRow({ icon, children }: { icon: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 mb-0.5">
-      <span className="text-[7px] tracking-widest w-14 shrink-0" style={{ color: "#9a9a9a" }}>{icon}</span>
-      <span className="text-[10px]" style={{ color: "#4a4a4a" }}>{children}</span>
-    </div>
-  );
-}
-
 function LoadingDots({ label, sub }: { label: string; sub?: string }) {
   return (
     <div className="flex flex-col items-center gap-3 py-6">
