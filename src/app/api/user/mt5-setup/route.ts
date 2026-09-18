@@ -1,14 +1,16 @@
 // =================================================================
-// GET  /api/user/mt5-setup  — ユーザーの接続情報を取得（なければ自動作成）
-// POST /api/user/mt5-setup  — 既存接続を削除して再発行
+// GET  /api/user/mt5-setup  — ユーザーの接続情報を取得
+// POST /api/user/mt5-setup  — Token 再発行
 // =================================================================
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs"; // Edge では Node.js crypto が使えないため明示
+export const dynamic = "force-dynamic";
 
-async function getSupabase() {
+// 認証確認用（publishable key）
+async function getAuthSupabase() {
   const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,13 +19,22 @@ async function getSupabase() {
   );
 }
 
+// DB操作用（service role — RLS をバイパス）
+function getAdminSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
 // GET — 現在の接続情報を取得
 export async function GET() {
-  const supabase = await getSupabase();
+  const supabase = await getAuthSupabase();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data } = await supabase
+  const admin = getAdminSupabase();
+  const { data } = await admin
     .from("mt5_connections")
     .select("id, status, last_heartbeat_at, broker, server_name, mt5_login, created_at")
     .eq("user_id", user.id)
@@ -37,9 +48,10 @@ export async function GET() {
   });
 }
 
-// POST — 新しいConnection Token を発行（既存があれば削除して再作成）
+// POST — Token 再発行
 export async function POST(req: Request) {
-  const supabase = await getSupabase();
+  // 認証確認
+  const supabase = await getAuthSupabase();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -48,7 +60,7 @@ export async function POST(req: Request) {
   const serverName = body.serverName || "XMTrading-MT5";
   const mt5Login   = body.mt5Login   || 0;
 
-  // Web Crypto API でトークン生成（Edge / Node.js 両対応）
+  // トークン生成（Web Crypto API）
   const array = new Uint8Array(32);
   crypto.getRandomValues(array);
   const connectionToken = Array.from(array).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -57,8 +69,10 @@ export async function POST(req: Request) {
   const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(connectionToken));
   const tokenHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 
-  // 既存接続があれば token のみ更新（execution_commands の外部キー制約があるため DELETE 不可）
-  const { data: existing } = await supabase
+  const admin = getAdminSupabase();
+
+  // 既存確認
+  const { data: existing } = await admin
     .from("mt5_connections")
     .select("id")
     .eq("user_id", user.id)
@@ -67,22 +81,22 @@ export async function POST(req: Request) {
   let data, error;
 
   if (existing) {
-    // 既存レコードのトークンを更新
-    ({ data, error } = await supabase
+    // トークンのみ UPDATE（FK制約があるため DELETE 不可）
+    ({ data, error } = await admin
       .from("mt5_connections")
       .update({
         connection_token_hash: tokenHash,
         broker,
-        server_name:           serverName,
-        mt5_login:             mt5Login,
-        status:                "PENDING",
+        server_name:   serverName,
+        mt5_login:     mt5Login,
+        status:        "PENDING",
       })
       .eq("user_id", user.id)
       .select("id, broker, server_name, mt5_login, status, created_at")
       .single());
   } else {
-    // 新規作成
-    ({ data, error } = await supabase
+    // 新規 INSERT
+    ({ data, error } = await admin
       .from("mt5_connections")
       .insert({
         user_id:               user.id,
