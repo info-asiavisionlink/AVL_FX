@@ -7,13 +7,12 @@ import { useConnectionStore } from "@/application/stores/connectionStore";
 import { createClient } from "@/infrastructure/supabase/client";
 import { useEffect, useState } from "react";
 import {
-  BarChart2, Globe, CalendarDays, Newspaper,
+  BarChart2, CalendarDays, Newspaper,
   Briefcase, History, Settings, Cable, X, Bot, LogOut, User,
 } from "lucide-react";
 
 export const NAV = [
   { href: "/ea",        icon: Bot,          label: "EA起動",    group: 1 },
-  { href: "/markets",   icon: Globe,        label: "マーケット", group: 1 },
   { href: "/chart",     icon: BarChart2,    label: "チャート",   group: 1 },
   { href: "/calendar",  icon: CalendarDays, label: "カレンダー", group: 1 },
   { href: "/news",      icon: Newspaper,    label: "ニュース",   group: 1 },
