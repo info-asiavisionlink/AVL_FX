@@ -135,7 +135,7 @@ function EventCard({ ev, now }: { ev: CalEvent; now: number }) {
   const isHigh  = ev.impact >= 3;
   const isMed   = ev.impact === 2;
   const cd      = !isPast ? countdown(tick, ev.time) : null;
-  const ccy     = CCY_COLOR[ev.currency] ?? { text:"text-gray-400", bg:"bg-[#f0efec]/20", border:"border-gray-700/30" };
+  const ccy     = CCY_COLOR[ev.currency] ?? { text:"text-[#9a9a9a]", bg:"bg-[rgba(0,0,0,0.04)]", border:"border-gray-200" };
   const impactHex = isHigh ? "#ef4444" : isMed ? "#f59e0b" : "#4b5563";
 
   return (
@@ -143,18 +143,18 @@ function EventCard({ ev, now }: { ev: CalEvent; now: number }) {
       onClick={() => setOpen(o => !o)}
       className={cn(
         "border-l-2 mb-1.5 rounded-r-sm cursor-pointer transition-all",
-        isPast  ? "opacity-35 border-l-gray-700 bg-[#080b10]" :
+        isPast  ? "opacity-35 border-l-gray-200 bg-white" :
         isImm   ? "border-l-red-500 bg-red-950/20" :
         isNear  ? "border-l-amber-500 bg-amber-950/10" :
-        isHigh  ? "border-l-red-600/80 bg-[#0c0e17]" :
-                  "border-l-[#1a2535]/80 bg-[#080b10] hover:bg-[#0c0e17]"
+        isHigh  ? "border-l-red-600/80 bg-[#fff7f3]" :
+                  "border-l-[#1a2535]/80 bg-white hover:bg-[#fff7f3]"
       )}
     >
       <div className="px-3 py-2.5">
         {/* Row 1: 時刻・通貨・インパクト・ステータス */}
         <div className="flex items-center gap-2 mb-1.5">
           <span className={cn("text-[13px] font-black font-mono tabular-nums shrink-0",
-            isPast ? "text-gray-600" : isImm ? "text-red-300" : isNear ? "text-amber-300" : "text-gray-200")}>
+            isPast ? "text-[#9a9a9a]" : isImm ? "text-red-300" : isNear ? "text-amber-300" : "text-gray-200")}>
             {fmtTimeJST(ev.time)}
           </span>
           <span className={cn("text-[9px] font-mono font-bold px-1.5 py-0.5 border rounded-sm shrink-0",
@@ -189,11 +189,11 @@ function EventCard({ ev, now }: { ev: CalEvent; now: number }) {
 
         {/* Row 2: 指標名 */}
         <p className={cn("text-[12px] font-semibold leading-tight",
-          isPast ? "text-gray-500" : isHigh ? "text-white" : "text-gray-200")}>
+          isPast ? "text-[#9a9a9a]" : isHigh ? "text-white" : "text-gray-200")}>
           {ja(ev.title)}
         </p>
         {ja(ev.title) !== ev.title && (
-          <p className="text-[9px] text-gray-700 font-mono mt-0.5">{ev.title}</p>
+          <p className="text-[9px] text-[#9a9a9a] font-mono mt-0.5">{ev.title}</p>
         )}
 
         {/* Row 3: 前回・予想・結果 */}
@@ -201,18 +201,18 @@ function EventCard({ ev, now }: { ev: CalEvent; now: number }) {
           <div className="flex items-center gap-5 mt-2">
             {ev.previous && (
               <div>
-                <p className="text-[7px] font-mono text-gray-700 mb-0.5">前回</p>
-                <p className="text-[10px] font-mono tabular-nums text-gray-400">{ev.previous}</p>
+                <p className="text-[7px] font-mono text-[#9a9a9a] mb-0.5">前回</p>
+                <p className="text-[10px] font-mono tabular-nums text-[#9a9a9a]">{ev.previous}</p>
               </div>
             )}
             {ev.forecast && (
               <div>
-                <p className="text-[7px] font-mono text-gray-700 mb-0.5">予想</p>
+                <p className="text-[7px] font-mono text-[#9a9a9a] mb-0.5">予想</p>
                 <p className="text-[10px] font-mono tabular-nums text-cyan-400">{ev.forecast}</p>
               </div>
             )}
             <div>
-              <p className="text-[7px] font-mono text-gray-700 mb-0.5">結果</p>
+              <p className="text-[7px] font-mono text-[#9a9a9a] mb-0.5">結果</p>
               {ev.actual ? (
                 <p className={cn("text-[11px] font-mono font-bold tabular-nums",
                   ev.forecast && !isNaN(parseFloat(ev.actual)) && !isNaN(parseFloat(ev.forecast))
@@ -221,7 +221,7 @@ function EventCard({ ev, now }: { ev: CalEvent; now: number }) {
                   {ev.actual}
                 </p>
               ) : (
-                <p className="text-[10px] font-mono text-gray-700">—</p>
+                <p className="text-[10px] font-mono text-[#9a9a9a]">—</p>
               )}
             </div>
           </div>
@@ -229,10 +229,10 @@ function EventCard({ ev, now }: { ev: CalEvent; now: number }) {
 
         {/* 展開: 詳細 */}
         {open && (
-          <div className="mt-2 pt-2 border-t border-[rgba(0,0,0,0.08)] text-[9px] font-mono text-gray-600 space-y-0.5">
-            <p>通貨: <span className="text-gray-400">{ev.country}</span></p>
-            <p>UTC: <span className="text-gray-400">{new Date(ev.time * 1000).toISOString()}</span></p>
-            <p>JST: <span className="text-gray-400">{new Date(ev.time * 1000).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</span></p>
+          <div className="mt-2 pt-2 border-t border-[rgba(0,0,0,0.08)] text-[9px] font-mono text-[#9a9a9a] space-y-0.5">
+            <p>通貨: <span className="text-[#9a9a9a]">{ev.country}</span></p>
+            <p>UTC: <span className="text-[#9a9a9a]">{new Date(ev.time * 1000).toISOString()}</span></p>
+            <p>JST: <span className="text-[#9a9a9a]">{new Date(ev.time * 1000).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</span></p>
           </div>
         )}
       </div>
@@ -246,14 +246,14 @@ function DateSection({ dateStr, events, now }: { dateStr: string; events: CalEve
   const { label, full } = dateHeader(dateStr, now);
   return (
     <div>
-      <div className="sticky top-0 z-10 bg-[#050810] border-b border-[rgba(0,0,0,0.08)] px-4 py-2 flex items-center gap-3">
+      <div className="sticky top-0 z-10 bg-[#f8f7f4] border-b border-[rgba(0,0,0,0.08)] px-4 py-2 flex items-center gap-3">
         <div className="w-0.5 h-5 bg-cyan-500/40 shrink-0"/>
         <div>
           <p className="text-[8px] font-mono text-cyan-500/50 tracking-[0.3em] leading-none">{label}</p>
-          <p className="text-[11px] font-bold font-mono text-gray-300 leading-tight">{full}</p>
+          <p className="text-[11px] font-bold font-mono text-[#4a4a4a] leading-tight">{full}</p>
         </div>
         <div className="flex-1"/>
-        <span className="text-[8px] font-mono text-gray-700">{events.length}件</span>
+        <span className="text-[8px] font-mono text-[#9a9a9a]">{events.length}件</span>
       </div>
       <div className="px-3 pt-2">
         {events.map(ev => <EventCard key={ev.id} ev={ev} now={now}/>)}
@@ -326,10 +326,10 @@ export function CalendarView() {
   const highAhead = events.filter(e => e.impact >= 3 && e.time * 1000 > now).length;
 
   return (
-    <div className="flex flex-col flex-1 h-full bg-[#050810] text-gray-100">
+    <div className="flex flex-col flex-1 h-full bg-[#f8f7f4] text-[#1a1a1a]">
 
       {/* ── ヘッダー ── */}
-      <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] bg-[#03050d] pl-14 pr-4 md:px-4 py-3">
+      <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] bg-white pl-14 pr-4 md:px-4 py-3">
         <div className="flex items-center gap-3 mb-3">
           <Calendar size={14} className="text-cyan-500/70"/>
           <div>
@@ -339,7 +339,7 @@ export function CalendarView() {
             </p>
           </div>
           <div className="flex-1"/>
-          <button onClick={load} disabled={loading} className="text-gray-600 hover:text-gray-300 p-1 transition-colors">
+          <button onClick={load} disabled={loading} className="text-[#9a9a9a] hover:text-[#4a4a4a] p-1 transition-colors">
             <RefreshCw size={11} className={loading ? "animate-spin" : ""}/>
           </button>
         </div>
@@ -351,7 +351,7 @@ export function CalendarView() {
               className={cn("text-[9px] font-mono font-bold px-3 py-1 border transition-all",
                 range === r
                   ? "border-cyan-700/60 text-cyan-300 bg-cyan-900/20"
-                  : "border-[rgba(0,0,0,0.08)] text-gray-600 hover:text-gray-400")}>
+                  : "border-[rgba(0,0,0,0.08)] text-[#9a9a9a] hover:text-[#9a9a9a]")}>
               {r === "today" ? "今日" : r === "tomorrow" ? "明日" : "今週"}
             </button>
           ))}
@@ -366,7 +366,7 @@ export function CalendarView() {
                   ? f === "high"   ? "border-red-700/60 text-red-400 bg-red-900/15"
                   : f === "medium" ? "border-amber-700/60 text-amber-400 bg-amber-900/15"
                   :                  "border-cyan-700/60 text-cyan-400 bg-cyan-900/15"
-                  : "border-[rgba(0,0,0,0.08)] text-gray-700 hover:text-gray-500")}>
+                  : "border-[rgba(0,0,0,0.08)] text-[#9a9a9a] hover:text-[#9a9a9a]")}>
               {f === "all" ? "全て" : f === "high" ? "HIGH" : "MED以上"}
             </button>
           ))}
@@ -378,16 +378,16 @@ export function CalendarView() {
             <button onClick={() => setCcy("all")}
               className={cn("text-[8px] font-mono px-2 py-0.5 border transition-all",
                 ccy === "all"
-                  ? "border-gray-600 text-gray-300 bg-[#f0efec]/30"
-                  : "border-[rgba(0,0,0,0.08)] text-gray-700 hover:text-gray-500")}>
+                  ? "border-orange-300 text-[#ea580c] bg-[rgba(249,115,22,0.08)]"
+                  : "border-[rgba(0,0,0,0.08)] text-[#9a9a9a] hover:text-[#9a9a9a]")}>
               ALL
             </button>
             {currencies.map(c => {
-              const s = CCY_COLOR[c] ?? { text:"text-gray-400", bg:"bg-[#f0efec]/20", border:"border-gray-700/30" };
+              const s = CCY_COLOR[c] ?? { text:"text-[#9a9a9a]", bg:"bg-[rgba(0,0,0,0.04)]", border:"border-gray-200" };
               return (
                 <button key={c} onClick={() => setCcy(p => p === c ? "all" : c)}
                   className={cn("text-[8px] font-mono font-bold px-2 py-0.5 border transition-all",
-                    ccy === c ? `${s.text} ${s.bg} ${s.border}` : "border-[rgba(0,0,0,0.08)] text-gray-700 hover:text-gray-500")}>
+                    ccy === c ? `${s.text} ${s.bg} ${s.border}` : "border-[rgba(0,0,0,0.08)] text-[#9a9a9a] hover:text-[#9a9a9a]")}>
                   {c}
                 </button>
               );
@@ -397,16 +397,16 @@ export function CalendarView() {
       </div>
 
       {/* ── ステータスバー ── */}
-      <div className="shrink-0 px-4 py-1.5 bg-[#04060c] border-b border-[rgba(0,0,0,0.08)] flex items-center justify-between gap-2">
+      <div className="shrink-0 px-4 py-1.5 bg-white border-b border-[rgba(0,0,0,0.08)] flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Clock size={9} className="text-gray-700 shrink-0"/>
-          <span className="text-[9px] font-mono text-gray-600 truncate">
+          <Clock size={9} className="text-[#9a9a9a] shrink-0"/>
+          <span className="text-[9px] font-mono text-[#9a9a9a] truncate">
             {new Date(now).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", hour12: false })} JST
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {meta?.source === "forex_factory" && (
-            <span className="text-[8px] font-mono text-gray-700">
+            <span className="text-[8px] font-mono text-[#9a9a9a]">
               📡 Forex Factory
             </span>
           )}
@@ -426,14 +426,14 @@ export function CalendarView() {
       {/* ── イベントリスト ── */}
       <div className="flex-1 overflow-y-auto avl-scroll">
         {loading ? (
-          <div className="flex items-center justify-center h-32 gap-2 text-gray-600">
+          <div className="flex items-center justify-center h-32 gap-2 text-[#9a9a9a]">
             <RefreshCw size={12} className="animate-spin"/>
             <span className="text-[10px] font-mono">読み込み中...</span>
           </div>
         ) : grouped.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-3">
             <Calendar size={20} className="text-gray-800"/>
-            <p className="text-[11px] text-gray-600 font-mono">
+            <p className="text-[11px] text-[#9a9a9a] font-mono">
               {!meta || meta.source === "none"
                 ? "経済指標データを取得できません"
                 : range === "today" ? "本日の指標はありません"

@@ -49,7 +49,7 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
         onClick={onClose}
       />
       {/* パネル */}
-      <div className="fixed right-0 top-0 bottom-0 w-[480px] max-w-full z-50 bg-[#03060e] border-l border-[rgba(0,0,0,0.08)] flex flex-col shadow-2xl">
+      <div className="fixed right-0 top-0 bottom-0 w-[480px] max-w-full z-50 bg-white border-l border-[rgba(0,0,0,0.08)] flex flex-col shadow-2xl">
 
         {/* ヘッダー */}
         <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] px-5 py-4 flex items-start gap-3">
@@ -70,7 +70,7 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
               <span>{fmtDateTime(item.datetime)} JST</span>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-300 shrink-0 p-1 transition-colors">
+          <button onClick={onClose} className="text-[#9a9a9a] hover:text-[#4a4a4a] shrink-0 p-1 transition-colors">
             <X size={16}/>
           </button>
         </div>
@@ -82,7 +82,7 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
             {item.titleJa}
           </h2>
           {/* 英語タイトル */}
-          <p className="text-[10px] text-gray-600 font-mono leading-snug mb-5 pb-4 border-b border-[rgba(0,0,0,0.08)]">
+          <p className="text-[10px] text-[#9a9a9a] font-mono leading-snug mb-5 pb-4 border-b border-[rgba(0,0,0,0.08)]">
             {item.title}
           </p>
 
@@ -90,12 +90,12 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
           {item.excerpt ? (
             <>
               <p className="text-[8px] font-mono text-cyan-600/60 tracking-widest mb-2">EXCERPT</p>
-              <p className="text-[13px] text-gray-300 leading-relaxed">
+              <p className="text-[13px] text-[#4a4a4a] leading-relaxed">
                 {item.excerpt}
               </p>
             </>
           ) : (
-            <p className="text-[11px] text-gray-600 font-mono">抜粋なし</p>
+            <p className="text-[11px] text-[#9a9a9a] font-mono">抜粋なし</p>
           )}
         </div>
 
@@ -122,7 +122,7 @@ function NewsCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
   return (
     <article
       onClick={onClick}
-      className="border border-[rgba(0,0,0,0.06)] bg-white hover:border-cyan-900/60 hover:bg-[#08101a] transition-all group cursor-pointer"
+      className="border border-[rgba(0,0,0,0.06)] bg-white hover:border-cyan-900/60 hover:bg-orange-50 transition-all group cursor-pointer"
     >
       <div className="p-3">
         {/* メタ行 */}
@@ -148,7 +148,7 @@ function NewsCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
         </h3>
 
         {/* 英語タイトル（副） */}
-        <p className="text-[8px] text-gray-600 font-mono leading-snug line-clamp-1 mb-2">
+        <p className="text-[8px] text-[#9a9a9a] font-mono leading-snug line-clamp-1 mb-2">
           {item.title}
         </p>
 
@@ -208,7 +208,7 @@ export function NewsView() {
     <div className="flex flex-col flex-1 h-full bg-[#f8f7f4] overflow-hidden">
 
       {/* ── ヘッダー ── */}
-      <div className="shrink-0 border-b border-[rgba(0,0,0,0.06)] bg-[#03050b] px-4 py-3">
+      <div className="shrink-0 border-b border-[rgba(0,0,0,0.06)] bg-white px-4 py-3">
         <div className="flex items-center gap-3 mb-3">
           <Rss size={14} className="text-cyan-500/70"/>
           <div>
@@ -219,7 +219,7 @@ export function NewsView() {
           </div>
           <div className="flex-1"/>
           <button onClick={() => load(ccy)} disabled={loading}
-            className="text-gray-600 hover:text-gray-300 p-1 transition-colors">
+            className="text-[#9a9a9a] hover:text-[#4a4a4a] p-1 transition-colors">
             <RefreshCw size={11} className={loading ? "animate-spin" : ""}/>
           </button>
         </div>
@@ -232,7 +232,7 @@ export function NewsView() {
                 "text-[8px] font-mono font-bold px-2 py-0.5 border transition-all",
                 ccy === c
                   ? c === "ALL"
-                    ? "border-gray-600 text-gray-200 bg-[#f0efec]/30"
+                    ? "border-orange-300 text-[#ea580c] bg-orange-50"
                     : (CCY_STYLE[c] ?? "border-cyan-700/60 text-cyan-400 bg-cyan-900/20")
                   : "border-[rgba(0,0,0,0.06)] text-gray-700 hover:text-gray-500"
               )}>
@@ -243,7 +243,7 @@ export function NewsView() {
       </div>
 
       {/* ── ステータスバー ── */}
-      <div className="shrink-0 px-4 py-1 border-b border-[rgba(0,0,0,0.06)] bg-[#03050b] flex items-center gap-2">
+      <div className="shrink-0 px-4 py-1 border-b border-[rgba(0,0,0,0.06)] bg-white flex items-center gap-2">
         <span className="text-[8px] font-mono text-gray-700">📡 Yahoo Finance RSS</span>
         {fetchedAt && !error && (
           <span className="text-[8px] font-mono text-gray-800">
