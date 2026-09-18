@@ -48,9 +48,6 @@ export async function POST(req: Request) {
   const serverName = body.serverName || "XMTrading-MT5";
   const mt5Login   = body.mt5Login   || 0;
 
-  // 既存の接続を削除
-  await supabase.from("mt5_connections").delete().eq("user_id", user.id);
-
   // Web Crypto API でトークン生成（Edge / Node.js 両対応）
   const array = new Uint8Array(32);
   crypto.getRandomValues(array);
@@ -60,21 +57,47 @@ export async function POST(req: Request) {
   const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(connectionToken));
   const tokenHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 
-  const { data, error } = await supabase
+  // 既存接続があれば token のみ更新（execution_commands の外部キー制約があるため DELETE 不可）
+  const { data: existing } = await supabase
     .from("mt5_connections")
-    .insert({
-      user_id:               user.id,
-      connection_token_hash: tokenHash,
-      broker,
-      server_name:           serverName,
-      mt5_login:             mt5Login,
-      account_currency:      "USD",
-      account_type:          "REAL",
-      account_mode:          "HEDGING",
-      leverage:              100,
-    })
-    .select("id, broker, server_name, mt5_login, status, created_at")
+    .select("id")
+    .eq("user_id", user.id)
     .single();
+
+  let data, error;
+
+  if (existing) {
+    // 既存レコードのトークンを更新
+    ({ data, error } = await supabase
+      .from("mt5_connections")
+      .update({
+        connection_token_hash: tokenHash,
+        broker,
+        server_name:           serverName,
+        mt5_login:             mt5Login,
+        status:                "PENDING",
+      })
+      .eq("user_id", user.id)
+      .select("id, broker, server_name, mt5_login, status, created_at")
+      .single());
+  } else {
+    // 新規作成
+    ({ data, error } = await supabase
+      .from("mt5_connections")
+      .insert({
+        user_id:               user.id,
+        connection_token_hash: tokenHash,
+        broker,
+        server_name:           serverName,
+        mt5_login:             mt5Login,
+        account_currency:      "USD",
+        account_type:          "REAL",
+        account_mode:          "HEDGING",
+        leverage:              100,
+      })
+      .select("id, broker, server_name, mt5_login, status, created_at")
+      .single());
+  }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
