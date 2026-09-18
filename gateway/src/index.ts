@@ -352,12 +352,19 @@ const SECRET = process.env.MT5_GATEWAY_SECRET ?? "";
 
 function auth(req: Request, res: Response, next: NextFunction): void {
   if (!SECRET) { res.status(401).json({ error: "Unauthorized: SECRET not configured" }); return; }
-  // Authorization: Bearer {secret} または x-gateway-secret: {secret} の両方を受け付ける
-  const bearer = (req.headers.authorization ?? "").replace("Bearer ", "").trim();
+  // 1. Authorization: Bearer {secret} または x-gateway-secret: {secret}
+  const bearer  = (req.headers.authorization ?? "").replace("Bearer ", "").trim();
   const xSecret = (req.headers["x-gateway-secret"] ?? "") as string;
-  const token = bearer || xSecret;
-  if (token !== SECRET) { res.status(401).json({ error: "Unauthorized" }); return; }
-  next();
+  const token   = bearer || xSecret;
+  if (token === SECRET) { next(); return; }
+
+  // 2. Bridge EA 認証: X-Connection-Id + X-Connection-Token（Bearer不要）
+  //    個別エンドポイントで verifyBridgeAuth による二次検証を行う
+  const connectionId    = (req.headers["x-connection-id"]    ?? "") as string;
+  const connectionToken = (req.headers["x-connection-token"] ?? "") as string;
+  if (connectionId && connectionToken) { next(); return; }
+
+  res.status(401).json({ error: "Unauthorized" });
 }
 
 // -----------------------------------------------------------------
@@ -365,7 +372,19 @@ function auth(req: Request, res: Response, next: NextFunction): void {
 // -----------------------------------------------------------------
 
 /** EA 起動通知 */
-app.post("/connect", auth, (req, res) => {
+app.post("/connect", auth, async (req, res) => {
+  // Bridge EA 認証: X-Connection-Id + X-Connection-Token で二次検証
+  const connectionId    = (req.headers["x-connection-id"]    ?? "") as string;
+  const connectionToken = (req.headers["x-connection-token"] ?? "") as string;
+  if (connectionId && connectionToken) {
+    const authResult = await verifyBridgeAuth(connectionId, connectionToken);
+    if (!authResult) {
+      console.warn(`[EA] /connect 認証失敗: connection_id=${connectionId}`);
+      res.status(401).json({ error: "Connection Token 認証失敗" });
+      return;
+    }
+    console.log(`[EA] Bridge EA 認証成功: user=${authResult.userId}`);
+  }
   eaInfo = req.body as Record<string, unknown>;
   const { symbol, login, broker, serverTime } = eaInfo as Record<string, unknown>;
   console.log(`[EA] 接続: symbol=${symbol} login=${login} broker=${broker} serverTime=${serverTime}`);
@@ -449,6 +468,50 @@ app.post("/bars/bulk", auth, (req, res) => {
   if (normalized.length > 0) {
     upsertBulkBars(symbol, timeframe, normalized as BarRecord[]).catch((err: unknown) => {
       console.warn(`[barData] bulk upsert failed ${key}:`, err);
+    });
+  }
+
+  res.json({ ok: true });
+});
+
+// Bridge EA 用エイリアス（/tick /bar /bars/bulk と同じ処理）
+app.post("/bridge/ticks", auth, (req, res) => {
+  const tick = req.body as Tick;
+  tickStore.set(tick.symbol, tick);
+  lastTickTs = Date.now();
+  broadcast({ type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
+  res.json({ ok: true });
+});
+
+app.post("/bridge/bars", auth, (req, res) => {
+  const bar = req.body as Bar & { symbol: string; timeframe: string };
+  upsertBar(bar.symbol, bar.timeframe, bar);
+  broadcast({ type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
+  res.json({ ok: true });
+});
+
+app.post("/bridge/bars/bulk", auth, (req, res) => {
+  const { symbol, timeframe, bars } = req.body as {
+    symbol: string; timeframe: string; bars: Bar[];
+  };
+  if (!symbol || !timeframe || !Array.isArray(bars)) {
+    res.status(400).json({ error: "symbol / timeframe / bars が必要です" });
+    return;
+  }
+  const key      = storeKey(symbol, timeframe);
+  const existing = barStore.get(key);
+  const normalized = bars.map(normalizeBar);
+
+  if (!existing || bars.length >= existing.length) {
+    const sorted = dedupAndSort(normalized);
+    barStore.set(key, sorted.slice(-MAX_BARS));
+    console.log(`[Bridge/Bulk] ${key}: ${sorted.length}本`);
+    persistSave();
+  }
+
+  if (normalized.length > 0) {
+    upsertBulkBars(symbol, timeframe, normalized as BarRecord[]).catch((err: unknown) => {
+      console.warn(`[barData] bridge bulk upsert failed ${key}:`, err);
     });
   }
 
