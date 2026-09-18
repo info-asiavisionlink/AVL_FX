@@ -1,43 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/application/stores/connectionStore";
 import { createClient } from "@/infrastructure/supabase/client";
 import { useEffect, useState } from "react";
 import {
-  BarChart2, Globe, CalendarDays,
-  Newspaper, Briefcase, History, Settings,
-  ScrollText, Cable, X, Bot, DatabaseZap, LogOut, User,
+  BarChart2, Globe, CalendarDays, Newspaper,
+  Briefcase, History, Settings, Cable, X, Bot, LogOut, User,
 } from "lucide-react";
 
-// NEON GREEN accent
-const NG      = "#00ff88";
-const NG_rgba = "rgba(0,255,136,";
-
 export const NAV = [
-  { href: "/ea",        icon: Bot,             label: "EA起動",      group: 1 },
-  { href: "/markets",   icon: Globe,           label: "マーケット",   group: 1 },
-  { href: "/chart",     icon: BarChart2,       label: "チャート",     group: 1 },
-  { href: "/calendar",  icon: CalendarDays,    label: "カレンダー",   group: 1 },
-  { href: "/news",      icon: Newspaper,       label: "ニュース",     group: 1 },
-  { href: "/positions",    icon: Briefcase,    label: "ポジション",   group: 2 },
-  { href: "/history",      icon: History,      label: "取引履歴",     group: 2 },
-  { href: "/market-data",  icon: DatabaseZap,  label: "データ",       group: 2 },
-  { href: "/logs",         icon: ScrollText,   label: "ログ",         group: 2 },
-  { href: "/settings",     icon: Settings,     label: "設定",         group: 2 },
+  { href: "/ea",        icon: Bot,          label: "EA起動",    group: 1 },
+  { href: "/markets",   icon: Globe,        label: "マーケット", group: 1 },
+  { href: "/chart",     icon: BarChart2,    label: "チャート",   group: 1 },
+  { href: "/calendar",  icon: CalendarDays, label: "カレンダー", group: 1 },
+  { href: "/news",      icon: Newspaper,    label: "ニュース",   group: 1 },
+  { href: "/positions", icon: Briefcase,    label: "ポジション", group: 2 },
+  { href: "/history",   icon: History,      label: "取引履歴",   group: 2 },
+  { href: "/settings",  icon: Settings,     label: "設定",       group: 2 },
 ];
 
 interface SidebarProps {
-  onClose?: () => void;   // mobile drawer: called after nav
-  mobile?: boolean;       // true = drawer mode (wider, has close button)
+  onClose?: () => void;
+  mobile?: boolean;
 }
 
 export function Sidebar({ onClose, mobile = false }: SidebarProps) {
-  const router   = useRouter();
+  const router = useRouter();
+  const pathname = usePathname();
+  const { status } = useConnectionStore();
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  let lastGroup = 0;
 
   useEffect(() => {
     const sb = createClient();
@@ -53,201 +48,171 @@ export function Sidebar({ onClose, mobile = false }: SidebarProps) {
     router.push("/login");
     router.refresh();
   }
-  const pathname   = usePathname();
-  const { status } = useConnectionStore();
-  let   lastGroup  = 0;
 
-  const width = mobile ? "w-[220px]" : "w-[104px]";
+  const width = mobile ? "w-[200px]" : "w-[88px]";
 
   return (
-    <aside className={cn(
-      "relative flex flex-col items-center h-full shrink-0 overflow-hidden",
-      width
-    )}
+    <aside
+      className={cn("relative flex flex-col h-full shrink-0 overflow-hidden", width)}
       style={{
-        background: "linear-gradient(180deg, #02040a 0%, #030508 100%)",
-        borderRight: `1px solid ${NG_rgba}0.12)`,
-        boxShadow: `2px 0 24px rgba(0,0,0,0.8), 0 0 30px ${NG_rgba}0.03)`,
-      }}>
-
-      {/* Animated vertical neon line */}
+        background: "linear-gradient(180deg, #f97316 0%, #ea580c 100%)",
+        borderRight: "1px solid rgba(249,115,22,0.2)",
+        boxShadow: "2px 0 16px rgba(0,0,0,0.08)",
+      }}
+    >
+      {/* 右端の薄いライン */}
       <div className="absolute right-0 top-0 bottom-0 w-px pointer-events-none"
-        style={{background:`linear-gradient(180deg, transparent 0%, ${NG_rgba}0.25) 30%, ${NG_rgba}0.45) 50%, ${NG_rgba}0.25) 70%, transparent 100%)`}}/>
+        style={{ background: "rgba(255,255,255,0.15)" }} />
 
-      {/* Subtle grid */}
-      <div className="absolute inset-0 avl-grid-bg opacity-[0.04] pointer-events-none"/>
-
-      {/* Logo row — close button on mobile */}
+      {/* ロゴ */}
       <div className={cn(
-        "relative flex items-center w-full h-[70px] shrink-0 mb-1",
+        "flex items-center w-full h-[68px] shrink-0",
         mobile ? "px-4 justify-between" : "justify-center"
-      )}>
-        <Link href="/" onClick={onClose}
-          className="group relative flex flex-col items-center justify-center select-none">
-          <div className="relative">
-            <div className="absolute inset-[-6px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-              style={{background:`radial-gradient(circle, rgba(0,200,255,0.12) 0%, transparent 70%)`}}/>
-            <div className="relative w-12 h-12 flex flex-col items-center justify-center"
-              style={{
-                background: "linear-gradient(135deg, rgba(0,30,60,0.9) 0%, rgba(0,15,30,0.95) 100%)",
-                border: "1px solid rgba(0,200,255,0.3)",
-                boxShadow: "0 0 16px rgba(0,200,255,0.15), inset 0 0 8px rgba(0,200,255,0.05)",
-              }}>
-              {[
-                "absolute top-0 left-0 w-2 h-2 border-t border-l border-cyan-400/60",
-                "absolute top-0 right-0 w-2 h-2 border-t border-r border-cyan-400/60",
-                "absolute bottom-0 left-0 w-2 h-2 border-b border-l border-cyan-400/60",
-                "absolute bottom-0 right-0 w-2 h-2 border-b border-r border-cyan-400/60",
-              ].map((cls, i) => <div key={i} className={cls} />)}
-              <span className="text-[14px] font-black font-mono leading-none avl-glow-cyan"
-                style={{color:"#00e5ff", letterSpacing:"0.05em"}}>AVL</span>
-              <span className="text-[8px] font-bold font-mono tracking-[0.2em] mt-0.5"
-                style={{color:"rgba(0,200,255,0.5)"}}>FX</span>
-            </div>
+      )}
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
+        <Link href="/chart" onClick={onClose}
+          className="flex flex-col items-center justify-center select-none gap-0.5">
+          <div
+            className="w-10 h-10 rounded-xl flex flex-col items-center justify-center"
+            style={{
+              background: "rgba(255,255,255,0.95)",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+            }}>
+            <span className="text-[13px] font-black leading-none" style={{ color: "#ea580c" }}>AVL</span>
+            <span className="text-[7px] font-bold tracking-widest" style={{ color: "#f97316" }}>FX</span>
           </div>
         </Link>
 
-        {/* Close button — mobile drawer only */}
         {mobile && onClose && (
           <button onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 rounded-full transition-colors"
-            style={{border:`1px solid ${NG_rgba}0.20)`, color: NG}}>
-            <X size={15}/>
+            className="flex items-center justify-center w-8 h-8 rounded-full"
+            style={{ background: "rgba(255,255,255,0.15)", color: "#fff" }}>
+            <X size={14} />
           </button>
         )}
       </div>
 
-      {/* Nav items */}
-      <div className="flex flex-col w-full flex-1 gap-0.5 px-1.5 py-1 overflow-y-auto">
+      {/* ナビゲーション */}
+      <nav className="flex flex-col w-full flex-1 px-2 py-3 gap-0.5 overflow-y-auto">
         {NAV.map(({ href, icon: Icon, label, group }, idx) => {
-          const isActive    = pathname === href || (href !== "/" && pathname.startsWith(href));
+          const isActive = pathname === href || (href !== "/" && pathname.startsWith(href));
           const showDivider = group !== lastGroup && lastGroup !== 0;
           lastGroup = group;
 
           return (
-            <div key={`${href}-${idx}`} className="w-full flex flex-col items-center">
+            <div key={`${href}-${idx}`} className="w-full">
               {showDivider && (
-                <div className="w-full h-px my-2 mx-1"
-                  style={{background:`linear-gradient(to right, transparent, ${NG_rgba}0.2), transparent)`}}/>
+                <div className="w-full h-px my-2"
+                  style={{ background: "rgba(255,255,255,0.2)" }} />
               )}
-              <Link href={href} onClick={onClose}
+              <Link
+                href={href}
+                onClick={onClose}
                 className={cn(
-                  "group relative flex gap-3 items-center w-full overflow-hidden transition-all duration-200",
-                  mobile
-                    ? "flex-row px-4 h-[52px]"
-                    : "flex-col justify-center h-[66px]",
-                  !isActive && "hover:bg-emerald-950/20"
+                  "relative flex items-center w-full rounded-xl transition-all duration-150",
+                  mobile ? "flex-row gap-3 px-3 h-[48px]" : "flex-col justify-center h-[62px]",
                 )}
                 style={isActive ? {
-                  background: `linear-gradient(135deg, ${NG_rgba}0.14) 0%, ${NG_rgba}0.06) 100%)`,
-                  border: `1px solid ${NG_rgba}0.30)`,
-                  boxShadow: `0 0 14px ${NG_rgba}0.12), inset 0 1px 0 ${NG_rgba}0.18)`,
-                } : { border: "1px solid transparent" }}>
-
-                {/* Active left accent */}
-                {isActive && (
-                  <div className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r"
-                    style={{background: NG, boxShadow:`0 0 8px ${NG}, 0 0 16px ${NG_rgba}0.4)`}}/>
+                  background: "rgba(255,255,255,0.95)",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                } : {
+                  background: "transparent",
+                }}
+              >
+                {/* ホバー */}
+                {!isActive && (
+                  <div className="absolute inset-0 rounded-xl opacity-0 hover:opacity-100 transition-opacity"
+                    style={{ background: "rgba(255,255,255,0.12)" }} />
                 )}
 
-                {/* Shimmer on hover */}
-                <div className="absolute inset-0 avl-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"/>
-
-                {/* Icon */}
-                <Icon size={mobile ? 18 : 19} className="transition-all duration-200 shrink-0"
-                  style={isActive
-                    ? { color: NG, filter:`drop-shadow(0 0 5px ${NG})` }
-                    : { color: "#4b5563" }
-                  }/>
-
-                {/* Label */}
-                <span className={cn(
-                  "font-mono font-semibold transition-colors",
-                  mobile ? "text-[11px] tracking-[0.08em]" : "text-[8.5px] tracking-[0.1em]"
-                )}
-                  style={isActive ? { color: NG } : { color: "#4b5563" }}>
+                <Icon
+                  size={mobile ? 17 : 18}
+                  className="shrink-0 transition-colors"
+                  style={{ color: isActive ? "#ea580c" : "rgba(255,255,255,0.85)" }}
+                />
+                <span
+                  className={cn(
+                    "font-semibold transition-colors leading-tight",
+                    mobile ? "text-[12px]" : "text-[9px] tracking-wide mt-0.5"
+                  )}
+                  style={{ color: isActive ? "#ea580c" : "rgba(255,255,255,0.85)" }}
+                >
                   {label}
                 </span>
               </Link>
             </div>
           );
         })}
+      </nav>
+
+      {/* MT5 接続 */}
+      <div className="w-full px-2 shrink-0"
+        style={{ borderTop: "1px solid rgba(255,255,255,0.15)" }}>
+        <Link
+          href="/mt5"
+          onClick={onClose}
+          className={cn(
+            "relative flex items-center w-full rounded-xl mt-2 mb-1 transition-all duration-150",
+            mobile ? "flex-row gap-3 px-3 h-[48px]" : "flex-col justify-center h-[62px]",
+          )}
+          style={pathname.startsWith("/mt5") ? {
+            background: "rgba(255,255,255,0.95)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+          } : { background: "transparent" }}
+        >
+          {!pathname.startsWith("/mt5") && (
+            <div className="absolute inset-0 rounded-xl opacity-0 hover:opacity-100 transition-opacity"
+              style={{ background: "rgba(255,255,255,0.12)" }} />
+          )}
+          <div className="relative shrink-0">
+            <Cable
+              size={mobile ? 17 : 18}
+              style={{ color: pathname.startsWith("/mt5") ? "#ea580c" : "rgba(255,255,255,0.85)" }}
+            />
+            {/* 接続ドット */}
+            <div
+              className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-white"
+              style={{
+                background:
+                  status === "connected" ? "#22c55e" :
+                  status === "connecting" ? "#fbbf24" : "#6b7280",
+              }}
+            />
+          </div>
+          <span
+            className={cn(
+              "font-semibold leading-tight",
+              mobile ? "text-[12px]" : "text-[9px] tracking-wide mt-0.5"
+            )}
+            style={{ color: pathname.startsWith("/mt5") ? "#ea580c" : "rgba(255,255,255,0.85)" }}
+          >
+            MT5
+          </span>
+        </Link>
       </div>
 
-      {/* ── ユーザーメニュー ── */}
+      {/* ユーザー */}
       {userEmail && (
-        <div className="w-full px-1.5 shrink-0">
-          <div className="w-full h-px mb-2"
-            style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.06), transparent)" }} />
-          <div className="px-2 py-1.5 rounded space-y-1"
-            style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-            <div className="flex items-center gap-1.5 min-w-0">
-              <User size={10} style={{ color: "#475569" }} />
-              <span className="text-[7px] font-mono truncate" style={{ color: "#475569" }}>
-                {userEmail}
+        <div className="w-full px-2 pb-3 shrink-0">
+          <div className="rounded-xl px-2 py-2 space-y-1.5"
+            style={{ background: "rgba(0,0,0,0.12)" }}>
+            <div className="flex items-center gap-1.5">
+              <User size={9} style={{ color: "rgba(255,255,255,0.6)" }} />
+              <span className="text-[7px] font-mono truncate" style={{ color: "rgba(255,255,255,0.6)" }}>
+                {mobile ? userEmail : userEmail.split("@")[0]}
               </span>
             </div>
             <button
               onClick={handleSignOut}
-              className="w-full flex items-center gap-1.5 px-1 py-1 rounded text-[8px] font-mono transition-all hover:opacity-80"
-              style={{ color: "#475569" }}>
+              className="w-full flex items-center gap-1.5 rounded text-[9px] font-semibold transition-opacity hover:opacity-70"
+              style={{ color: "rgba(255,255,255,0.8)" }}
+            >
               <LogOut size={9} />
               <span>ログアウト</span>
             </button>
           </div>
         </div>
       )}
-
-      {/* MT5 link at bottom */}
-      <div className="w-full px-1.5 pb-2 shrink-0">
-        <div className="w-full h-px mb-2"
-          style={{background:`linear-gradient(to right, transparent, ${NG_rgba}0.15), transparent)`}}/>
-        <Link href="/mt5" onClick={onClose}
-          className={cn(
-            "group relative flex items-center overflow-hidden transition-all",
-            mobile ? "flex-row gap-3 px-4 h-[52px]" : "flex-col justify-center h-[66px]",
-            !pathname.startsWith("/mt5") && "hover:bg-emerald-950/20"
-          )}
-          style={pathname.startsWith("/mt5") ? {
-            background: `linear-gradient(135deg, ${NG_rgba}0.14) 0%, ${NG_rgba}0.06) 100%)`,
-            border: `1px solid ${NG_rgba}0.30)`,
-            boxShadow: `0 0 14px ${NG_rgba}0.12)`,
-          } : { border: "1px solid transparent" }}>
-
-          <Cable size={mobile ? 18 : 19}
-            style={pathname.startsWith("/mt5")
-              ? { color: NG, filter:`drop-shadow(0 0 5px ${NG})` }
-              : { color: "#4b5563" }
-            }/>
-          <span className={cn(
-            "font-mono font-semibold",
-            mobile ? "text-[11px] tracking-[0.08em]" : "text-[8.5px] tracking-[0.1em]"
-          )}
-            style={pathname.startsWith("/mt5") ? {color: NG} : {color:"#4b5563"}}>
-            MT5
-          </span>
-
-          {/* Connection status dot */}
-          <div className={cn(
-            "flex items-center justify-center",
-            mobile ? "ml-auto" : "absolute top-2 right-2"
-          )}>
-            <div className={cn("w-2 h-2 rounded-full",
-              status==="connected"  ? "bg-green-400" :
-              status==="connecting" ? "bg-yellow-400" :
-              "bg-gray-700"
-            )}
-              style={{
-                boxShadow: status==="connected" ? "0 0 8px #22c55e" : status==="connecting" ? "0 0 6px #fbbf24" : "none",
-                animation: status==="connecting" ? "avl-blink 0.8s ease-in-out infinite" : "none",
-              }}/>
-            {status === "connected" && (
-              <div className="absolute w-2 h-2 rounded-full bg-green-400 opacity-60"
-                style={{animation:"avl-ring-expand 2s ease-out infinite"}}/>
-            )}
-          </div>
-        </Link>
-      </div>
     </aside>
   );
 }
