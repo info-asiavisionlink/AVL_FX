@@ -1,0 +1,87 @@
+// =================================================================
+// GET  /api/user/mt5-setup  — ユーザーの接続情報を取得（なければ自動作成）
+// POST /api/user/mt5-setup  — 既存接続を削除して再発行
+// =================================================================
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs"; // Edge では Node.js crypto が使えないため明示
+
+async function getSupabase() {
+  const cookieStore = await cookies();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+  );
+}
+
+// GET — 現在の接続情報を取得
+export async function GET() {
+  const supabase = await getSupabase();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { data } = await supabase
+    .from("mt5_connections")
+    .select("id, status, last_heartbeat_at, broker, server_name, mt5_login, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  return NextResponse.json({
+    connection: data ?? null,
+    gatewayUrl: process.env.NEXT_PUBLIC_MT5_GATEWAY_HTTP_URL ?? "",
+  });
+}
+
+// POST — 新しいConnection Token を発行（既存があれば削除して再作成）
+export async function POST(req: Request) {
+  const supabase = await getSupabase();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json().catch(() => ({}));
+  const broker     = body.broker     || "XM";
+  const serverName = body.serverName || "XMTrading-MT5";
+  const mt5Login   = body.mt5Login   || 0;
+
+  // 既存の接続を削除
+  await supabase.from("mt5_connections").delete().eq("user_id", user.id);
+
+  // Web Crypto API でトークン生成（Edge / Node.js 両対応）
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  const connectionToken = Array.from(array).map(b => b.toString(16).padStart(2, "0")).join("");
+
+  const encoder = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(connectionToken));
+  const tokenHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+  const { data, error } = await supabase
+    .from("mt5_connections")
+    .insert({
+      user_id:               user.id,
+      connection_token_hash: tokenHash,
+      broker,
+      server_name:           serverName,
+      mt5_login:             mt5Login,
+      account_currency:      "USD",
+      account_type:          "REAL",
+      account_mode:          "HEDGING",
+      leverage:              100,
+    })
+    .select("id, broker, server_name, mt5_login, status, created_at")
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({
+    connection: data,
+    connectionToken,
+    gatewayUrl: process.env.NEXT_PUBLIC_MT5_GATEWAY_HTTP_URL ?? "",
+    message: "接続情報を発行しました。EAに入力してください。",
+  }, { status: 201 });
+}
