@@ -115,22 +115,22 @@ interface BacktestResultState {
   warnings:           string[];
 }
 
-// ── 例文 ─────────────────────────────────────────────────────────
+// ── 例文（GOLD専用）────────────────────────────────────────────────
 const EXAMPLES: InputState[] = [
   {
-    entry:      "EURUSDのM5。H1の価格がEMA21より上で上昇トレンド。M5のRSIが30以下から上向きに反転したらBUY。ロンドン時間はエントリーしない。スプレッド2pips以下。",
-    takeProfit: "ATR14の3倍で利確。",
-    stopLoss:   "ATR14の2倍で損切り。",
+    entry:      "GOLD#のH1。一目均衡表の雲の上にいる上昇トレンド。RSIが50を上抜けたらBUY。NY時間のみ。スプレッド5pips以下。",
+    takeProfit: "直近高値またはATR14の3倍で利確。",
+    stopLoss:   "一目均衡表の雲の下端またはATR14の2倍で損切り。",
   },
   {
-    entry:      "USDJPYのH1。EMA21がEMA200より上でBUY。ADX25以上。NY時間のみ。",
+    entry:      "GOLD#のH4。EMA21がEMA200より上でBUY。MACDがシグナルを上抜けたタイミングでエントリー。ADX20以上。",
     takeProfit: "リスクリワード1:2",
     stopLoss:   "直近安値",
   },
   {
-    entry:      "GOLDのH4。上昇トレンド中にRSI50付近から反発したらBUY。",
-    takeProfit: "直近高値",
-    stopLoss:   "ATR × 2",
+    entry:      "GOLD#のM30。ロンドン・NY時間に限定。RSIが30以下から反発したらBUY。RSIが70以上から反落したらSELL。",
+    takeProfit: "ATR14 × 2.5",
+    stopLoss:   "ATR14 × 1.5",
   },
 ];
 
@@ -447,8 +447,8 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                 label="エントリー条件"
                 sublabel="ENTRY CONDITIONS"
                 accentColor={NG}
-                description="シンボル・時間足・売買条件・フィルターを自然言語で入力"
-                placeholder={"例：EURUSDのM5。\nH1の価格がEMA21より上で上昇トレンド。\nM5のRSIが30以下から上向きに反転したらBUY。\nロンドン時間はエントリーしない。スプレッド2pips以下。"}
+                description="時間足・売買条件・インジケーター・フィルターを自然言語で入力（シンボルは GOLD# 固定）"
+                placeholder={"例：GOLD#のH1。\n一目均衡表の雲の上で上昇トレンド。\nRSIが50を上抜けたらBUY。\nNY時間のみ。スプレッド5pips以下。"}
                 value={input.entry}
                 onChange={v => setInput(p => ({ ...p, entry: v }))}
                 disabled={step === "generating"}
@@ -460,8 +460,8 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                 label="利確条件"
                 sublabel="TAKE PROFIT"
                 accentColor={NG}
-                description="利益確定する条件を自然言語で入力"
-                placeholder={"例：ATR14の3倍で利確。\nまたは直近高値に到達したら利確。"}
+                description="GOLD の利益確定条件を入力（例：ATR×3、直近高値、RR 1:2）"
+                placeholder={"例：ATR14の3倍で利確。\nまたは直近高値（スイング高値）に到達したら利確。"}
                 value={input.takeProfit}
                 onChange={v => setInput(p => ({ ...p, takeProfit: v }))}
                 disabled={step === "generating"}
@@ -473,8 +473,8 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                 label="損切り条件"
                 sublabel="STOP LOSS"
                 accentColor={RED}
-                description="損切りする条件を自然言語で入力"
-                placeholder={"例：ATR14の2倍で損切り。\nまたは直近安値を下抜けたら損切り。"}
+                description="GOLD の損切り条件を入力（例：ATR×2、直近安値、一目雲の下端）"
+                placeholder={"例：ATR14の2倍で損切り。\nまたは直近安値（スイング安値）を下抜けたら損切り。"}
                 value={input.stopLoss}
                 onChange={v => setInput(p => ({ ...p, stopLoss: v }))}
                 disabled={step === "generating"}

@@ -339,13 +339,13 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
       {/* メッセージ */}
       <div className="text-center space-y-2">
         <p className="text-[13px] font-black tracking-[0.12em]" style={{ color: "#1a1a1a" }}>
-          EAがまだ登録されていません
+          GOLD EA がまだ登録されていません
         </p>
         <p className="text-[10px] font-mono leading-relaxed" style={{ color: "#9a9a9a" }}>
-          右上の「+ EA 追加」からトレード条件を入力し、
+          右上の「+ EA 追加」から GOLD のトレード条件を入力し、
         </p>
         <p className="text-[10px] font-mono" style={{ color: "#9a9a9a" }}>
-          バックテストを確認してEAを追加してください。
+          バックテストを確認して EA を追加してください。
         </p>
       </div>
 
@@ -385,7 +385,7 @@ const EMPTY_FILTERS: Filters = {
   search: "", symbols: [], indicators: [], direction: "", stratType: "", minWR: 0, minPips: 0,
 };
 
-const INDICATOR_TAGS = ["ICHIMOKU", "AO", "EMA", "MACD", "RSI", "ADX", "PSAR", "CCI", "BB", "STOCH"];
+const INDICATOR_TAGS = ["ICHIMOKU", "EMA", "MACD", "RSI", "ADX", "AO", "BB", "ATR", "PSAR", "STOCH"];
 const WR_OPTIONS     = [0, 30, 33, 35, 38, 40];
 const PIPS_OPTIONS   = [0, 100, 500, 1000];
 
@@ -604,10 +604,10 @@ export function EACommandCenter() {
           <div>
             <h1 className="text-xl font-black tracking-[0.18em] mb-1"
               style={{ color: "#f0f9ff", textShadow: "0 0 20px rgba(240,249,255,0.3)" }}>
-              EA コマンドセンター
+              GOLD EA センター
             </h1>
             <p className="text-[10px] tracking-[0.22em]" style={{ color: "#9a9a9a" }}>
-              EAの作成・検証・稼働を管理
+              GOLD#（XAU）専用 EA の作成・検証・稼働管理
             </p>
           </div>
 
