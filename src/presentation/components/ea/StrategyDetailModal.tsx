@@ -386,7 +386,7 @@ function WinLossBlock({ stats, label }: { stats: PeriodStats; label: string }) {
   return (
     <div className="rounded-lg p-4" style={{
       background: "rgba(0,0,0,0.02)",
-      border: "1px solid rgba(255,255,255,0.07)",
+      border: "1px solid rgba(0,0,0,0.08)",
     }}>
       <p className="text-[8px] font-black tracking-[0.22em] mb-3" style={{ color: "#4a4a4a" }}>{label}</p>
       <div className="flex items-center gap-3 mb-3">
@@ -394,7 +394,7 @@ function WinLossBlock({ stats, label }: { stats: PeriodStats; label: string }) {
           <p className="text-[32px] font-black leading-none" style={{ color: NG }}>{stats.wins}</p>
           <p className="text-[9px] font-mono mt-1" style={{ color: NG }}>勝ち</p>
         </div>
-        <p className="text-[20px] font-black" style={{ color: "#f8f7f4" }}>vs</p>
+        <p className="text-[20px] font-black" style={{ color: "#9a9a9a" }}>vs</p>
         <div className="flex-1 text-center">
           <p className="text-[32px] font-black leading-none" style={{ color: RED }}>{stats.losses}</p>
           <p className="text-[9px] font-mono mt-1" style={{ color: RED }}>負け</p>
@@ -410,7 +410,7 @@ function WinLossBlock({ stats, label }: { stats: PeriodStats; label: string }) {
           <p className="text-[20px] font-black leading-none" style={{ color: pfCol }}>{pfDisp}</p>
         </div>
       </div>
-      <div className="rounded px-3 py-2.5" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(0,0,0,0.04)" }}>
+      <div className="rounded px-3 py-2.5" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.04)" }}>
         <p className="text-[7px] font-black tracking-[0.2em] mb-2" style={{ color: "#9a9a9a" }}>PIPS 内訳</p>
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
@@ -584,6 +584,27 @@ function BacktestSummaryCard({
   }
   const monthKeys = [...monthMap.keys()].sort((a, b) => b.localeCompare(a)); // 新しい月が上
 
+  // 直近3ヶ月 pips（最新月を除く完了済み月ベース）
+  const recentMonthsLabel = (() => {
+    const now = new Date();
+    const months: string[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+    }
+    return months;
+  })();
+  const recentTrades = trades.filter(t => {
+    const key = (() => {
+      const d = new Date(t.entry_time);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    })();
+    return recentMonthsLabel.includes(key);
+  });
+  const recentPips = recentTrades.reduce((s, t) => s + t.pips, 0);
+  const recentWR   = recentTrades.length
+    ? (recentTrades.filter(t => t.result === "WIN").length / recentTrades.length) * 100 : 0;
+
   return (
     <div className="space-y-4">
 
@@ -607,6 +628,32 @@ function BacktestSummaryCard({
           </span>
         </div>
       </div>
+
+      {/* ── 直近3ヶ月 pips ──────────────────────────── */}
+      {recentTrades.length > 0 && (
+        <div className="rounded-lg px-4 py-3"
+          style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.20)" }}>
+          <p className="text-[8px] font-black tracking-[0.22em] mb-2" style={{ color: NG }}>
+            直近3ヶ月 pips
+            <span className="font-normal ml-1.5 text-[7px]" style={{ color: "#9a9a9a" }}>
+              ({recentMonthsLabel.map(k => { const [y, m] = k.split("-"); return `${y.slice(2)}/${m}`; }).join(" / ")})
+            </span>
+          </p>
+          <div className="flex items-center gap-4">
+            <div>
+              <p className="text-[22px] font-black font-mono leading-none"
+                style={{ color: recentPips >= 0 ? NG : RED }}>
+                {recentPips >= 0 ? "+" : ""}{recentPips.toFixed(1)}
+                <span className="text-[11px] ml-1" style={{ color: "#9a9a9a" }}>pips</span>
+              </p>
+            </div>
+            <div className="text-[10px] font-mono" style={{ color: "#4a4a4a" }}>
+              <p>{recentTrades.length}取引</p>
+              <p>WR {recentWR.toFixed(0)}%</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 全期間成績 ───────────────────────────────── */}
       {allStats && <WinLossBlock stats={allStats} label="全期間成績" />}
@@ -2235,7 +2282,7 @@ function CrossPhaseInterpretationSection({ strategyId }: { strategyId: string })
 
           {/* Footer */}
           {r.data_completeness_note && (
-            <p className="text-[7px] font-mono" style={{ color: "#f8f7f4" }}>
+            <p className="text-[7px] font-mono" style={{ color: "#9a9a9a" }}>
               {r.data_completeness_note}
             </p>
           )}
@@ -2720,7 +2767,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
 
           {/* Column headers */}
           <div className="grid text-[7px] font-mono tracking-widest px-3"
-            style={{ gridTemplateColumns: "40px 1fr 80px 80px 50px 70px", color: "#f8f7f4" }}>
+            style={{ gridTemplateColumns: "40px 1fr 80px 80px 50px 70px", color: "#9a9a9a" }}>
             <span>順位</span>
             <span>パラメーター</span>
             <span className="text-center">IS指標</span>
@@ -2847,7 +2894,7 @@ function OptimizeTab({ strategy }: { strategy: StrategyRecord }) {
             })}
           </div>
 
-          <p className="text-[7px] font-mono" style={{ color: "#f8f7f4" }}>
+          <p className="text-[7px] font-mono" style={{ color: "#9a9a9a" }}>
             上位{candidates.length}件 / 全{(jobData?.total_combinations ?? candidates.length).toLocaleString()}候補 · IS = サンプル内 · OOS = サンプル外 · 劣化率 = OOS/IS PIPS比
           </p>
         </div>
@@ -3213,7 +3260,7 @@ function WalkForwardSection({
             </div>
           )}
 
-          <p className="text-[7px] font-mono" style={{ color: "#f8f7f4" }}>
+          <p className="text-[7px] font-mono" style={{ color: "#9a9a9a" }}>
             WF判定: 堅牢(≥0.7+安定) / 条件付(≥0.5) / 過学習(&lt;0.5) / 判定不能(データ不足)
             · 自動適用無効: 推奨パラメーターの適用はPhase 4-AのAPPLYを使用してください。
           </p>
@@ -3435,7 +3482,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
             onChange={e => setIterations(e.target.value)}
             disabled={state === "running"}
             className="w-20 text-[9px] font-mono px-2 py-1 rounded"
-            style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)", color: "#f0f9ff", outline: "none" }}
+            style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)", color: "#1a1a1a", outline: "none" }}
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -3445,7 +3492,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
             onChange={e => setDdThreshold(e.target.value)}
             disabled={state === "running"}
             className="w-16 text-[9px] font-mono px-2 py-1 rounded"
-            style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)", color: "#f0f9ff", outline: "none" }}
+            style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)", color: "#1a1a1a", outline: "none" }}
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -3455,7 +3502,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
             onChange={e => setSeedInput(e.target.value)}
             disabled={state === "running"}
             className="w-20 text-[9px] font-mono px-2 py-1 rounded"
-            style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)", color: "#f0f9ff", outline: "none" }}
+            style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)", color: "#1a1a1a", outline: "none" }}
           />
         </div>
       </div>
@@ -3496,7 +3543,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
               ].map(({ label, value }) => (
                 <div key={label} className="p-2 rounded" style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.05)" }}>
                   <p className="text-[7px] font-mono mb-0.5" style={{ color: "#4a4a4a" }}>{label}</p>
-                  <p className="text-[10px] font-black font-mono" style={{ color: "#f0f9ff" }}>{value}</p>
+                  <p className="text-[10px] font-black font-mono" style={{ color: "#1a1a1a" }}>{value}</p>
                 </div>
               ))}
             </div>
@@ -3589,7 +3636,7 @@ function MonteCarloSection({ strategyId }: { strategyId: string }) {
           </div>
 
           {/* Footer */}
-          <p className="text-[7px] font-mono" style={{ color: "#f8f7f4" }}>
+          <p className="text-[7px] font-mono" style={{ color: "#9a9a9a" }}>
             手法: 取引順序シャッフル · シード: {result.seed} · シミュレーション数: {result.iterations.toLocaleString()}
             · パーセンタイルはシミュレーション統計であり、信頼区間ではありません。
           </p>
@@ -3802,7 +3849,7 @@ function VersionsTab({ strategyId, onApplyDone }: {
                 </div>
               )}
 
-              <p className="text-[7px] font-mono mt-1" style={{ color: "#f8f7f4" }}>
+              <p className="text-[7px] font-mono mt-1" style={{ color: "#9a9a9a" }}>
                 {new Date(v.created_at).toLocaleString("ja-JP", { timeZone: "UTC" })} UTC
               </p>
             </div>
@@ -3953,9 +4000,9 @@ export function StrategyDetailModal({
       <div
         className="relative z-10 flex flex-col w-full max-w-3xl rounded-lg overflow-hidden"
         style={{
-          background: "linear-gradient(135deg, rgba(4,8,18,0.98) 0%, rgba(2,4,10,0.99) 100%)",
+          background: "#fff",
           border:     `1px solid ${col}30`,
-          boxShadow:  `0 0 60px rgba(0,0,0,0.8), 0 0 30px ${col}08`,
+          boxShadow:  `0 8px 40px rgba(0,0,0,0.18), 0 0 20px ${col}08`,
           maxHeight:  "90vh",
         }}
       >
@@ -3965,7 +4012,7 @@ export function StrategyDetailModal({
         {/* Header */}
         <div className="flex items-start justify-between px-5 pt-4 pb-3 shrink-0">
           <div>
-            <h2 className="text-base font-black tracking-widest" style={{ color: "#f0f9ff" }}>
+            <h2 className="text-base font-black tracking-widest" style={{ color: "#1a1a1a" }}>
               {strategy.name}
             </h2>
             <div className="flex items-center gap-2 mt-1">

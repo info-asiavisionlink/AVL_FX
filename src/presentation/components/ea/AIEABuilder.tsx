@@ -40,6 +40,10 @@ interface MetricTargets {
 }
 const EMPTY_TARGETS: MetricTargets = { minPF: "", maxMDD: "", minWR: "", minPayoff: "" };
 
+// ── Fixed pips (SL/TP) ────────────────────────────────────────────
+interface FixedPips { tp: string; sl: string; }
+const EMPTY_FIXED_PIPS: FixedPips = { tp: "", sl: "" };
+
 // ── Bar summary ───────────────────────────────────────────────────
 interface TfSummary {
   count: number; years: number; label: string; firstDate: string | null;
@@ -95,6 +99,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
   const [direction,   setDirection]   = useState<Direction>("BOTH");
   const [sessions,    setSessions]    = useState<string[]>([]);
   const [targets,     setTargets]     = useState<MetricTargets>(EMPTY_TARGETS);
+  const [fixedPips,   setFixedPips]   = useState<FixedPips>(EMPTY_FIXED_PIPS);
   const [selectedTf,  setSelectedTf]  = useState<TF[]>([]);
   const [tfDesc,      setTfDesc]      = useState<Partial<Record<TF, string>>>({});
   const [candidates,  setCandidates]  = useState<Candidate[]>([]);
@@ -167,6 +172,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
     btAbortRef.current = true;
     setStep("input"); setDescription(""); setTargets(EMPTY_TARGETS);
     setTradeStyle(""); setDirection("BOTH"); setSessions([]);
+    setFixedPips(EMPTY_FIXED_PIPS);
     setSelectedTf([]); setTfDesc({}); setCandidates([]);
     setGenError(null); setAddedCount(0);
     onClose();
@@ -281,8 +287,23 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
         setStep("input"); return;
       }
 
+      // 固定 pips が設定されている場合は exit_conditions を上書き
+      const tp = fixedPips.tp ? Number(fixedPips.tp) : null;
+      const sl = fixedPips.sl ? Number(fixedPips.sl) : null;
+      const specWithPips = (spec: StrategySpec): StrategySpec => {
+        if (!tp && !sl) return spec;
+        return {
+          ...spec,
+          exit_conditions: {
+            ...(spec.exit_conditions ?? {}),
+            ...(sl ? { stop_loss:   { method: "FIXED_PIPS" as const, pips: sl } } : {}),
+            ...(tp ? { take_profit: { method: "FIXED_PIPS" as const, pips: tp } } : {}),
+          },
+        };
+      };
+
       const initial: Candidate[] = data.specs.map((spec, idx) => ({
-        idx, spec, btStatus: "pending", report: null, btError: null, added: false, saving: false,
+        idx, spec: specWithPips(spec), btStatus: "pending", report: null, btError: null, added: false, saving: false,
       }));
       setCandidates(initial);
       setStep("results");
@@ -648,6 +669,41 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                 <p className="text-[8px] mt-1.5 text-center" style={{ color: "#9a9a9a" }}>
                   空欄の場合は制約なし。「⚡ 自動設定」で AI が推奨値を入力します。
                 </p>
+
+                {/* 固定 pips (SL / TP) */}
+                <div className="mt-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="h-px w-6" style={{ background: "rgba(37,99,235,0.20)" }} />
+                    <span className="text-[8px] tracking-[0.25em] font-black" style={{ color: "#2563eb" }}>
+                      固定 pips 設定（任意）
+                    </span>
+                    <div className="h-px flex-1" style={{ background: "rgba(37,99,235,0.20)" }} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { key: "sl" as const, label: "最大損失", sub: "SL (pips)", placeholder: "30", color: "#ff4466" },
+                      { key: "tp" as const, label: "最大利益", sub: "TP (pips)", placeholder: "100", color: "#f97316" },
+                    ]).map(({ key, label, sub, placeholder, color }) => (
+                      <div key={key} className="flex flex-col gap-1">
+                        <div className="flex flex-col items-center gap-0.5 px-3 py-2.5 rounded"
+                          style={{ background: `${color}08`, border: `1px solid ${fixedPips[key] ? `${color}35` : "rgba(0,0,0,0.07)"}` }}>
+                          <span className="text-[8px] font-black" style={{ color }}>{label}</span>
+                          <span className="text-[7px]" style={{ color: "#9a9a9a" }}>{sub}</span>
+                          <input type="number" value={fixedPips[key]}
+                            onChange={e => setFixedPips(p => ({ ...p, [key]: e.target.value }))}
+                            disabled={step === "generating"}
+                            placeholder={placeholder}
+                            className="w-full text-center rounded text-[13px] font-bold outline-none mt-0.5"
+                            style={{ background: "transparent", border: "none", color: fixedPips[key] ? color : "#4a4a4a", caretColor: color }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[7px] mt-1.5 text-center" style={{ color: "#9a9a9a" }}>
+                    設定すると ATR ベースの SL/TP を固定 pips に置き換えます
+                  </p>
+                </div>
               </div>
 
               {genError && (
