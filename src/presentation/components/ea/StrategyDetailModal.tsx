@@ -61,6 +61,7 @@ interface DisplayResult {
   verdictReason:    string;
   sampleSizeWarning: boolean;
   dataCoverageDays: number;
+  dataFrom?:        number;  // バックテスト開始時刻 (ms)
   barCount:         number;
   periodLabel:      string;
   jobId:            string;
@@ -112,6 +113,7 @@ function normaliseResult(d: Record<string, unknown>, jobId: string): DisplayResu
     verdictReason:    String(d.verdictReason ?? d.verdict_reason ?? ""),
     sampleSizeWarning: Boolean(d.sampleSizeWarning ?? d.sample_size_warning ?? false),
     dataCoverageDays: n("dataCoverageDays", "data_coverage_days"),
+    dataFrom:         typeof d.dataFrom === "number" ? d.dataFrom : undefined,
     barCount:         n("barCount",         "bar_count_used"),
     periodLabel:      String(d.periodLabel ?? d.period_label ?? "AVAILABLE"),
     jobId,
@@ -437,17 +439,30 @@ function WinLossBlock({ stats, label }: { stats: PeriodStats; label: string }) {
 // 月次ドロップダウン行
 function MonthlyRow({ monthKey, trades }: { monthKey: string; trades: DBTrade[] }) {
   const [open, setOpen] = useState(false);
-  const stats = calcStats(trades);
-  if (!stats) return null;
+  const stats = calcStats(trades); // null = 0取引月
 
   const [year, mon] = monthKey.split("-");
   const label  = `${year}年${parseInt(mon)}月`;
+
+  // 0取引月は折りたたみ不要のシンプル行
+  if (!stats) {
+    return (
+      <div className="rounded px-3 py-2" style={{ background: "rgba(0,0,0,0.01)", border: "1px solid rgba(0,0,0,0.04)" }}>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-black font-mono w-24 shrink-0" style={{ color: "#d0d0d0" }}>{label}</span>
+          <span className="text-[9px] font-mono" style={{ color: "#d0d0d0" }}>0件 — 取引なし</span>
+          <span className="text-[10px] font-black font-mono ml-auto" style={{ color: "#d0d0d0" }}>±0</span>
+        </div>
+      </div>
+    );
+  }
+
   const ppCol  = stats.totalPips >= 0 ? NG : RED;
   const wrCol  = stats.winRate >= 50 ? NG : stats.winRate >= 33 ? AMBER : RED;
   const pfDisp = stats.pf === Infinity ? "∞" : stats.pf.toFixed(2);
 
   return (
-    <div className="rounded overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+    <div className="rounded overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.08)" }}>
       {/* ヘッダー行（クリックで展開） */}
       <button
         className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors"
@@ -582,7 +597,23 @@ function BacktestSummaryCard({
     if (!monthMap.has(key)) monthMap.set(key, []);
     monthMap.get(key)!.push(t);
   }
-  const monthKeys = [...monthMap.keys()].sort((a, b) => b.localeCompare(a)); // 新しい月が上
+
+  // バックテスト期間の全月を生成（ゼロ取引月も表示）
+  const allMonthKeys = (() => {
+    const startMs = result.dataFrom ?? (minTime || Date.now() - result.dataCoverageDays * 86_400_000);
+    const endMs   = startMs + result.dataCoverageDays * 86_400_000;
+    const keys: string[] = [];
+    const cur = new Date(startMs);
+    cur.setUTCDate(1);
+    const end = new Date(endMs);
+    while (cur <= end) {
+      keys.push(`${cur.getUTCFullYear()}-${String(cur.getUTCMonth() + 1).padStart(2, "0")}`);
+      cur.setUTCMonth(cur.getUTCMonth() + 1);
+    }
+    return keys.sort((a, b) => b.localeCompare(a)); // 新しい月が上
+  })();
+
+  const monthKeys = allMonthKeys; // ゼロ取引月含む全月
 
   // 直近3ヶ月 pips（最新月を除く完了済み月ベース）
   const recentMonthsLabel = (() => {
@@ -665,7 +696,7 @@ function BacktestSummaryCard({
             月次内訳 — クリックで詳細展開
           </p>
           {monthKeys.map(key => (
-            <MonthlyRow key={key} monthKey={key} trades={monthMap.get(key)!} />
+            <MonthlyRow key={key} monthKey={key} trades={monthMap.get(key) ?? []} />
           ))}
         </div>
       )}
