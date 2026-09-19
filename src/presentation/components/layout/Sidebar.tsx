@@ -12,13 +12,13 @@ import {
 } from "lucide-react";
 
 export const NAV = [
-  { href: "/ea",        icon: Bot,          label: "EA起動",    group: 1 },
-  { href: "/chart",     icon: BarChart2,    label: "チャート",   group: 1 },
-  { href: "/calendar",  icon: CalendarDays, label: "カレンダー", group: 1 },
-  { href: "/news",      icon: Newspaper,    label: "ニュース",   group: 1 },
-  { href: "/positions", icon: Briefcase,    label: "ポジション", group: 2 },
-  { href: "/history",   icon: History,      label: "取引履歴",   group: 2 },
-  { href: "/settings",  icon: Settings,     label: "設定",       group: 2 },
+  { href: "/traders",   icon: Bot,          label: "AIトレーダー", group: 1 },
+  { href: "/chart",     icon: BarChart2,    label: "チャート",      group: 1 },
+  { href: "/calendar",  icon: CalendarDays, label: "カレンダー",    group: 1 },
+  { href: "/news",      icon: Newspaper,    label: "ニュース",      group: 1 },
+  { href: "/positions", icon: Briefcase,    label: "ポジション",    group: 2 },
+  { href: "/history",   icon: History,      label: "取引履歴",      group: 2 },
+  { href: "/settings",  icon: Settings,     label: "設定",          group: 2 },
 ];
 
 interface SidebarProps {
