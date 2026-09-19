@@ -1,0 +1,640 @@
+// =================================================================
+// BacktestEngine.ts — Backtest Core Engine (Phase 2-C)
+//
+// Strategy Spec + Historical Bars → BacktestResult
+//
+// 処理順序 (各 bar):
+//   1. 前 bar のシグナルによる pending entry 実行 (次 bar Open)
+//   2. 保有ポジションの SL/TP 判定
+//   3. ポジションなし → StrategyEvaluator 呼び出し
+//   4. Signal あり → pending entry 登録 (次 bar で実行)
+//
+// 設計原則:
+//   - Supabase / MT5 / OpenAI 非依存
+//   - Look-ahead Bias 完全防止 (Phase 2-B から継承)
+//   - maxPositionsPerSymbol = 1
+// =================================================================
+
+import type { Bar }                   from "@/infrastructure/analysis/types";
+import type { StrategySpec }          from "@/lib/strategySchema";
+import type { PrecomputedIndicators, PrecomputeParams } from "./indicators";
+import { precomputeIndicators }       from "./indicators";
+import { TF_MS }                      from "./timeframe";
+import { evaluateStrategy, type EvaluationContext, type SignalResult } from "./evaluator";
+import { getSymbolConfig, pipToPrice, priceToPips, type SymbolConfig } from "./spreadConfig";
+import { AccountSimulator }           from "./AccountSimulator";
+import {
+  checkExitOnBar,
+  buildClosedTrade,
+  updateTrailingStop,
+  checkPartialExits,
+  type OpenPosition,
+  type BacktestTrade,
+} from "./PositionManager";
+import { WARMUP_BARS }                from "./types";
+
+// ------------------------------------------------------------------
+// Public types
+// ------------------------------------------------------------------
+
+export type { BacktestTrade } from "./PositionManager";
+
+export interface BacktestInput {
+  spec:              StrategySpec;
+  symbol:            string;
+  mainTimeframe:     string;
+  barsByTimeframe:   Record<string, Bar[]>;
+  initialBalance?:   number;
+  /** 固定ロットサイズ。デフォルト 0.01 */
+  fixedLot?:         number;
+  /** テスト用 Evaluator オーバーライド */
+  _evaluatorOverride?: (ctx: EvaluationContext) => SignalResult;
+  /** 研究用 Diagnostic — Spread を上書き (pips)。デフォルト: symbol config */
+  _spreadOverride?:   number;
+  /** 研究用 Diagnostic — Slippage を上書き (pips)。デフォルト: symbol config */
+  _slippageOverride?: number;
+}
+
+export interface BacktestResult {
+  trades:          BacktestTrade[];
+  totalTrades:     number;
+  wins:            number;
+  losses:          number;
+  winRate:         number;    // 0-100 (%)
+  totalPips:       number;
+  totalProfit:     number;
+  initialBalance:  number;
+  finalBalance:    number;
+  peakBalance:     number;
+  maxDrawdown:     number;
+  maxDrawdownPct:  number;
+  symbol:          string;
+  mainTimeframe:   string;
+  startTime:       number;   // warmup 後の最初の bar 開始時刻 (ms)
+  endTime:         number;   // 最後の bar 開始時刻 (ms)
+  barsProcessed:   number;   // warmup を除いた評価 bar 数
+}
+
+export class BacktestError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = "BacktestError";
+  }
+}
+
+// ------------------------------------------------------------------
+// Warmup 計算
+// ------------------------------------------------------------------
+
+function computeWarmup(spec: StrategySpec): number {
+  const indicators = new Set<string>();
+  let maxEmaPeriod = 21;
+
+  const collect = (ind: string, period?: number) => {
+    indicators.add(ind);
+    if (ind === "EMA" && period) maxEmaPeriod = Math.max(maxEmaPeriod, period);
+  };
+
+  for (const c of spec.entry_conditions.conditions) {
+    collect(c.indicator, c.period);
+  }
+  if (spec.filters?.trend_filter) {
+    collect(spec.filters.trend_filter.indicator, spec.filters.trend_filter.period);
+  }
+
+  let warmup = WARMUP_BARS.atr(14); // ATR for SL/TP
+
+  for (const ind of indicators) {
+    switch (ind) {
+      case "EMA":            warmup = Math.max(warmup, maxEmaPeriod - 1); break;
+      case "SMA":            warmup = Math.max(warmup, WARMUP_BARS.sma(50)); break;
+      case "RSI":            warmup = Math.max(warmup, WARMUP_BARS.rsi(14)); break;
+      case "MACD":           warmup = Math.max(warmup, WARMUP_BARS.macd(26, 9)); break;
+      case "ADX":            warmup = Math.max(warmup, WARMUP_BARS.adx(14)); break;
+      case "BOLLINGER_BANDS":warmup = Math.max(warmup, WARMUP_BARS.bb(20)); break;
+      case "STOCHASTIC":     warmup = Math.max(warmup, WARMUP_BARS.stoch(14)); break;
+      case "WMA":            warmup = Math.max(warmup, WARMUP_BARS.wma(14)); break;
+      case "VWMA":           warmup = Math.max(warmup, WARMUP_BARS.vwma(14)); break;
+      case "CCI":            warmup = Math.max(warmup, WARMUP_BARS.cci(14)); break;
+      case "WILLIAMS_R":     warmup = Math.max(warmup, WARMUP_BARS.williamsR(14)); break;
+      case "MOMENTUM":       warmup = Math.max(warmup, WARMUP_BARS.momentum(10)); break;
+      case "OBV":            warmup = Math.max(warmup, WARMUP_BARS.obv()); break;
+      case "VOLUME_RATIO":   warmup = Math.max(warmup, WARMUP_BARS.volumeRatio(20)); break;
+      case "HMA":            warmup = Math.max(warmup, WARMUP_BARS.hma(14)); break;
+      case "DEMA":           warmup = Math.max(warmup, WARMUP_BARS.dema(14)); break;
+      case "ICHIMOKU":       warmup = Math.max(warmup, WARMUP_BARS.ichimoku()); break;
+      case "DONCHIAN":       warmup = Math.max(warmup, WARMUP_BARS.donchian(20)); break;
+      case "KELTNER":        warmup = Math.max(warmup, WARMUP_BARS.keltner(20, 10)); break;
+      case "STOCH_RSI":      warmup = Math.max(warmup, WARMUP_BARS.stochRsi(14, 14)); break;
+      case "ROC":            warmup = Math.max(warmup, WARMUP_BARS.roc(14)); break;
+      case "AO":             warmup = Math.max(warmup, WARMUP_BARS.ao()); break;
+      case "AROON":          warmup = Math.max(warmup, WARMUP_BARS.aroon(14)); break;
+      case "FORCE_INDEX":    warmup = Math.max(warmup, WARMUP_BARS.forceIndex(13)); break;
+      case "MFI":            warmup = Math.max(warmup, WARMUP_BARS.mfi(14)); break;
+      case "CMF":            warmup = Math.max(warmup, WARMUP_BARS.cmf(20)); break;
+      case "PSAR":           warmup = Math.max(warmup, WARMUP_BARS.psar()); break;
+    }
+  }
+
+  return warmup;
+}
+
+// ------------------------------------------------------------------
+// Entry price (Spread + Slippage)
+// ------------------------------------------------------------------
+
+function calcEntryPrice(
+  barOpen:   number,
+  direction: "BUY" | "SELL",
+  cfg:       SymbolConfig,
+): number {
+  const cost = pipToPrice(cfg.spreadPips + cfg.slippagePips, cfg);
+  return direction === "BUY" ? barOpen + cost : barOpen - cost;
+}
+
+// ------------------------------------------------------------------
+// SL/TP 計算 (exit_conditions から)
+// ------------------------------------------------------------------
+
+type SLSpec = NonNullable<NonNullable<StrategySpec["exit_conditions"]>["stop_loss"]>;
+type TPSpec = NonNullable<NonNullable<StrategySpec["exit_conditions"]>["take_profit"]>;
+type TPItem = NonNullable<NonNullable<StrategySpec["exit_conditions"]>["take_profits"]>[number];
+type TrailingStopSpec = NonNullable<NonNullable<StrategySpec["exit_conditions"]>["trailing_stop"]>;
+
+function calcSL(
+  direction: "BUY" | "SELL",
+  entry:     number,
+  slSpec:    SLSpec | undefined,
+  atr:       number,
+  bars:      Bar[],
+  barIdx:    number,
+  pipSize:   number,
+): number {
+  const mult = slSpec?.multiplier ?? 1.5;
+  const sign = direction === "BUY" ? -1 : 1; // BUY: below entry, SELL: above
+
+  switch (slSpec?.method) {
+    case "ATR":
+      return entry + sign * atr * mult;
+
+    case "FIXED_PIPS":
+      return entry + sign * (slSpec.pips ?? 20) * pipSize;
+
+    case "PERCENTAGE": {
+      const pct = (slSpec.pct ?? 0.5) / 100;
+      return entry * (1 + sign * pct);
+    }
+
+    case "SWING_LOW": {
+      // BUY SL: 直近安値の下
+      const lookback = slSpec.period ?? 20;
+      const from = Math.max(0, barIdx - lookback + 1);
+      let swingLow = Infinity;
+      for (let i = from; i <= barIdx; i++) swingLow = Math.min(swingLow, bars[i].low);
+      return isFinite(swingLow) ? swingLow - atr * 0.3 : entry - atr * mult;
+    }
+
+    case "SWING_HIGH": {
+      // SELL SL: 直近高値の上
+      const lookback = slSpec.period ?? 20;
+      const from = Math.max(0, barIdx - lookback + 1);
+      let swingHigh = -Infinity;
+      for (let i = from; i <= barIdx; i++) swingHigh = Math.max(swingHigh, bars[i].high);
+      return isFinite(swingHigh) ? swingHigh + atr * 0.3 : entry + atr * mult;
+    }
+
+    default:
+      // 未設定: ATR × 1.5
+      return entry + sign * atr * 1.5;
+  }
+}
+
+function calcTP(
+  direction: "BUY" | "SELL",
+  entry:     number,
+  tpSpec:    TPSpec | undefined,
+  atr:       number,
+  bars:      Bar[],
+  barIdx:    number,
+  pipSize:   number,
+  sl:        number,
+): number {
+  const slDist  = Math.abs(entry - sl);
+  const sign    = direction === "BUY" ? 1 : -1; // BUY: above entry
+
+  switch (tpSpec?.method) {
+    case "ATR": {
+      const mult = tpSpec.multiplier ?? 2.0;
+      return entry + sign * atr * mult;
+    }
+
+    case "FIXED_PIPS":
+      return entry + sign * (tpSpec.pips ?? 40) * pipSize;
+
+    case "RR_RATIO": {
+      const rr = tpSpec.rr_ratio ?? 1.5;
+      return entry + sign * slDist * rr;
+    }
+
+    case "PERCENTAGE": {
+      const pct = (tpSpec.pct ?? 1.0) / 100;
+      return entry * (1 + sign * pct);
+    }
+
+    case "SWING_HIGH": {
+      // BUY TP: 直近高値
+      const lookback = tpSpec.period ?? 20;
+      const from = Math.max(0, barIdx - lookback + 1);
+      let swingHigh = -Infinity;
+      for (let i = from; i <= barIdx; i++) swingHigh = Math.max(swingHigh, bars[i].high);
+      return isFinite(swingHigh) && swingHigh > entry + slDist
+        ? swingHigh - atr * 0.1
+        : entry + slDist * 1.5;
+    }
+
+    case "SWING_LOW": {
+      // SELL TP: 直近安値
+      const lookback = tpSpec.period ?? 20;
+      const from = Math.max(0, barIdx - lookback + 1);
+      let swingLow = Infinity;
+      for (let i = from; i <= barIdx; i++) swingLow = Math.min(swingLow, bars[i].low);
+      return isFinite(swingLow) && swingLow < entry - slDist
+        ? swingLow + atr * 0.1
+        : entry - slDist * 1.5;
+    }
+
+    default:
+      // 未設定: SL距離 × 1.5
+      return entry + sign * slDist * 1.5;
+  }
+}
+
+/** 複数TPの1レベル分の価格を計算（calcTP と同じロジックだが TPItem に対応）*/
+function calcTPItemPrice(
+  direction: "BUY" | "SELL",
+  entry:     number,
+  tpItem:    TPItem,
+  atr:       number,
+  bars:      Bar[],
+  barIdx:    number,
+  pipSize:   number,
+  sl:        number,
+): number {
+  const slDist = Math.abs(entry - sl);
+  const sign   = direction === "BUY" ? 1 : -1;
+
+  switch (tpItem.method) {
+    case "ATR":
+      return entry + sign * atr * (tpItem.multiplier ?? 2.0);
+    case "FIXED_PIPS":
+      return entry + sign * (tpItem.pips ?? 40) * pipSize;
+    case "RR_RATIO":
+      return entry + sign * slDist * (tpItem.rr_ratio ?? 1.5);
+    case "PERCENTAGE":
+      return entry * (1 + sign * (tpItem.pct ?? 1.0) / 100);
+    case "SWING_HIGH": {
+      const lookback = tpItem.period ?? 20;
+      const from = Math.max(0, barIdx - lookback + 1);
+      let swingHigh = -Infinity;
+      for (let i = from; i <= barIdx; i++) swingHigh = Math.max(swingHigh, bars[i].high);
+      return isFinite(swingHigh) && swingHigh > entry + slDist
+        ? swingHigh - atr * 0.1
+        : entry + slDist * 1.5;
+    }
+    case "SWING_LOW": {
+      const lookback = tpItem.period ?? 20;
+      const from = Math.max(0, barIdx - lookback + 1);
+      let swingLow = Infinity;
+      for (let i = from; i <= barIdx; i++) swingLow = Math.min(swingLow, bars[i].low);
+      return isFinite(swingLow) && swingLow < entry - slDist
+        ? swingLow + atr * 0.1
+        : entry - slDist * 1.5;
+    }
+    default:
+      return entry + sign * slDist * 1.5;
+  }
+}
+
+/** トレーリングストップの距離を価格単位で計算 */
+function calcTrailDistance(
+  ts:         TrailingStopSpec,
+  entryPrice: number,
+  atr:        number,
+  pipSize:    number,
+): number {
+  switch (ts.method) {
+    case "ATR":
+      return atr * (ts.multiplier ?? 2.0);
+    case "FIXED_PIPS":
+      return (ts.pips ?? 20) * pipSize;
+    case "PERCENTAGE":
+      return entryPrice * (ts.pct ?? 1.0) / 100;
+    default:
+      return 0;
+  }
+}
+
+function calcSLTP(params: {
+  direction:      "BUY" | "SELL";
+  entryPrice:     number;
+  exitConditions: StrategySpec["exit_conditions"];
+  bars:           Bar[];
+  inds:           PrecomputedIndicators;
+  barIdx:         number;   // signal bar index (SL/TP 計算の基準)
+  cfg:            SymbolConfig;
+}): { sl: number; tp: number; trailDistance: number; tpLevels: import("./PositionManager").TPLevel[] } {
+  const { direction, entryPrice, exitConditions, bars, inds, barIdx, cfg } = params;
+  const atr = inds.atr[barIdx] ?? pipToPrice(15, cfg); // ATR fallback: 15 pips
+
+  const sl = calcSL(direction, entryPrice, exitConditions?.stop_loss, atr, bars, barIdx, cfg.pipSize);
+  const tp = calcTP(direction, entryPrice, exitConditions?.take_profit, atr, bars, barIdx, cfg.pipSize, sl);
+
+  // ── TrailingStop ─────────────────────────────────────────────
+  let trailDistance = 0;
+  const ts = exitConditions?.trailing_stop;
+  if (ts) {
+    trailDistance = calcTrailDistance(ts, entryPrice, atr, cfg.pipSize);
+  }
+
+  // ── MultiTP ──────────────────────────────────────────────────
+  const tpLevels: import("./PositionManager").TPLevel[] = [];
+  const tpItems = exitConditions?.take_profits;
+  if (tpItems && tpItems.length > 0) {
+    for (const item of tpItems) {
+      const price = calcTPItemPrice(direction, entryPrice, item, atr, bars, barIdx, cfg.pipSize, sl);
+      tpLevels.push({ price, portion: item.portion, hit: false });
+    }
+  }
+
+  return { sl, tp, trailDistance, tpLevels };
+}
+
+// ------------------------------------------------------------------
+// Main engine
+// ------------------------------------------------------------------
+
+export function runBacktest(input: BacktestInput): BacktestResult {
+  const {
+    spec,
+    symbol,
+    mainTimeframe,
+    barsByTimeframe,
+    initialBalance  = 10_000,
+    fixedLot        = 0.01,
+    _evaluatorOverride,
+    _spreadOverride,
+    _slippageOverride,
+  } = input;
+
+  // ── Validate ──────────────────────────────────────────────
+  const mainBars = barsByTimeframe[mainTimeframe];
+  if (!mainBars || mainBars.length === 0) {
+    throw new BacktestError(`No bars for main timeframe "${mainTimeframe}"`);
+  }
+  if (!TF_MS[mainTimeframe]) {
+    throw new BacktestError(`Unknown timeframe: ${mainTimeframe}`);
+  }
+
+  // ── Precompute indicators ──────────────────────────────────
+  // EMA 期間を spec から TF 別に収集し、正しい EMA を事前計算する
+  function getSpecEmaPeriods(tf: string): { ema1Period: number; ema2Period: number } {
+    const periods = new Set<number>();
+    for (const c of spec.entry_conditions.conditions) {
+      if (c.timeframe === tf && c.indicator === "EMA" && c.period) periods.add(c.period);
+    }
+    if (spec.filters?.trend_filter?.timeframe === tf &&
+        spec.filters.trend_filter.indicator === "EMA" &&
+        spec.filters.trend_filter.period) {
+      periods.add(spec.filters.trend_filter.period);
+    }
+    if (spec.filters?.trend_filters) {
+      for (const f of spec.filters.trend_filters) {
+        if (f.timeframe === tf && f.indicator === "EMA" && f.period) periods.add(f.period);
+      }
+    }
+    const sorted = [...periods].sort((a, b) => a - b);
+    return { ema1Period: sorted[0] ?? 21, ema2Period: sorted[1] ?? 200 };
+  }
+
+  const indicatorsByTf: Record<string, PrecomputedIndicators> = {};
+  for (const [tf, bars] of Object.entries(barsByTimeframe)) {
+    if (bars.length > 0) {
+      indicatorsByTf[tf] = precomputeIndicators(bars, getSpecEmaPeriods(tf));
+    }
+  }
+
+  // ── Warmup ────────────────────────────────────────────────
+  const warmup = computeWarmup(spec);
+  if (mainBars.length <= warmup) {
+    throw new BacktestError(
+      `Insufficient bars: ${mainBars.length} bars (need > ${warmup} for warmup)`
+    );
+  }
+
+  // ── Init ──────────────────────────────────────────────────
+  const _baseCfg = getSymbolConfig(symbol);
+  const cfg = (_spreadOverride !== undefined || _slippageOverride !== undefined)
+    ? { ..._baseCfg, spreadPips: _spreadOverride ?? _baseCfg.spreadPips, slippagePips: _slippageOverride ?? _baseCfg.slippagePips }
+    : _baseCfg;
+  const account = new AccountSimulator(initialBalance);
+  const trades:  BacktestTrade[] = [];
+  let   tradeId = 0;
+
+  let openPos:            OpenPosition | null = null;
+  let pendingDirection:   "BUY" | "SELL" | null = null;
+  let pendingSignalBarIdx = -1;
+
+  const tfMs     = TF_MS[mainTimeframe]!;
+  const mainInds = indicatorsByTf[mainTimeframe];
+  const evaluator = _evaluatorOverride ?? evaluateStrategy;
+
+  // ── Main loop ─────────────────────────────────────────────
+  for (let i = warmup; i < mainBars.length; i++) {
+    const bar = mainBars[i];
+
+    // Step 1: Execute pending entry at this bar's open
+    if (pendingDirection != null && openPos == null) {
+      const dir    = pendingDirection;
+      const sigIdx = pendingSignalBarIdx;
+      pendingDirection   = null;
+      pendingSignalBarIdx = -1;
+
+      const entryPrice = calcEntryPrice(bar.open, dir, cfg);
+      const { sl, tp, trailDistance, tpLevels } = calcSLTP({
+        direction:      dir,
+        entryPrice,
+        exitConditions: spec.exit_conditions,
+        bars:           mainBars,
+        inds:           mainInds,
+        barIdx:         sigIdx,  // signal bar の ATR を使用
+        cfg,
+      });
+
+      openPos = {
+        tradeId:      ++tradeId,
+        direction:    dir,
+        symbol,
+        timeframe:    mainTimeframe,
+        entryTime:    bar.time,
+        entryPrice,
+        sl,
+        tp,
+        lot:          fixedLot,
+        spreadPips:   cfg.spreadPips,
+        slippagePips: cfg.slippagePips,
+        entryBarIdx:  i,
+        // TrailingStop 初期化
+        trailSL:       0,
+        highestFav:    entryPrice,
+        trailDistance,
+        // MultiTP 初期化
+        remainingLot:  1.0,
+        tpLevels,
+      };
+    }
+
+    // Step 2: Check exits on open position using current bar
+    if (openPos != null) {
+      // Step 2a: MultiTP 部分決済チェック
+      if ((openPos.tpLevels?.length ?? 0) > 0 && (openPos.remainingLot ?? 1) > 0) {
+        const partials = checkPartialExits(openPos, bar, i, cfg.pipSize, cfg.pipValuePerLot);
+        for (const partial of partials) {
+          trades.push(partial);
+          account.recordTrade({ pips: partial.pips, profit: partial.profit, result: partial.result });
+        }
+        // 全レベルヒットして残ポジションがゼロになった場合
+        if ((openPos.remainingLot ?? 1) <= 0) {
+          openPos = null;
+        }
+      }
+
+      // Step 2b: TrailingStop チェック（ポジションがまだ存在する場合）
+      if (openPos != null && (openPos.trailDistance ?? 0) > 0) {
+        const activationPips = spec.exit_conditions?.trailing_stop?.activation_pips ?? 0;
+        const trailHit = updateTrailingStop(openPos, bar, cfg.pipSize, activationPips);
+        if (trailHit) {
+          // TrailingStop でクローズ（残ポジション全体）
+          const trailLot = (openPos.tpLevels?.length ?? 0) > 0
+            ? openPos.lot * (openPos.remainingLot ?? 1)
+            : openPos.lot;
+          const closedByTrail = buildClosedTrade(
+            { ...openPos, lot: trailLot },
+            bar, i, "SL", trailHit.price,
+            cfg.pipSize, cfg.pipValuePerLot,
+          );
+          trades.push(closedByTrail);
+          account.recordTrade({ pips: closedByTrail.pips, profit: closedByTrail.profit, result: closedByTrail.result });
+          openPos = null;
+        }
+      }
+
+      // Step 2c: 通常の SL/TP チェック
+      if (openPos != null) {
+        // MultiTP が設定されている場合は単一TPは使わない（tpLevels で管理）
+        if ((openPos.tpLevels?.length ?? 0) > 0) {
+          // SLのみチェック（TPはMultiTPで処理済み）
+          const dir2 = openPos.direction;
+          let slHit = false;
+          let slPrice = openPos.sl;
+
+          if (dir2 === "BUY") {
+            if (bar.open <= openPos.sl) { slHit = true; slPrice = bar.open; }
+            else if (bar.low <= openPos.sl) { slHit = true; slPrice = openPos.sl; }
+          } else {
+            if (bar.open >= openPos.sl) { slHit = true; slPrice = bar.open; }
+            else if (bar.high >= openPos.sl) { slHit = true; slPrice = openPos.sl; }
+          }
+
+          if (slHit && (openPos.remainingLot ?? 1) > 0) {
+            const remainLot = openPos.lot * (openPos.remainingLot ?? 1);
+            const closed = buildClosedTrade(
+              { ...openPos, lot: remainLot },
+              bar, i, "SL", slPrice,
+              cfg.pipSize, cfg.pipValuePerLot,
+            );
+            trades.push(closed);
+            account.recordTrade({ pips: closed.pips, profit: closed.profit, result: closed.result });
+            openPos = null;
+          }
+        } else {
+          // 通常の SL/TP チェック
+          const exitCheck = checkExitOnBar(openPos, bar);
+          if (exitCheck.hit) {
+            const closed = buildClosedTrade(
+              openPos, bar, i,
+              exitCheck.reason, exitCheck.price,
+              cfg.pipSize, cfg.pipValuePerLot,
+            );
+            trades.push(closed);
+            account.recordTrade({ pips: closed.pips, profit: closed.profit, result: closed.result });
+            openPos = null;
+          }
+        }
+      }
+    }
+
+    // Step 3: No position → evaluate strategy
+    if (openPos == null && pendingDirection == null) {
+      const evalTime = bar.time + tfMs;
+      const ctx: EvaluationContext = {
+        spec,
+        evaluationTime:        evalTime,
+        barsByTimeframe,
+        indicatorsByTimeframe: indicatorsByTf,
+        spreadPips:            cfg.spreadPips,
+      };
+      const signal = evaluator(ctx);
+
+      // Signal あり かつ 次 bar が存在する場合のみ entry 予約
+      if (signal !== "SKIP" && i + 1 < mainBars.length) {
+        pendingDirection   = signal;
+        pendingSignalBarIdx = i;
+      }
+    }
+  }
+
+  // ── END_OF_DATA: 残ポジションを最終 bar Close でクローズ ─
+  if (openPos != null) {
+    const lastBar = mainBars[mainBars.length - 1];
+    const lastIdx = mainBars.length - 1;
+    // MultiTP 設定時は残 lot 分のみクローズ
+    const remainingLot = (openPos.tpLevels?.length ?? 0) > 0
+      ? openPos.lot * (openPos.remainingLot ?? 1)
+      : openPos.lot;
+    const closed  = buildClosedTrade(
+      { ...openPos, lot: remainingLot },
+      lastBar, lastIdx,
+      "END_OF_DATA", lastBar.close,
+      cfg.pipSize, cfg.pipValuePerLot
+    );
+    trades.push(closed);
+    account.recordTrade({ pips: closed.pips, profit: closed.profit, result: closed.result });
+    openPos = null;
+  }
+
+  // ── Result ────────────────────────────────────────────────
+  const state   = account.getState();
+  const wins    = trades.filter(t => t.result === "WIN").length;
+  const losses  = trades.filter(t => t.result === "LOSS").length;
+  const barsProcessed = mainBars.length - warmup;
+
+  return {
+    trades,
+    totalTrades:    trades.length,
+    wins,
+    losses,
+    winRate:        trades.length > 0 ? Math.round(wins / trades.length * 10000) / 100 : 0,
+    totalPips:      Math.round(state.totalPips * 10) / 10,
+    totalProfit:    Math.round(state.realizedProfit * 100) / 100,
+    initialBalance,
+    finalBalance:   Math.round(state.balance * 100) / 100,
+    peakBalance:    Math.round(state.peakBalance * 100) / 100,
+    maxDrawdown:    Math.round(state.maxDrawdown * 100) / 100,
+    maxDrawdownPct: Math.round(state.maxDrawdownPct * 100) / 100,
+    symbol,
+    mainTimeframe,
+    startTime:      mainBars[warmup].time,
+    endTime:        mainBars[mainBars.length - 1].time,
+    barsProcessed,
+  };
+}
