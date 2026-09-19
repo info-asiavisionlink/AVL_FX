@@ -76,12 +76,24 @@ function payoffRatio(pf: number|null, wr: number) {
 }
 
 
+// ── Trade style / direction / session ─────────────────────────────
+type TradeStyle = "SCALPING"|"DAY_TRADE"|"SWING"|"";
+type Direction  = "BUY"|"SELL"|"BOTH";
+const SESSION_OPTIONS = [
+  { key: "TOKYO",    label: "東京" },
+  { key: "LONDON",   label: "ロンドン" },
+  { key: "NEW_YORK", label: "NY" },
+] as const;
+
 // =================================================================
 // メインコンポーネント
 // =================================================================
 export function AIEABuilder({ open, onClose, onSaved }: Props) {
   const [step,        setStep]        = useState<Step>("input");
   const [description, setDescription] = useState("");
+  const [tradeStyle,  setTradeStyle]  = useState<TradeStyle>("");
+  const [direction,   setDirection]   = useState<Direction>("BOTH");
+  const [sessions,    setSessions]    = useState<string[]>([]);
   const [targets,     setTargets]     = useState<MetricTargets>(EMPTY_TARGETS);
   const [selectedTf,  setSelectedTf]  = useState<TF[]>([]);
   const [tfDesc,      setTfDesc]      = useState<Partial<Record<TF, string>>>({});
@@ -154,6 +166,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
   function handleClose() {
     btAbortRef.current = true;
     setStep("input"); setDescription(""); setTargets(EMPTY_TARGETS);
+    setTradeStyle(""); setDirection("BOTH"); setSessions([]);
     setSelectedTf([]); setTfDesc({}); setCandidates([]);
     setGenError(null); setAddedCount(0);
     onClose();
@@ -237,13 +250,21 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
     if (targets.minWR     && !isNaN(+targets.minWR))     t.minWR     = +targets.minWR;
     if (targets.minPayoff && !isNaN(+targets.minPayoff)) t.minPayoff = +targets.minPayoff;
 
-    // マルチTF 情報を自然言語に追加
+    // スタイル・方向・セッション・マルチTF 情報を description に付加
     let fullDesc = description.trim();
+    if (tradeStyle) {
+      const styleMap: Record<string, string> = { SCALPING: "スキャルピング", DAY_TRADE: "デイトレード", SWING: "スイング" };
+      fullDesc = `[トレードスタイル: ${styleMap[tradeStyle]}] ${fullDesc}`;
+    }
+    if (direction !== "BOTH") {
+      fullDesc += ` [エントリー方向: ${direction === "BUY" ? "BUY のみ" : "SELL のみ"}]`;
+    }
+    if (sessions.length > 0) {
+      const sessMap: Record<string, string> = { TOKYO: "東京", LONDON: "ロンドン", NEW_YORK: "NY" };
+      fullDesc += ` [セッション: ${sessions.map(s => sessMap[s] ?? s).join("・")}]`;
+    }
     if (selectedTf.length > 0) {
-      const tfLines = selectedTf.map(tf => {
-        const d = tfDesc[tf];
-        return d ? `${tf}: ${d}` : tf;
-      });
+      const tfLines = selectedTf.map(tf => tfDesc[tf] ? `${tf}: ${tfDesc[tf]}` : tf);
       fullDesc += `\n[マルチタイムフレーム分析] ${tfLines.join(" / ")}`;
     }
     rawPromptRef.current = fullDesc;
@@ -406,6 +427,107 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
                     実際の取引には損失リスクが伴います。投資判断はご自身の責任で行ってください。
                     （金融商品取引法第37条の3）
                   </p>
+                </div>
+              </div>
+
+              {/* トレードスタイル・方向・セッション */}
+              <div className="grid grid-cols-1 gap-3">
+
+                {/* トレードスタイル */}
+                <div>
+                  <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: "#4a4a4a" }}>
+                    トレードスタイル
+                    <span className="font-normal ml-1.5" style={{ color: "#9a9a9a" }}>TRADE STYLE</span>
+                  </p>
+                  <div className="flex gap-2">
+                    {([
+                      { key: "" as TradeStyle,          label: "選択しない", sub: "" },
+                      { key: "SCALPING" as TradeStyle,  label: "スキャル",   sub: "M1〜M15" },
+                      { key: "DAY_TRADE" as TradeStyle, label: "デイトレ",   sub: "M30〜H4" },
+                      { key: "SWING" as TradeStyle,     label: "スイング",   sub: "H4〜W1" },
+                    ]).map(({ key, label, sub }) => {
+                      const active = tradeStyle === key;
+                      const dataLabel = key && barSummary[key === "SCALPING" ? "M5" : key === "DAY_TRADE" ? "H4" : "D1"];
+                      return (
+                        <button key={key ?? "none"} onClick={() => setTradeStyle(key)}
+                          className="flex-1 flex flex-col items-center py-2 px-1 rounded transition-all hover:opacity-80"
+                          style={{
+                            background: active ? `${NG_rgba}0.12)` : "rgba(0,0,0,0.03)",
+                            border: `1px solid ${active ? `${NG_rgba}0.35)` : "rgba(0,0,0,0.08)"}`,
+                            color: active ? NG : "#9a9a9a",
+                          }}>
+                          <span className="text-[10px] font-black">{label}</span>
+                          {sub && <span className="text-[7px] mt-0.5" style={{ color: active ? `${NG_rgba}0.7)` : "#d0d0d0" }}>{sub}</span>}
+                          {key && dataLabel && dataLabel.count > 0 && (
+                            <span className="text-[6px] mt-0.5" style={{ color: active ? `${NG_rgba}0.6)` : "#d0d0d0" }}>
+                              {dataLabel.label}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* エントリー方向 */}
+                  <div>
+                    <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: "#4a4a4a" }}>
+                      エントリー方向
+                      <span className="font-normal ml-1.5" style={{ color: "#9a9a9a" }}>DIRECTION</span>
+                    </p>
+                    <div className="flex gap-1.5">
+                      {([
+                        { key: "BOTH" as Direction, label: "両方" },
+                        { key: "BUY"  as Direction, label: "BUY のみ" },
+                        { key: "SELL" as Direction, label: "SELL のみ" },
+                      ]).map(({ key, label }) => {
+                        const active = direction === key;
+                        const col = key === "BUY" ? NG : key === "SELL" ? RED : "#4a4a4a";
+                        return (
+                          <button key={key} onClick={() => setDirection(key)}
+                            className="flex-1 py-1.5 rounded text-[9px] font-bold transition-all hover:opacity-80"
+                            style={{
+                              background: active ? `${col}14` : "rgba(0,0,0,0.03)",
+                              border: `1px solid ${active ? `${col}40` : "rgba(0,0,0,0.08)"}`,
+                              color: active ? col : "#9a9a9a",
+                            }}>
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* トレードセッション */}
+                  <div>
+                    <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: "#4a4a4a" }}>
+                      セッション
+                      <span className="font-normal ml-1.5" style={{ color: "#9a9a9a" }}>複数選択可</span>
+                    </p>
+                    <div className="flex gap-1.5">
+                      {SESSION_OPTIONS.map(({ key, label }) => {
+                        const active = sessions.includes(key);
+                        return (
+                          <button key={key}
+                            onClick={() => setSessions(prev =>
+                              prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key]
+                            )}
+                            className="flex-1 py-1.5 rounded text-[9px] font-bold transition-all hover:opacity-80"
+                            style={{
+                              background: active ? "rgba(37,99,235,0.10)" : "rgba(0,0,0,0.03)",
+                              border: `1px solid ${active ? "rgba(37,99,235,0.35)" : "rgba(0,0,0,0.08)"}`,
+                              color: active ? "#2563eb" : "#9a9a9a",
+                            }}>
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[7px] mt-1" style={{ color: "#d0d0d0" }}>
+                      {sessions.length === 0 ? "未選択 = 全時間帯" : ""}
+                    </p>
+                  </div>
                 </div>
               </div>
 
