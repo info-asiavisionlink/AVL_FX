@@ -285,6 +285,32 @@ function StrategyDraftCard({
 
       <div className="mx-4 h-px" style={{ background: "rgba(0,0,0,0.06)" }} />
 
+      {/* ── 識別番号 ── */}
+      {strategy.share_code && (
+        <div className="px-4 py-2">
+          <p className="text-[8px] font-mono tracking-widest mb-1" style={{ color: "#9a9a9a" }}>識別番号</p>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] font-black tracking-widest px-2 py-1 rounded flex-1 text-center"
+              style={{ background: "rgba(249,115,22,0.06)", color: "#f97316", border: "1px solid rgba(249,115,22,0.18)", letterSpacing: "0.12em" }}>
+              {strategy.share_code}
+            </span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(strategy.share_code!);
+                toast.success("識別番号をコピーしました");
+              }}
+              className="px-2 py-1 rounded text-[8px] font-bold transition-opacity hover:opacity-70 shrink-0"
+              style={{ background: "rgba(249,115,22,0.10)", border: "1px solid rgba(249,115,22,0.25)", color: NG }}
+              title="コピー"
+            >
+              コピー
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mx-4 h-px" style={{ background: "rgba(0,0,0,0.06)" }} />
+
       {/* ── CTA ── */}
       <div className="px-4 pb-4 pt-3 flex flex-col gap-2">
         {runtimeStatus === "RUNNING" ? (
@@ -550,6 +576,8 @@ export function EACommandCenter() {
   const [detailStrategy, setDetailStrategy] = useState<StrategyRecord | null>(null);
   const [btStats,        setBtStats]        = useState<Record<string, BtStat>>({});
   const [filters,        setFilters]        = useState<Filters>(EMPTY_FILTERS);
+  const [importCode,     setImportCode]     = useState("");
+  const [importing,      setImporting]      = useState(false);
 
   // Strategy 一覧を取得
   const fetchStrategies = useCallback(async () => {
@@ -583,6 +611,34 @@ export function EACommandCenter() {
       toast.success("削除しました");
     } catch {
       toast.error("削除に失敗しました");
+    }
+  }
+
+  async function handleImportByCode() {
+    const code = importCode.trim();
+    if (!/^\d{16}$/.test(code)) {
+      toast.error("16桁の数字を入力してください");
+      return;
+    }
+    setImporting(true);
+    try {
+      const res  = await fetch("/api/strategies/import-by-code", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ code }),
+      });
+      const data = await res.json() as { strategy?: StrategyRecord; error?: string };
+      if (!res.ok || !data.strategy) {
+        toast.error(data.error ?? "インポートに失敗しました");
+        return;
+      }
+      setStrategies(prev => [data.strategy!, ...prev]);
+      setImportCode("");
+      toast.success(`「${data.strategy.name}」をインポートしました`);
+    } catch {
+      toast.error("ネットワークエラーが発生しました");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -652,17 +708,51 @@ export function EACommandCenter() {
             </p>
           </div>
 
-          <button
-            onClick={handleAddEA}
-            className="flex items-center gap-2 h-8 px-3 rounded text-[10px] font-mono font-bold tracking-widest transition-all duration-200 shrink-0"
-            style={{
-              background: `${NG_rgba}0.08)`,
-              border:     `1px solid ${NG_rgba}0.30)`,
-              color:      NG,
-            }}
-          >
-            + EA 追加
-          </button>
+          <div className="flex items-center gap-2">
+            {/* 識別番号でインポート */}
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                value={importCode}
+                onChange={e => setImportCode(e.target.value.replace(/\D/g, "").slice(0, 16))}
+                placeholder="識別番号 16桁"
+                maxLength={16}
+                className="h-8 px-2 rounded font-mono text-[10px] tracking-widest outline-none"
+                style={{
+                  width: "130px",
+                  background: "rgba(0,0,0,0.03)",
+                  border: "1px solid rgba(0,0,0,0.10)",
+                  color: "#1a1a1a",
+                }}
+                onKeyDown={e => e.key === "Enter" && handleImportByCode()}
+              />
+              <button
+                onClick={handleImportByCode}
+                disabled={importing || importCode.length !== 16}
+                className="h-8 px-2 rounded text-[10px] font-mono font-bold tracking-widest transition-all duration-200"
+                style={{
+                  background: importCode.length === 16 ? "rgba(37,99,235,0.08)" : "rgba(0,0,0,0.03)",
+                  border:     importCode.length === 16 ? "1px solid rgba(37,99,235,0.25)" : "1px solid rgba(0,0,0,0.08)",
+                  color:      importCode.length === 16 ? CYAN : "#9a9a9a",
+                  opacity:    importing ? 0.5 : 1,
+                  cursor:     importCode.length === 16 && !importing ? "pointer" : "not-allowed",
+                }}
+              >
+                {importing ? "取得中..." : "追加"}
+              </button>
+            </div>
+            <button
+              onClick={handleAddEA}
+              className="flex items-center gap-2 h-8 px-3 rounded text-[10px] font-mono font-bold tracking-widest transition-all duration-200 shrink-0"
+              style={{
+                background: `${NG_rgba}0.08)`,
+                border:     `1px solid ${NG_rgba}0.30)`,
+                color:      NG,
+              }}
+            >
+              + EA 追加
+            </button>
+          </div>
         </div>
 
         {/* ── 統計バー（実データ）── */}
