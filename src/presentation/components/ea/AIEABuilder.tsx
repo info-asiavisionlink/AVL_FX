@@ -75,8 +75,6 @@ function payoffRatio(pf: number|null, wr: number) {
   return pf * (1 - wr/100) / (wr/100);
 }
 
-// ── CONSOLE_URL ───────────────────────────────────────────────────
-const CONSOLE_URL = process.env.NEXT_PUBLIC_CONSOLE_URL ?? "https://avl-fx-console.vercel.app";
 
 // =================================================================
 // メインコンポーネント
@@ -104,7 +102,7 @@ export function AIEABuilder({ open, onClose, onSaved }: Props) {
   // ── データ期間サマリー取得 ──────────────────────────────────────
   useEffect(() => {
     if (!open) return;
-    fetch(`${CONSOLE_URL}/api/research/bars-summary`)
+    fetch(`/api/research/bars-summary`)
       .then(r => r.ok ? r.json() : null)
       .then((d: { timeframes?: Record<string, TfSummary> } | null) => {
         if (d?.timeframes) setBarSummary(d.timeframes as Partial<Record<TF, TfSummary>>);
