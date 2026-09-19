@@ -611,7 +611,7 @@ function evalBB(
       if (idx < 1) return false;
       const prevClose = bars[idx - 1].close;
       const prevB     = bb[idx - 1];
-      if (!prevB) return false;
+      if (!prevB || prevB.lower === undefined || prevB.upper === undefined) return false;
       // BUY: 前足が下バンド以下 → 今足が戻る / SELL: 前足が上バンド以上 → 今足が戻る
       const buySignal  = prevClose < prevB.lower && close >= b.lower;
       const sellSignal = prevClose > prevB.upper && close <= b.upper;
