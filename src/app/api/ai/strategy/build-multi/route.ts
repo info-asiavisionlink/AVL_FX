@@ -36,66 +36,131 @@ function buildMultiPrompt(description: string, targets: MetricTargets): string {
   if (targets.minWR)     targetLines.push(`- Win Rate ≥ ${targets.minWR}%`);
   if (targets.minPayoff) targetLines.push(`- Payoff Ratio ≥ ${targets.minPayoff}`);
   const targetSection = targetLines.length
-    ? `\nPerformance Targets (design strategies intended to achieve these):\n${targetLines.join("\n")}`
+    ? `\nPerformance Targets:\n${targetLines.join("\n")}`
     : "";
 
-  return `You are AVL FX Strategy Architect specializing exclusively in GOLD# (XAU/USD) trading.
+  return `You are AVL FX Strategy Architect specializing in GOLD# (XAU/USD) trading.
 
-Generate exactly 5 DIVERSE and DISTINCT trading strategies for GOLD#.
-All 5 strategies MUST use symbol: ["GOLD#"].
+Generate exactly 5 DIVERSE, SOPHISTICATED trading strategies for GOLD#.
+Each strategy MUST be genuinely different in approach, indicator combination, and market logic.
 
-IMPORTANT — Historical bar data available for backtesting:
-- D1: 430 bars (2024-10 to 2026-06) ← best for backtesting
-- H4: 83 bars (2026-05 to 2026-06) ← good for backtesting
-- W1: 487 bars (2017 to 2026) ← very long range
-- M1/M5/M15/M30/H1: minimal data (recent only)
-Prefer D1 and H4 timeframes for strategies that will be backtested.
+## BAR DATA AVAILABLE (3-year backtest window: 2023-2026)
+- H4: 3 years (2023-09 to 2026-09) ← PRIMARY timeframe for DAY_TRADE
+- D1: 3 years (2023-09 to 2026-09) ← use for trend filters or SWING
+- H1: 10 months (2025-11 to 2026-09) ← secondary only
+- M30/M15/M5: limited (avoid as primary)
 
-DIVERSITY REQUIREMENTS — Make each strategy genuinely different:
-1. H4 trend-following (EMA or Ichimoku based, BUY direction focus)
-2. D1 swing strategy (RSI or MACD oscillator, both BUY and SELL)
-3. H4 counter-trend / mean-reversion (RSI or BB, SELL and BUY)
-4. D1 momentum (ADX + another indicator, one direction)
-5. H4 or D1 multi-indicator confluence (combine 2+ indicators)
-
-User's description / request:
+## USER REQUEST
 "${description}"
 ${targetSection}
 
+## INDICATOR CATALOG — USE THE FULL RANGE, NOT JUST MACD/EMA
+You have access to 29 indicators. DO NOT default to only MACD/EMA/RSI. Mix categories:
+
+OSCILLATORS (for entry timing / overbought-oversold):
+- RSI(period): BELOW/ABOVE/CROSS_UP/CROSS_DOWN threshold, REVERSAL
+- STOCHASTIC(period): CROSS_UP/CROSS_DOWN threshold, BELOW/ABOVE
+- STOCH_RSI(period): CROSS_UP/CROSS_DOWN, ABOVE/BELOW 0.5 threshold, REVERSAL
+- CCI(period): CROSS_UP/CROSS_DOWN, ABOVE/BELOW threshold (100/-100)
+- WILLIAMS_R(period): ABOVE/BELOW threshold (-20/-80), REVERSAL
+- MFI(period): ABOVE/BELOW threshold, REVERSAL
+
+MOMENTUM (for direction and strength):
+- MACD(12,26,9): ABOVE_SIGNAL/BELOW_SIGNAL, HISTOGRAM_POSITIVE/NEGATIVE, HISTOGRAM_CROSS_UP/DOWN
+- AO: ABOVE/BELOW 0, CROSS_UP/CROSS_DOWN
+- AROON(period): ABOVE/BELOW threshold, CROSS_UP/CROSS_DOWN
+- MOMENTUM(period): ABOVE/BELOW 0, CROSS_UP/CROSS_DOWN
+- ROC(period): ABOVE/BELOW 0, CROSS_UP/CROSS_DOWN
+- FORCE_INDEX(period): ABOVE/BELOW 0, CROSS_UP/CROSS_DOWN
+- CMF(period): ABOVE/BELOW 0, CROSS_UP/CROSS_DOWN (money flow)
+
+TREND (for direction filter):
+- EMA(period): PRICE_ABOVE/BELOW, BULLISH_CROSS/BEARISH_CROSS
+- HMA(period): PRICE_ABOVE/BELOW (faster than EMA)
+- ICHIMOKU: PRICE_ABOVE_CLOUD/BELOW_CLOUD, BULLISH_CROSS/BEARISH_CROSS (TK cross)
+- PSAR: PRICE_ABOVE/BELOW (auto-trend detection)
+- DONCHIAN(period): PRICE_ABOVE/BELOW (breakout)
+
+CHANNEL / VOLATILITY (for mean-reversion or breakout):
+- BOLLINGER_BANDS(period): PRICE_ABOVE/BELOW, REVERSAL
+- KELTNER(period): PRICE_ABOVE/BELOW
+
+TREND STRENGTH:
+- ADX(period): ABOVE/BELOW threshold (20-30 = trending)
+
+VOLUME-BASED:
+- OBV: ABOVE/BELOW 0, CROSS_UP
+- VOLUME_RATIO(period): ABOVE/BELOW threshold
+
+## SOPHISTICATED STRATEGY PATTERNS (use these, not just MACD alone)
+
+Pattern A — Oscillator + Trend filter (anti-false-signal):
+  Entry: RSI or STOCH_RSI crosses into recovery zone
+  Filter: ICHIMOKU PRICE_ABOVE_CLOUD or EMA trend
+  → Reduces false entries in ranging markets
+
+Pattern B — Multi-oscillator confluence:
+  Entry: RSI oversold AND STOCHASTIC crossing up AND CCI < -100
+  → Triple confirmation = fewer but higher quality signals
+
+Pattern C — Momentum + Volume:
+  Entry: MACD HISTOGRAM_CROSS_UP AND CMF ABOVE 0 (money flowing in)
+  → Volume confirms momentum
+
+Pattern D — Channel breakout + Momentum:
+  Entry: DONCHIAN PRICE_ABOVE (new high) AND ADX ABOVE 25
+  → Trend confirmed breakout only
+
+Pattern E — Ichimoku multi-condition:
+  Entry: PRICE_ABOVE_CLOUD AND TK bullish cross (BULLISH_CROSS)
+  → Classic Ichimoku BUY setup
+
+Pattern F — Mean reversion with strict filters:
+  Entry: BB PRICE_BELOW (lower band) AND RSI < 30 AND ADX < 25
+  → Buy oversold in ranging market
+
+## MULTI-TIMEFRAME USAGE
+Use trend_filter for D1 direction confirmation while trading H4:
+  trend_filter: { "timeframe": "D1", "indicator": "EMA", "period": 50, "direction": "BULLISH" }
+  or: { "timeframe": "D1", "indicator": "ICHIMOKU", "direction": "BULLISH" }
+
+## DIVERSITY REQUIREMENT
+Each of the 5 strategies MUST use a DIFFERENT primary indicator category:
+- Strategy 1: Oscillator-based (RSI/STOCHASTIC/STOCH_RSI/CCI/WILLIAMS_R)
+- Strategy 2: Momentum-based (MACD/AO/AROON/ROC/FORCE_INDEX)
+- Strategy 3: Trend system (ICHIMOKU or PSAR or DONCHIAN breakout)
+- Strategy 4: Multi-oscillator confluence (2+ oscillators combined)
+- Strategy 5: Volume or channel based (CMF/MFI/OBV or BB/KELTNER)
+
+DO NOT make all 5 strategies use MACD or EMA. Use the full indicator catalog.
+
 ## OUTPUT FORMAT
-Respond with ONLY valid JSON — no markdown, no code blocks, no explanation:
+Respond with ONLY valid JSON — no markdown, no code blocks:
 {
   "strategies": [spec1, spec2, spec3, spec4, spec5]
 }
 
-Each spec must follow this exact schema:
+Each spec schema:
 {
-  "name": string (3-50 chars, English preferred, alphanumeric + spaces + dash + underscore),
+  "name": string (3-50 chars, alphanumeric + spaces + dash + underscore),
   "strategy_type": "SCALPING" | "DAY_TRADE" | "SWING",
-  "description": string,
+  "description": string (explain WHY this indicator combo makes sense for GOLD),
   "symbols": ["GOLD#"],
-  "timeframes": [string],
+  "timeframes": ["H4"],
   "entry_conditions": {
-    "logic": "AND" | "OR",
+    "logic": "AND",
     "conditions": [
-      {
-        "indicator": string,
-        "timeframe": string,
-        "period": number (optional),
-        "operator": string (optional),
-        "threshold": number (optional),
-        "condition": string (optional)
-      }
+      { "indicator": string, "timeframe": "H4", "period"?: number, "period2"?: number, "period3"?: number, "operator": string, "threshold"?: number }
     ]
   },
   "exit_conditions": {
-    "stop_loss": { "method": string, "period"?: number, "multiplier"?: number, "pips"?: number },
-    "take_profit": { "method": string, "period"?: number, "multiplier"?: number, "pips"?: number, "rr_ratio"?: number }
+    "stop_loss": { "method": "ATR", "period": 14, "multiplier": 1.5 },
+    "take_profit": { "method": "RR_RATIO", "rr_ratio": 2.5 }
   },
   "filters": {
-    "max_spread_pips"?: number,
-    "sessions"?: string[],
-    "trend_filter"?: { "timeframe": string, "indicator": string, "period"?: number, "direction": "BULLISH"|"BEARISH"|"NEUTRAL" },
+    "max_spread_pips": 50,
+    "sessions": ["LONDON", "NEW_YORK"],
+    "trend_filter"?: { "timeframe": "D1", "indicator": "EMA", "period": 50, "direction": "BULLISH" },
     "min_adx"?: number
   },
   "risk": { "risk_per_trade": 1.0 }
@@ -104,25 +169,27 @@ Each spec must follow this exact schema:
 ## WHITELISTS
 Indicators: ${ALLOWED_INDICATORS.join(", ")}
 Timeframes: ${ALLOWED_TIMEFRAMES.join(", ")}
-Strategy Types: SCALPING (M1-M15), DAY_TRADE (M30-H4), SWING (H4-W1)
 Sessions: ${ALLOWED_SESSIONS.join(", ")}
 Operators: ${ALLOWED_OPERATORS.join(", ")}
 SL methods: ATR, FIXED_PIPS, SWING_LOW, SWING_HIGH, PERCENTAGE
 TP methods: ATR, FIXED_PIPS, SWING_LOW, SWING_HIGH, RR_RATIO, PERCENTAGE
 
 ## RULES
-1. All symbols must be ["GOLD#"]
+1. symbols MUST be ["GOLD#"]
 2. risk_per_trade: always 1.0
-3. ATR period: 14, RSI period: 14, EMA common: 21/50/100/200
-4. Both stop_loss AND take_profit are REQUIRED in every spec
-5. Names must be unique across the 5 strategies
-6. DO NOT include unsupported conditions (avoid candlestick patterns, trendlines, pivot points)
-7. DO NOT make performance guarantees in descriptions
+3. Recommend sessions: ["LONDON", "NEW_YORK"] for most strategies
+4. Both stop_loss AND take_profit REQUIRED
+5. Names must be unique
+6. EMA periods: use varied values (9, 21, 34, 50, 100, 200)
+7. RSI period: 14 standard, STOCHASTIC: 14, CCI: 14 or 20
+8. For ICHIMOKU: no period needed; for STOCH_RSI threshold use 0.2-0.8
 
 ## ABSOLUTE PROHIBITIONS
-- DO NOT include: javascript, typescript, mql5, python, code, function, eval, exec
-- DO NOT include: file paths, URLs, API keys
-- DO NOT use indicators not in the whitelist above`;
+- DO NOT use only MACD and EMA — use the FULL indicator catalog
+- DO NOT ignore oscillators (RSI/STOCHASTIC/CCI/WILLIAMS_R)
+- DO NOT ignore volume indicators (CMF/MFI/OBV)
+- DO NOT ignore ICHIMOKU, PSAR, DONCHIAN, KELTNER
+- DO NOT generate 5 variations of the same MACD pattern`;
 }
 
 const MultiSpecSchema = z.object({
