@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/cot-fetch",
+      "schedule": "0 1 * * 6"
+    },
+    {
+      "path": "/api/cron/evaluate-strategies",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/watch-traders",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

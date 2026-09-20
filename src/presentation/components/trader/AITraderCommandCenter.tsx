@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast }                             from "sonner";
 import { AITraderBuilder }                   from "./AITraderBuilder";
+import { AITraderDetailModal }               from "./AITraderDetailModal";
 import {
   PERSONALITY_LABELS, TRADING_STYLE_LABELS, RISK_PROFILE_LABELS,
   type AITrader,
@@ -57,12 +58,15 @@ function RiskBadge({ risk }: { risk: string }) {
 function TraderCard({
   trader,
   onDelete,
+  onDetail,
 }: {
   trader: AITrader;
   onDelete: (id: string) => void;
+  onDetail: (t: AITrader) => void;
 }) {
   const profile = trader.current_profile;
-  const [deleting, setDeleting] = useState(false);
+  const [deleting,   setDeleting]   = useState(false);
+  const [activating, setActivating] = useState(false);
 
   async function handleDelete() {
     if (!confirm(`「${trader.name}」を削除しますか？`)) return;
@@ -77,6 +81,26 @@ function TraderCard({
       }
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleToggleActive() {
+    setActivating(true);
+    const newStatus = trader.status === "ACTIVE" ? "DRAFT" : "ACTIVE";
+    try {
+      const res = await fetch(`/api/traders/${trader.id}/status`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        toast.success(newStatus === "ACTIVE" ? "AIトレーダーを有効化しました" : "DRAFTに戻しました");
+        // Re-load page
+        window.location.reload();
+      } else {
+        toast.error("変更に失敗しました");
+      }
+    } finally {
+      setActivating(false);
     }
   }
 
@@ -111,14 +135,25 @@ function TraderCard({
           )}
         </div>
 
-        {/* Delete */}
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="shrink-0 text-xs px-2 py-1 rounded transition-all"
-          style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}>
-          {deleting ? "..." : "削除"}
-        </button>
+        {/* Actions */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button onClick={() => onDetail(trader)}
+            className="text-xs px-2 py-1 rounded transition-all"
+            style={{ background: `${NG_rgba}0.15)`, color: NG }}>詳細</button>
+          <button onClick={handleToggleActive} disabled={activating}
+            className="text-xs px-2 py-1 rounded transition-all"
+            style={{
+              background: trader.status === "ACTIVE" ? "rgba(100,116,139,0.2)" : "rgba(22,163,74,0.15)",
+              color: trader.status === "ACTIVE" ? "#94a3b8" : "#4ade80",
+            }}>
+            {activating ? "..." : trader.status === "ACTIVE" ? "停止" : "有効化"}
+          </button>
+          <button onClick={handleDelete} disabled={deleting}
+            className="text-xs px-2 py-1 rounded transition-all"
+            style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}>
+            {deleting ? "..." : "削除"}
+          </button>
+        </div>
       </div>
 
       {/* Profile chips */}
@@ -185,9 +220,10 @@ function TraderCard({
 
 // ── Main Component ────────────────────────────────────────────────
 export function AITraderCommandCenter() {
-  const [traders,        setTraders]        = useState<AITrader[]>([]);
-  const [loading,        setLoading]        = useState(true);
-  const [builderOpen,    setBuilderOpen]    = useState(false);
+  const [traders,     setTraders]     = useState<AITrader[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [detailTrader, setDetailTrader] = useState<AITrader | null>(null);
 
   const loadTraders = useCallback(async () => {
     setLoading(true);
@@ -261,7 +297,7 @@ export function AITraderCommandCenter() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto">
           {traders.map(t => (
-            <TraderCard key={t.id} trader={t} onDelete={handleDelete} />
+            <TraderCard key={t.id} trader={t} onDelete={handleDelete} onDetail={setDetailTrader} />
           ))}
         </div>
       )}
@@ -271,6 +307,12 @@ export function AITraderCommandCenter() {
         open={builderOpen}
         onClose={() => setBuilderOpen(false)}
         onSaved={handleSaved}
+      />
+
+      {/* Detail Modal */}
+      <AITraderDetailModal
+        trader={detailTrader}
+        onClose={() => setDetailTrader(null)}
       />
     </div>
   );

@@ -123,17 +123,33 @@ export async function POST(req: NextRequest) {
 
     if (versionErr) throw versionErr;
 
-    // 3. Knowledge 紐付け（knowledge_ids が指定されていれば）
+    // 3. Knowledge Snapshot（Console API から詳細を取得してバージョン固定）
     if (input.knowledge_ids.length > 0) {
-      // TODO: Console API から Knowledge 詳細を取得してスナップショット保存
-      // Phase 1: knowledge_id と title のみ保存
-      const knowledgeRows = input.knowledge_ids.map((kid: string) => ({
-        ai_trader_version_id: version.id,
-        knowledge_id:         kid,
-        knowledge_version:    null,
-        knowledge_title:      null,
-        knowledge_category:   null,
-      }));
+      // Console から ACTIVE Knowledge を取得してスナップショット保存
+      const consoleUrl = process.env.CONSOLE_URL ?? "https://avl-fx-console.vercel.app";
+      const knowledgeSecret = process.env.KNOWLEDGE_API_SECRET ?? "";
+      let knowledgeMap: Map<string, { version: number; title: string; category: string }> = new Map();
+      try {
+        const res = await fetch(`${consoleUrl}/api/trading-knowledge?status=ACTIVE`, {
+          headers: { "x-knowledge-api-secret": knowledgeSecret },
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (res.ok) {
+          const data = await res.json() as { items?: { id: string; title: string; category: string; version: number }[] };
+          (data.items ?? []).forEach(k => knowledgeMap.set(k.id, { version: k.version, title: k.title, category: k.category }));
+        }
+      } catch { /* Console未接続でも続行 */ }
+
+      const knowledgeRows = input.knowledge_ids.map((kid: string) => {
+        const snapshot = knowledgeMap.get(kid);
+        return {
+          ai_trader_version_id: version.id,
+          knowledge_id:         kid,
+          knowledge_version:    snapshot?.version ?? null,   // バージョン固定
+          knowledge_title:      snapshot?.title ?? null,     // タイトルスナップショット
+          knowledge_category:   snapshot?.category ?? null,
+        };
+      });
       await db.from("ai_trader_knowledge").insert(knowledgeRows);
     }
 
