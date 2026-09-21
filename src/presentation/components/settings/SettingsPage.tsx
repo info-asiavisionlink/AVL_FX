@@ -11,7 +11,7 @@ import { useSettingsStore, type AVLSettings } from "@/application/stores/setting
 import { useConnectionStore } from "@/application/stores/connectionStore";
 import { STORAGE_KEY_MT5_CONFIG } from "@/infrastructure/connection/types";
 import {
-  Brain, Shield, Wifi, Bell, Monitor, Trash2, Save, Eye, EyeOff, RefreshCw, MessageSquare, Activity,
+  Shield, Wifi, Bell, Monitor, Trash2, Save, Eye, EyeOff, RefreshCw, Activity,
 } from "lucide-react";
 
 type AccountInfo = {
@@ -23,7 +23,7 @@ type AccountInfo = {
 // -----------------------------------------------------------------
 // セクション共通ヘッダー
 // -----------------------------------------------------------------
-function SectionHeader({ icon: Icon, title, desc }: { icon: typeof Brain; title: string; desc?: string }) {
+function SectionHeader({ icon: Icon, title, desc }: { icon: typeof Shield; title: string; desc?: string }) {
   return (
     <div className="flex items-start gap-3 mb-4">
       <div className="w-7 h-7 border border-cyan-700/40 bg-cyan-900/20 flex items-center justify-center shrink-0 mt-0.5">
@@ -251,103 +251,6 @@ export function SettingsPage() {
                 </p>
               </div>
             )}
-          </div>
-
-          {/* === システムプロンプト === */}
-          <div className="border border-cyan-700/30 bg-white p-4">
-            <SectionHeader icon={MessageSquare} title="AI PERSONA" desc="AIの人格・話し方・あなたの呼び名を設定" />
-
-            <Field label="あなたの呼び名" desc="AIがあなたを何と呼ぶか（例: ボス、さん付け、名前）">
-              <input
-                type="text"
-                value={settings.operatorName}
-                onChange={e => s({ operatorName: e.target.value })}
-                onBlur={e => { if (!e.target.value.trim()) s({ operatorName: "ボス" }); }}
-                placeholder="ボス"
-                maxLength={20}
-                className="w-full bg-[#f8f7f4] border border-[rgba(0,0,0,0.06)] px-3 py-1.5 text-[9px] font-mono text-cyan-300 outline-none focus:border-cyan-700/60 transition-colors"
-              />
-            </Field>
-
-            <Field label="話し方スタイル" desc="AIの応答スタイルを選択">
-              <SelectInput value={settings.aiPersonality} onChange={v => s({ aiPersonality: v as AVLSettings["aiPersonality"] })}
-                options={[
-                  { value: "professional", label: "プロフェッショナル — 冷静・断定的・簡潔（デフォルト）" },
-                  { value: "friendly",     label: "フレンドリー — 親しみやすく、励ましも入れる" },
-                  { value: "concise",      label: "超簡潔 — 数字と方向だけ、説明なし" },
-                  { value: "custom",       label: "カスタム — 下のプロンプトで自由に設定" },
-                ]}
-              />
-            </Field>
-
-            <Field label="応答言語" desc="AIが話す言語">
-              <SelectInput value={settings.responseLanguage} onChange={v => s({ responseLanguage: v as AVLSettings["responseLanguage"] })}
-                options={[
-                  { value: "ja",    label: "日本語" },
-                  { value: "en",    label: "English" },
-                  { value: "ja_en", label: "日本語 + English（バイリンガル）" },
-                ]}
-              />
-            </Field>
-
-            <Field label="追加システムプロンプト" desc="AIへの追加指示。スタイルが「カスタム」の場合はここで全て定義">
-              <textarea
-                value={settings.customSystemPrompt}
-                onChange={e => s({ customSystemPrompt: e.target.value })}
-                placeholder={"例：\n・返答は必ず箇条書きにする\n・エントリー提案時は必ずリスクを先に伝える\n・毎回最後に「ご確認ください」と付け加える"}
-                rows={5}
-                className="w-full bg-[#f8f7f4] border border-[rgba(0,0,0,0.06)] px-3 py-2 text-[9px] font-mono text-cyan-300 outline-none focus:border-cyan-700/60 transition-colors resize-none placeholder-gray-700 leading-relaxed"
-              />
-            </Field>
-
-            {/* Preview */}
-            <div className="mt-3 p-3 border border-[rgba(0,0,0,0.06)] bg-[#f8f7f4]">
-              <p className="text-[7px] text-gray-700 font-mono mb-1.5 tracking-wider">— プレビュー —</p>
-              <p className="text-[8.5px] font-mono text-cyan-300/80 leading-relaxed">
-                {settings.aiPersonality === "professional" &&
-                  `「分析完了です、${settings.operatorName}。EURUSDのバイ、エントリー1.15300、損切り1.14800、勝率82%。H4上昇トレンド継続。」`}
-                {settings.aiPersonality === "friendly" &&
-                  `「${settings.operatorName}、いいチャンス見つけましたよ！EURUSDのバイです。エントリー1.15300、損切り1.14800で、勝率82%があります！」`}
-                {settings.aiPersonality === "concise" &&
-                  `「EURUSD BUY 1.15300 / SL 1.14800 / TP 1.15800 / 82%」`}
-                {settings.aiPersonality === "custom" &&
-                  (settings.customSystemPrompt
-                    ? `カスタムプロンプト設定済み (${settings.customSystemPrompt.length}文字)`
-                    : "カスタムプロンプトを入力してください")}
-              </p>
-            </div>
-          </div>
-
-          {/* === AI 設定 === */}
-          <div className="border border-[rgba(0,0,0,0.06)] bg-white p-4">
-            <SectionHeader icon={Brain} title="AI ENGINE" desc="AVL AI が使用するモデル設定" />
-            <Field label="Chat モデル" desc="市場分析・テキスト応答に使用">
-              <SelectInput value={settings.aiModel} onChange={v => s({ aiModel: v })}
-                options={[
-                  { value: "gpt-5.6-terra", label: "GPT-5.6 Terra — バランス (推奨)" },
-                  { value: "gpt-5.6-sol",   label: "GPT-5.6 Sol — 最高性能" },
-                  { value: "gpt-5.6-luna",  label: "GPT-5.6 Luna — 高速・低コスト" },
-                  { value: "gpt-4.1",       label: "GPT-4.1 — 旧モデル" },
-                ]}
-              />
-            </Field>
-            <Field label="Voice モデル" desc="音声会話に使用">
-              <SelectInput value={settings.realtimeModel} onChange={v => s({ realtimeModel: v })}
-                options={[
-                  { value: "gpt-realtime-2.1-mini", label: "gpt-realtime-2.1-mini — 推奨 (高速)" },
-                  { value: "gpt-realtime-2.1",      label: "gpt-realtime-2.1 — 高性能 (低速)" },
-                  { value: "gpt-4o-realtime-preview", label: "gpt-4o-realtime-preview — 旧モデル" },
-                ]}
-              />
-            </Field>
-            <Field label="Temperature" desc="0.1 (厳密) ～ 1.0 (創造的)">
-              <div className="flex items-center gap-2">
-                <input type="range" min={0.1} max={1.0} step={0.1} value={settings.aiTemperature}
-                  onChange={e => s({ aiTemperature: parseFloat(e.target.value) })}
-                  className="w-32 accent-cyan-500" />
-                <span className="text-[9px] text-cyan-400 font-mono w-8">{settings.aiTemperature.toFixed(1)}</span>
-              </div>
-            </Field>
           </div>
 
           {/* === リスク管理 === */}
