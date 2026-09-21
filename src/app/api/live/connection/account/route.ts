@@ -46,7 +46,7 @@ export async function GET() {
   }
 
   try {
-    const r = await fetch(`${GATEWAY_URL}/connections/${conn.id}/account`, {
+    const r = await fetch(`${GATEWAY_URL}/account`, {
       headers: { Authorization: `Bearer ${GATEWAY_SECRET}` },
       signal: AbortSignal.timeout(5000),
     });
