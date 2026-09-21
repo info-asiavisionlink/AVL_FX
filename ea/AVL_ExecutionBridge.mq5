@@ -225,14 +225,9 @@ bool Heartbeat_Send()
    int code = HTTP_Post("/bridge/heartbeat", body, response);
 
    if(code == 200 && StringLen(response) > 0) {
-      // Safety flags更新（JSON応答から取得）
-      string tradingEnabledStr = JsonGetStr(response, "tradingEnabled");
-      string emergencyStopStr  = JsonGetStr(response, "emergencyStop");
-
-      if(StringLen(tradingEnabledStr) > 0)
-         g_TradingEnabled = (tradingEnabledStr == "true");
-      if(StringLen(emergencyStopStr) > 0)
-         g_EmergencyStop = (emergencyStopStr == "true");
+      // Safety flags更新（JsonGetBool で boolean を正しくパース）
+      g_TradingEnabled = JsonGetBool(response, "tradingEnabled", false);
+      g_EmergencyStop  = JsonGetBool(response, "emergencyStop",  true);
 
       string accountMode = JsonGetStr(response, "accountMode");
       if(StringLen(accountMode) > 0)
@@ -1019,6 +1014,20 @@ datetime ParseISO(const string iso)
 //=================================================================//
 //  JSON ユーティリティ                                             //
 //=================================================================//
+
+// boolean 値（true/false）を取得。"key":true または "key":false に対応。
+bool JsonGetBool(const string json, const string key, const bool defaultVal = false)
+{
+   string pat = "\"" + key + "\":";
+   int s = StringFind(json, pat);
+   if(s < 0) return defaultVal;
+   s += StringLen(pat);
+   while(s < StringLen(json) && StringSubstr(json, s, 1) == " ") s++;
+   if(StringSubstr(json, s, 4) == "true")  return true;
+   if(StringSubstr(json, s, 5) == "false") return false;
+   return defaultVal;
+}
+
 string JsonGetStr(const string json, const string key)
 {
    string pat = "\"" + key + "\":\"";
