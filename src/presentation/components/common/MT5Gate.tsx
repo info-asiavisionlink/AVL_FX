@@ -1,8 +1,7 @@
 "use client";
 
 import { useUserMT5Connection } from "@/presentation/hooks/useUserMT5Connection";
-import { Wifi, WifiOff, Loader2 } from "lucide-react";
-import Link from "next/link";
+import { WifiOff, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 
 interface MT5GateProps {
@@ -43,14 +42,9 @@ export function MT5Gate({ children, feature = "この機能" }: MT5GateProps) {
             {feature}はあなた自身のMT5が接続されている場合にご利用いただけます
           </p>
         </div>
-        <Link href="/mt5">
-          <button
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all hover:opacity-80"
-            style={{ background: "rgba(249,115,22,0.12)", color: "#f97316", border: "1px solid rgba(249,115,22,0.3)" }}>
-            <Wifi size={14} />
-            MT5を接続する
-          </button>
-        </Link>
+        <p className="text-xs text-center" style={{ color: "#9a9a9a" }}>
+          Bridge EAをMT5で起動してください
+        </p>
       </div>
     );
   }

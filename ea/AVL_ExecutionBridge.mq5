@@ -139,6 +139,17 @@ int OnInit()
       Print("[Bridge] 初回Heartbeat失敗。Gateway接続を確認してください。");
    }
 
+   // Symbol Specification 送信（起動時）
+   // Risk Engine の Lot 計算に必要な broker spec を DB へ保存する
+   SymbolSpec_Send(_Symbol);   // Chart のデフォルトシンボルで送信
+   // GOLD系シンボルが Chart 以外の場合も送信
+   string goldSymbols[] = {"GOLD#", "GOLD", "XAUUSD"};
+   for(int si = 0; si < ArraySize(goldSymbols); si++) {
+      if(goldSymbols[si] != _Symbol && SymbolSelect(goldSymbols[si], false)) {
+         SymbolSpec_Send(goldSymbols[si]);
+      }
+   }
+
    return(INIT_SUCCEEDED);
 }
 
@@ -238,7 +249,8 @@ bool Heartbeat_Send()
 
 void Bridge_Disconnect()
 {
-   HTTP_Post("/bridge/disconnect", "{}", (string &)"");
+   string dummyResp = "";
+   HTTP_Post("/bridge/disconnect", "{}", dummyResp);
    Print("[Bridge] 切断通知送信");
 }
 
@@ -325,7 +337,8 @@ void Command_Process(const string cmdJson)
                " expiresAt=", expiresAt);
          MarkProcessed(commandId);
          Result_Send(commandId, "EXPIRED", false, 0,
-                     0, 0, 0, 0, 0, 0, 0, 0,
+                     0, 0, 0,
+                     0, 0, 0, 0,
                      -1, "Command expired before execution");
          return;
       }
@@ -337,7 +350,8 @@ void Command_Process(const string cmdJson)
       Print("[Bridge] BLOCKED: trading_enabled=false commandId=", commandId);
       MarkProcessed(commandId);
       Result_Send(commandId, "REJECTED", false, 0,
-                  0, 0, 0, 0, 0, 0, 0, 0,
+                  0, 0, 0,
+                  0, 0, 0, 0,
                   -1, "TRADING_DISABLED");
       return;
    }
@@ -348,7 +362,8 @@ void Command_Process(const string cmdJson)
             " commandId=", commandId);
       MarkProcessed(commandId);
       Result_Send(commandId, "REJECTED", false, 0,
-                  0, 0, 0, 0, 0, 0, 0, 0,
+                  0, 0, 0,
+                  0, 0, 0, 0,
                   -1, "EMERGENCY_STOP_ACTIVE");
       return;
    }
@@ -366,8 +381,13 @@ void Command_Process(const string cmdJson)
       Send_Failed(commandId, "symbol が空です");
       return;
    }
-   if(magicNumber < 20001 || magicNumber > 29999) {
-      Send_Failed(commandId, StringFormat("magic_number=%I64d が範囲外（20001〜29999）", magicNumber));
+   // Magic Number 許容範囲:
+   //   20001〜29999  : 手動 Strategy 信号
+   //   900001〜999999: AI Trader 自律実行（Phase 3）
+   bool magicValid = (magicNumber >= 20001 && magicNumber <= 29999)
+                  || (magicNumber >= 900001 && magicNumber <= 999999);
+   if(!magicValid) {
+      Send_Failed(commandId, StringFormat("magic_number=%I64d が範囲外（許容: 20001-29999 or 900001-999999）", magicNumber));
       return;
    }
 
@@ -489,12 +509,15 @@ bool Execute_BUY(
    retcode  = (int)g_Trade.ResultRetcode();
    orderTkt = (long)g_Trade.ResultOrder();
    dealTkt  = (long)g_Trade.ResultDeal();
-   positionTkt = (long)g_Trade.ResultDeal(); // Market orderでは deal≈position
    execPrice   = g_Trade.ResultPrice();
+
+   // MT5 Hedging モードの仕様:
+   // 新規ポジションの position_ticket = 最初の order_ticket（MT5仕様）
+   positionTkt = ok ? orderTkt : 0;
 
    Print("[Bridge] BUY ", symbol, " vol=", volume,
          " ok=", ok, " retcode=", retcode,
-         " order=", orderTkt, " deal=", dealTkt);
+         " order=", orderTkt, " deal=", dealTkt, " pos=", positionTkt);
    return ok;
 }
 
@@ -540,12 +563,15 @@ bool Execute_SELL(
    retcode  = (int)g_Trade.ResultRetcode();
    orderTkt = (long)g_Trade.ResultOrder();
    dealTkt  = (long)g_Trade.ResultDeal();
-   positionTkt = (long)g_Trade.ResultDeal();
    execPrice   = g_Trade.ResultPrice();
+
+   // MT5 Hedging モードの仕様:
+   // 新規ポジションの position_ticket = 最初の order_ticket（MT5仕様）
+   positionTkt = ok ? orderTkt : 0;
 
    Print("[Bridge] SELL ", symbol, " vol=", volume,
          " ok=", ok, " retcode=", retcode,
-         " order=", orderTkt, " deal=", dealTkt);
+         " order=", orderTkt, " deal=", dealTkt, " pos=", positionTkt);
    return ok;
 }
 
@@ -688,7 +714,7 @@ void PositionSync_Send()
          PositionGetDouble(POSITION_SL),
          PositionGetDouble(POSITION_TP),
          PositionGetDouble(POSITION_PROFIT),
-         PositionGetDouble(POSITION_COMMISSION),
+         0.0,
          PositionGetDouble(POSITION_SWAP),
          magic,
          TimeToString(openTime, TIME_DATE|TIME_SECONDS)
@@ -1063,3 +1089,49 @@ string BuildHeaders()
         + "X-Connection-Id: " + InpConnectionId + "\r\n"
         + "X-Connection-Token: " + InpConnectionToken + "\r\n";
 }
+
+//=================================================================//
+//  Symbol Specification 送信                                       //
+//  Risk Engine の Lot 計算に必要な broker spec を DB へ保存する。  //
+//=================================================================//
+void SymbolSpec_Send(const string sym)
+{
+   if(!SymbolSelect(sym, true)) {
+      Print("[Bridge] SymbolSpec: Symbol ", sym, " not found");
+      return;
+   }
+
+   double contractSize = SymbolInfoDouble(sym, SYMBOL_TRADE_CONTRACT_SIZE);
+   double volumeMin    = SymbolInfoDouble(sym, SYMBOL_VOLUME_MIN);
+   double volumeMax    = SymbolInfoDouble(sym, SYMBOL_VOLUME_MAX);
+   double volumeStep   = SymbolInfoDouble(sym, SYMBOL_VOLUME_STEP);
+   double tickSize     = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_SIZE);
+   double tickValue    = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_VALUE);
+   double pointSize    = SymbolInfoDouble(sym, SYMBOL_POINT);
+   int    digits       = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   int    stopsLevel   = (int)SymbolInfoInteger(sym, SYMBOL_TRADE_STOPS_LEVEL);
+   double stopsPrice   = stopsLevel * pointSize;
+   int    spread       = (int)SymbolInfoInteger(sym, SYMBOL_SPREAD);
+
+   string body = "{\"brokerSymbol\":\"" + sym + "\""
+      + ",\"contractSize\":"     + DoubleToString(contractSize, 2)
+      + ",\"volumeMin\":"        + DoubleToString(volumeMin, 4)
+      + ",\"volumeMax\":"        + DoubleToString(volumeMax, 2)
+      + ",\"volumeStep\":"       + DoubleToString(volumeStep, 4)
+      + ",\"tickSize\":"         + DoubleToString(tickSize, 6)
+      + ",\"tickValue\":"        + DoubleToString(tickValue, 6)
+      + ",\"pointSize\":"        + DoubleToString(pointSize, 6)
+      + ",\"digits\":"           + IntegerToString(digits)
+      + ",\"stopsLevelPoints\":" + IntegerToString(stopsLevel)
+      + ",\"stopsLevelPrice\":"  + DoubleToString(stopsPrice, 6)
+      + ",\"marginInitial\":0.0"
+      + ",\"spreadCurrent\":"    + IntegerToString(spread)
+      + "}";
+
+   string resp = "";
+   int code = HTTP_Post("/bridge/symbol-spec", body, resp);
+   Print("[Bridge] SymbolSpec送信 sym=", sym,
+         " contract=", contractSize, " tickVal=", tickValue, " code=", code);
+}
+
+// FindPositionTicketByMagic は不要（Hedging モードでは position_ticket = order_ticket）

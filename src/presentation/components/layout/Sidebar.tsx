@@ -144,31 +144,20 @@ export function Sidebar({ onClose, mobile = false }: SidebarProps) {
         })}
       </nav>
 
-      {/* MT5 接続 */}
+      {/* MT5 接続状態（リンクなし・表示のみ） */}
       <div className="w-full px-2 shrink-0"
         style={{ borderTop: "1px solid rgba(255,255,255,0.15)" }}>
-        <Link
-          href="/mt5"
-          onClick={onClose}
+        <div
           className={cn(
-            "relative flex items-center w-full rounded-xl mt-2 mb-1 transition-all duration-150",
+            "relative flex items-center w-full rounded-xl mt-2 mb-1",
             mobile ? "flex-row gap-3 px-3 h-[48px]" : "flex-col justify-center h-[62px]",
           )}
-          style={pathname.startsWith("/mt5") ? {
-            background: "rgba(255,255,255,0.95)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-          } : { background: "transparent" }}
         >
-          {!pathname.startsWith("/mt5") && (
-            <div className="absolute inset-0 rounded-xl opacity-0 hover:opacity-100 transition-opacity"
-              style={{ background: "rgba(255,255,255,0.12)" }} />
-          )}
           <div className="relative shrink-0">
             <Cable
               size={mobile ? 17 : 18}
-              style={{ color: pathname.startsWith("/mt5") ? "#ea580c" : "rgba(255,255,255,0.85)" }}
+              style={{ color: "rgba(255,255,255,0.85)" }}
             />
-            {/* 接続ドット */}
             <div
               className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-white"
               style={{
@@ -183,11 +172,11 @@ export function Sidebar({ onClose, mobile = false }: SidebarProps) {
               "font-semibold leading-tight",
               mobile ? "text-[12px]" : "text-[9px] tracking-wide mt-0.5"
             )}
-            style={{ color: pathname.startsWith("/mt5") ? "#ea580c" : "rgba(255,255,255,0.85)" }}
+            style={{ color: "rgba(255,255,255,0.85)" }}
           >
             MT5
           </span>
-        </Link>
+        </div>
       </div>
 
       {/* ユーザー */}
