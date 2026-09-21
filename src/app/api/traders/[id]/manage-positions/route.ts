@@ -186,7 +186,7 @@ ${scenario ? `バイアス: ${scenario.bias} | ${scenario.scenario_text?.slice(0
           take_profit:    null,
           expires_at:     new Date(Date.now() + 5 * 60 * 1000).toISOString(),
           status:         "PENDING",
-          notes:          `AI判断: ${(parsed.reasoning as string ?? "").slice(0, 200)}`,
+          metadata:      { source: "position_management", reasoning: (parsed.reasoning as string ?? "").slice(0, 200) },
         });
         managed[managed.length - 1].action = "command_issued";
 
@@ -204,7 +204,7 @@ ${scenario ? `バイアス: ${scenario.bias} | ${scenario.scenario_text?.slice(0
           volume:         pos.volume,
           expires_at:     new Date(Date.now() + 5 * 60 * 1000).toISOString(),
           status:         "PENDING",
-          notes:          `SL調整: ${(parsed.reasoning as string ?? "").slice(0, 200)}`,
+          metadata:       { source: "sl_adjustment", reasoning: (parsed.reasoning as string ?? "").slice(0, 200) },
         });
         managed[managed.length - 1].action = "command_issued";
 
@@ -222,7 +222,7 @@ ${scenario ? `バイアス: ${scenario.bias} | ${scenario.scenario_text?.slice(0
           volume:         pos.volume,
           expires_at:     new Date(Date.now() + 5 * 60 * 1000).toISOString(),
           status:         "PENDING",
-          notes:          `TP調整: ${(parsed.reasoning as string ?? "").slice(0, 200)}`,
+          metadata:       { source: "tp_adjustment", reasoning: (parsed.reasoning as string ?? "").slice(0, 200) },
         });
         managed[managed.length - 1].action = "command_issued";
       }

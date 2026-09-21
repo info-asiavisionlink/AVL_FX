@@ -625,7 +625,9 @@ export async function POST(req: NextRequest) {
         suggested_sl?: number; suggested_tp?: number; suggested_volume?: number;
       }) | null;
 
+      const canAutoExecute = ["DEMO_AUTONOMOUS", "AUTO"].includes(trader.execution_mode as string);
       if (
+        canAutoExecute &&
         sc?.entry_side && sc.entry_side !== "NONE" &&
         sc.entry_price_low != null && sc.entry_price_high != null &&
         currentPriceNow > 0 &&
@@ -656,7 +658,7 @@ export async function POST(req: NextRequest) {
           magic_number:  magicNumber,
           expires_at:    new Date(Date.now() + 10 * 60 * 1000).toISOString(),
           status:        "PENDING",
-          notes:         `H1シナリオ: ${sc.bias} | 価格 ${currentPriceNow} がゾーン [${sc.entry_price_low}-${sc.entry_price_high}] に到達`,
+          metadata:      { source: "h1_strategy", bias: sc.bias, price: currentPriceNow, zone: `${sc.entry_price_low}-${sc.entry_price_high}` },
         });
 
         await db.from("ai_traders").update({
