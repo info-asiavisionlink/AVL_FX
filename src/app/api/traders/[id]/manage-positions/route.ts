@@ -18,6 +18,7 @@ import { NextRequest, NextResponse }   from "next/server";
 import { createAdminClient }            from "@/infrastructure/supabase/admin";
 import { createClient }                 from "@/infrastructure/supabase/server";
 import { getOpenAIClient, MODELS }      from "@/infrastructure/ai/openai-client";
+import { randomUUID }                   from "crypto";
 
 export const runtime     = "nodejs";
 export const dynamic     = "force-dynamic";
@@ -174,6 +175,7 @@ ${scenario ? `バイアス: ${scenario.bias} | ${scenario.scenario_text?.slice(0
       // execution_command 発行
       if (decision === "CLOSE") {
         await db.from("execution_commands").insert({
+          command_id:     randomUUID(),
           ai_trader_id:   id,
           ai_position_id: pos.id,
           user_id:        userId,
@@ -186,12 +188,13 @@ ${scenario ? `バイアス: ${scenario.bias} | ${scenario.scenario_text?.slice(0
           take_profit:    null,
           expires_at:     new Date(Date.now() + 5 * 60 * 1000).toISOString(),
           status:         "PENDING",
-          metadata:      { source: "position_management", reasoning: (parsed.reasoning as string ?? "").slice(0, 200) },
+          metadata:       { source: "position_management", reasoning: (parsed.reasoning as string ?? "").slice(0, 200) },
         });
         managed[managed.length - 1].action = "command_issued";
 
       } else if (decision === "MODIFY_SL" && parsed.new_sl) {
         await db.from("execution_commands").insert({
+          command_id:     randomUUID(),
           ai_trader_id:   id,
           ai_position_id: pos.id,
           user_id:        userId,
@@ -210,6 +213,7 @@ ${scenario ? `バイアス: ${scenario.bias} | ${scenario.scenario_text?.slice(0
 
       } else if (decision === "MODIFY_TP" && parsed.new_tp) {
         await db.from("execution_commands").insert({
+          command_id:     randomUUID(),
           ai_trader_id:   id,
           ai_position_id: pos.id,
           user_id:        userId,

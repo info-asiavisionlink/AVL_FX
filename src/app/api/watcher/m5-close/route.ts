@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient }          from "@/infrastructure/supabase/admin";
+import { randomUUID }                 from "crypto";
 
 export const runtime    = "nodejs";
 export const dynamic    = "force-dynamic";
@@ -648,6 +649,7 @@ export async function POST(req: NextRequest) {
         const action      = sc.entry_side === "LONG" ? "BUY" : "SELL";
 
         await db.from("execution_commands").insert({
+          command_id:    randomUUID(),
           ai_trader_id:  trader.id,
           user_id:       trader.user_id,
           action,
