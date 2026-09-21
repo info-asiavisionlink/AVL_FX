@@ -652,6 +652,7 @@ export async function POST(req: NextRequest) {
           command_id:    randomUUID(),
           ai_trader_id:  trader.id,
           user_id:       trader.user_id,
+          connection_id: conn?.id ?? null,
           action,
           symbol,
           volume:        sc.suggested_volume ?? 0.01,
