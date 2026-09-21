@@ -1,14 +1,13 @@
 // =================================================================
 // GET /api/live/connection/account
-// Authenticated UserのMT5口座情報をGatewayから取得
-// User A が User B の口座情報を取得できないよう Server-side で所有権確認
+// mt5_connections テーブルから口座情報を直接取得
+// Heartbeat が更新する balance/equity/margin/free_margin/leverage を返す
 // =================================================================
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-const GATEWAY_URL    = process.env.MT5_GATEWAY_URL ?? "";
-const GATEWAY_SECRET = process.env.MT5_GATEWAY_SECRET ?? "";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const cookieStore = await cookies();
@@ -23,16 +22,15 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // ユーザーのアクティブ接続を取得
-  const { data: conn } = await supabase
+  const { data: conn, error } = await supabase
     .from("mt5_connections")
-    .select("id, last_heartbeat_at")
+    .select("id, broker, server_name, mt5_login, account_currency, account_type, account_mode, leverage, status, last_heartbeat_at, balance, equity, margin, free_margin, margin_level, trading_enabled, emergency_stop")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(1)
     .single();
 
-  if (!conn) {
+  if (error || !conn) {
     return NextResponse.json({ error: "MT5未接続" }, { status: 404 });
   }
 
@@ -41,23 +39,17 @@ export async function GET() {
     return NextResponse.json({ error: "MT5がオフラインです", offline: true }, { status: 503 });
   }
 
-  if (!GATEWAY_URL || !GATEWAY_SECRET) {
-    return NextResponse.json({ error: "Gateway未設定" }, { status: 503 });
-  }
+  // Heartbeat で更新された口座情報を返す
+  const account = {
+    balance:     conn.balance     ?? 0,
+    equity:      conn.equity      ?? 0,
+    margin:      conn.margin      ?? 0,
+    freeMargin:  conn.free_margin ?? 0,
+    marginLevel: conn.margin_level ?? 0,
+    leverage:    conn.leverage    ?? 0,
+    currency:    conn.account_currency ?? "USD",
+    broker:      conn.broker      ?? "",
+  };
 
-  try {
-    const r = await fetch(`${GATEWAY_URL}/account`, {
-      headers: { Authorization: `Bearer ${GATEWAY_SECRET}` },
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!r.ok) {
-      return NextResponse.json({ error: "Gatewayからデータ取得失敗" }, { status: r.status });
-    }
-
-    const account = await r.json() as Record<string, unknown>;
-    return NextResponse.json({ account, connectionId: conn.id });
-  } catch {
-    return NextResponse.json({ error: "Gateway接続エラー" }, { status: 503 });
-  }
+  return NextResponse.json({ account, connectionId: conn.id });
 }
