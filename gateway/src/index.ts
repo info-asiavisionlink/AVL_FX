@@ -39,6 +39,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import cors from "cors";
 import fs   from "fs";
 import path from "path";
+import { createHash, createHmac, timingSafeEqual } from "crypto"; // STAGE1-04: bridge auth cache
+import { sendConsoleMonitoringHeartbeat } from "./console-monitoring";
 import {
   upsertBulkBars,
   upsertSingleBar,
@@ -57,15 +59,31 @@ import {
   verifyBridgeAuth,
   getPendingCommands,
   claimCommand,
-  submitCommandResult,
+  processExecutionResult,
   updateHeartbeat as updateBridgeHeartbeat,
   markConnectionDisconnected,
-  upsertPositions,
+  verifyBridgeAuthStatus,
+  reconcilePositionSnapshot,
   upsertDeals,
+  upsertSymbolSpec,
   type BridgeResultInput,
   type BridgePosition,
   type BridgeDeal,
+  type SymbolSpecInput,
 } from "./executionStore";
+import {
+  ConnectionMarketStore,
+  connectionBarKey as scopedBarKey,
+  connectionTickKey as scopedTickKey,
+} from "./connectionMarketStore";
+import {
+  upsertCustomerBars,
+  getLastCustomerBar,
+  canonicalizeSymbol,
+  SUPPORTED_TIMEFRAMES as CUSTOMER_BAR_TFS,
+  type BarIngestionInput,
+  type BarSource,
+} from "./customerBarDataStore";
 
 void SYNC_JOB_STALE_MS; // suppress unused warning
 
@@ -281,20 +299,66 @@ const MAX_BARS = 10_000; // Gatewayインメモリキャッシュ上限（長期
 const barStore      = new Map<string, Bar[]>();
 /** "EURUSD" → Tick */
 const tickStore     = new Map<string, Tick>();
+
+// P0-04: Runtime market state is keyed by connection identity. Legacy global
+// stores below remain for compatibility with older public API paths; the
+// canonical connection-specific runtime never reads them.
+const connectionMarketStore = new ConnectionMarketStore<Tick, Bar>();
+// Compatibility names retained for existing structural safety checks and
+// migration traceability; both names refer to the same typed scoped store.
+const connTickStore = connectionMarketStore;
+const connBarStore = connectionMarketStore;
+function connBarKey(connectionId: string, symbol: string, timeframe: string): string {
+  return scopedBarKey(connectionId, symbol, timeframe);
+}
+function connTickKey(connectionId: string, symbol: string): string {
+  return scopedTickKey(connectionId, symbol);
+}
+
+// ── P0-05: Connection-scoped WS clients (connectionId → Set<WebSocket>)
+// Used to send EXECUTION_RESULT only to the owning connection's clients.
+const connWsClients = new Map<string, Set<WebSocket>>();
+
+function verifyWsAccessToken(token: string, connectionId: string): boolean {
+  const secret = SECRET;
+  if (!secret || !token || !connectionId) return false;
+  const [encoded, signature] = token.split(".");
+  if (!encoded || !signature) return false;
+  const expected = createHmac("sha256", secret).update(encoded).digest("base64url");
+  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return false;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as { connectionId?: string; exp?: number };
+    return payload.connectionId === connectionId && Number.isFinite(payload.exp) && payload.exp! > Math.floor(Date.now() / 1000);
+  } catch { return false; }
+}
+
+function broadcastToConnection(connectionId: string, msg: WsMessage): void {
+  const clients = connWsClients.get(connectionId);
+  if (!clients || clients.size === 0) return;
+  const payload = JSON.stringify(msg);
+  clients.forEach(ws => { if (ws.readyState === ws.OPEN) ws.send(payload); });
+}
 /** ポジション配列 */
 let   positions:    Position[] = [];
 /** 口座情報 */
 let   account:      Account | null = null;
 /** EA 接続情報 */
 let   eaInfo:       Record<string, unknown> | null = null;
+/** P3 observability: last bridge heartbeat timestamp (ms).
+ * eaConnected in /health derives from this when /connect has not been called
+ * since the last Gateway restart.  Does not affect execution semantics. */
+let   lastBridgeHeartbeatTs = 0;
 /** インジケーターストア（AI基盤）"EURUSD" → Indicators */
 const indicatorStore = new Map<string, Indicators>();
+const connIndicatorStore = new Map<string, Map<string, Indicators>>();
 /** 取引履歴ストア "EURUSD" → HistoryDeal[] （ticket でユニーク管理）*/
 const historyStore  = new Map<string, Map<number, HistoryDeal>>();
 /** Market Watch シンボルストア "EURUSD" → MarketWatchSymbol */
 const symbolStore   = new Map<string, MarketWatchSymbol>();
+const connSymbolStore = new Map<string, Map<string, MarketWatchSymbol>>();
 /** 注文ストア（Pending + Position）ticket → Order */
 const orderStore    = new Map<number, Order>();
+const connOrderStore = new Map<string, Map<number, Order>>();
 /** 注文キュー（AI → EA 発注用） */
 const orderQueue:   Array<Record<string, unknown>> = [];
 
@@ -307,6 +371,141 @@ let lastIndicatorTs: number = 0;
 const heartbeatStore = new Map<string, string>();
 
 // -----------------------------------------------------------------
+// STAGE1-04: Bridge Auth キャッシュ（高頻度エンドポイント用 TTL 30s）
+// /bridge/ticks と /bridge/bars への毎Tick DB照会を防ぐ
+// -----------------------------------------------------------------
+const bridgeAuthCache = new Map<string, { tokenHash: string; expiresAt: number }>();
+const BRIDGE_AUTH_CACHE_TTL_MS = 30_000; // 30秒
+
+// P0-03: Auth result type — distinguishes "denied" from "backend unavailable"
+type AuthCachedResult = "ok" | "denied" | "unavailable";
+
+async function verifyBridgeAuthCached(
+  connectionId: string,
+  connectionToken: string,
+): Promise<AuthCachedResult> {
+  // P0-03: FAIL CLOSED — if DB backend is unavailable, reject (not skip)
+  if (!isExecutionEnabled()) {
+    return "unavailable";
+  }
+
+  // Security-sensitive connection endpoints always re-check the backend.
+  // A local cache would permit revoked/disabled credentials to survive its TTL.
+  const flags = await verifyBridgeAuthStatus(connectionId, connectionToken);
+  if (flags === "unavailable") return "unavailable";
+  if (flags !== "denied") {
+    return "ok";
+  }
+
+  bridgeAuthCache.delete(connectionId); // 無効化
+  return "denied";
+}
+
+// -----------------------------------------------------------------
+// Market Watcher — M5確定検知
+// -----------------------------------------------------------------
+
+/** Connection-scoped last M5 close time を Supabase へ永続化（fire-and-forget） */
+function persistLastM5Time(connectionId: string, symbol: string, barTime: number): void {
+  if (!isExecutionEnabled()) return;
+  const { createClient: makeSupabase } = require("@supabase/supabase-js");
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return;
+  const sb = makeSupabase(url, key, { global: { fetch: globalThis.fetch } });
+  const gKey = `last_m5_close_time_${connectionId}__${encodeURIComponent(symbol)}`;
+  sb.from("gateway_state")
+    .upsert({ key: gKey, value: String(barTime), updated_at: new Date().toISOString() }, { onConflict: "key" })
+    .then(({ error }: { error: unknown }) => {
+      if (error) console.warn(`[M5Persist] upsert error: ${(error as Error).message ?? error}`);
+    });
+}
+
+/** Gateway 起動時に Supabase から lastM5Time を復元 */
+async function restoreLastM5Times(): Promise<void> {
+  if (!isExecutionEnabled()) return;
+  try {
+    const { createClient: makeSupabase } = require("@supabase/supabase-js");
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return;
+    const sb = makeSupabase(url, key, { global: { fetch: globalThis.fetch } });
+    const { data } = await sb.from("gateway_state").select("key, value").like("key", "last_m5_close_time_%");
+    if (!data) return;
+    for (const row of data as Array<{ key: string; value: string }>) {
+      const suffix = row.key.replace("last_m5_close_time_", "");
+      const delimiter = suffix.indexOf("__");
+      const connectionId = delimiter >= 0 ? suffix.slice(0, delimiter) : "";
+      const symbol = delimiter >= 0 ? decodeURIComponent(suffix.slice(delimiter + 2)) : suffix;
+      const t = parseInt(row.value, 10);
+      if (t > 0) {
+        connectionMarketStore.setLastM5Time(connectionId, symbol, t);
+        console.log(`[M5Restore] ${connectionId}:${symbol} = ${t}`);
+      }
+    }
+  } catch (e) {
+    console.warn("[M5Restore] failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+const WATCHER_APP_URL   = process.env.APP_URL        ?? "";
+const WATCHER_SECRET    = process.env.WATCHER_SECRET ?? "";
+
+/** ユーザー別ポジション数を追跡（userId → count） — POSITION_CHANGED検知用 */
+const lastPositionCountStore = new Map<string, number>();
+
+/** 任意のトリガーをVercel Market Watcherへ通知（fire-and-forget） */
+function notifyWatcher(symbol: string, barTime: number, currentPrice: number, triggerOverride?: string): void {
+  if (!WATCHER_APP_URL || !WATCHER_SECRET) return;
+
+  const url = `${WATCHER_APP_URL}/api/watcher/m5-close`;
+  fetch(url, {
+    method:  "POST",
+    headers: {
+      "Content-Type":    "application/json",
+      "x-watcher-secret": WATCHER_SECRET,
+    },
+    body: JSON.stringify({
+      symbol,
+      bar_time:         barTime,
+      current_price:    currentPrice,
+      trigger_override: triggerOverride ?? null,
+    }),
+    signal: AbortSignal.timeout(12_000),
+  }).then(r => {
+    if (!r.ok) console.warn(`[Watcher] notify failed: ${r.status} ${symbol} trigger=${triggerOverride ?? "M5"}`);
+    else       console.log(`[Watcher] notified: ${symbol} bar=${barTime} price=${currentPrice} trigger=${triggerOverride ?? "M5_CLOSE"}`);
+  }).catch(e => {
+    console.warn(`[Watcher] notify error: ${e instanceof Error ? e.message : String(e)}`);
+  });
+}
+
+/** M5バー確定をVercel Market Watcherへ通知（fire-and-forget） */
+function notifyM5Close(symbol: string, closedBarTime: number, currentPrice: number): void {
+  if (!WATCHER_APP_URL || !WATCHER_SECRET) return;
+
+  const url = `${WATCHER_APP_URL}/api/watcher/m5-close`;
+  fetch(url, {
+    method:  "POST",
+    headers: {
+      "Content-Type":    "application/json",
+      "x-watcher-secret": WATCHER_SECRET,
+    },
+    body: JSON.stringify({
+      symbol,
+      bar_time:      closedBarTime,  // 確定したM5バーのUnix秒
+      current_price: currentPrice,
+    }),
+    signal: AbortSignal.timeout(12_000),
+  }).then(r => {
+    if (!r.ok) console.warn(`[M5Watcher] notify failed: ${r.status} ${symbol}`);
+    else console.log(`[M5Watcher] notified: ${symbol} bar_time=${closedBarTime} price=${currentPrice}`);
+  }).catch(e => {
+    console.warn(`[M5Watcher] notify error: ${e instanceof Error ? e.message : String(e)}`);
+  });
+}
+
+// -----------------------------------------------------------------
 // WebSocket サーバー /ws
 // -----------------------------------------------------------------
 
@@ -314,23 +513,30 @@ const wss     = new WebSocketServer({ server, path: "/ws" });
 const clients = new Set<WebSocket>();
 
 wss.on("connection", (ws, req) => {
-  clients.add(ws);
-  console.log(`[WS] 接続 ${req.socket.remoteAddress} (計${clients.size})`);
+  // Customer sockets must prove the connection identity before they enter the
+  // scoped recipient map.  Global gateway credentials are not accepted here.
+  const urlObj = new URL(req.url ?? "/", "http://localhost");
+  const wsConnId = urlObj.searchParams.get("connectionId") ?? "";
+  const wsToken = urlObj.searchParams.get("accessToken") ?? "";
+  void (async () => {
+    if (!wsConnId || !verifyWsAccessToken(wsToken, wsConnId)) {
+      ws.close(1008, "connection authentication required");
+      return;
+    }
+    clients.add(ws);
+    if (!connWsClients.has(wsConnId)) connWsClients.set(wsConnId, new Set());
+    connWsClients.get(wsConnId)!.add(ws);
+    console.log(`[WS] 接続 ${req.socket.remoteAddress} connId=${wsConnId} (計${clients.size})`);
+  })().catch(() => ws.close(1011, "authentication unavailable"));
 
-  // 接続直後に現在の EA 状態を通知
-  if (eaInfo)    safeSend(ws, { type: "EA_CONNECTED", data: eaInfo,  ts: Date.now() });
-  if (account)   safeSend(ws, { type: "ACCOUNT",      data: account, ts: Date.now() });
-  // Market Watch と注文の現在状態を送信
-  if (symbolStore.size > 0) {
-    const syms = Array.from(symbolStore.values());
-    safeSend(ws, { type: "SYMBOLS", data: syms, ts: Date.now() });
-  }
-  if (orderStore.size > 0) {
-    safeSend(ws, { type: "ORDERS", data: Array.from(orderStore.values()), ts: Date.now() });
-  }
-
-  ws.on("close", () => { clients.delete(ws); });
-  ws.on("error", () => { clients.delete(ws); });
+  ws.on("close", () => {
+    clients.delete(ws);
+    if (wsConnId) connWsClients.get(wsConnId)?.delete(ws);
+  });
+  ws.on("error", () => {
+    clients.delete(ws);
+    if (wsConnId) connWsClients.get(wsConnId)?.delete(ws);
+  });
 });
 
 function safeSend(ws: WebSocket, msg: WsMessage): void {
@@ -367,48 +573,71 @@ function auth(req: Request, res: Response, next: NextFunction): void {
   res.status(401).json({ error: "Unauthorized" });
 }
 
+/** Customer-scoped endpoints always require the connection credential.
+ * The global gateway secret is intentionally not an identity substitute. */
+async function enforceConnectionAuth(req: Request, res: Response): Promise<boolean> {
+  const connectionId = (req.headers["x-connection-id"] ?? "") as string;
+  const connectionToken = (req.headers["x-connection-token"] ?? "") as string;
+  // Server-to-server callers may use the dedicated internal header, but must
+  // still bind the request to an explicit connection id.  The public gateway
+  // secret by itself is never accepted as a customer identity.
+  const internalAuth = (req.headers["x-internal-service-auth"] ?? "") as string;
+  if (internalAuth && SECRET && internalAuth === SECRET && connectionId) return true;
+  if (!connectionId || !connectionToken) {
+    res.status(401).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return false;
+  }
+  const result = await verifyBridgeAuthCached(connectionId, connectionToken);
+  if (result === "unavailable") {
+    res.status(503).json({ error: "認証バックエンド利用不可" });
+    return false;
+  }
+  if (result === "denied") {
+    res.status(401).json({ error: "認証失敗" });
+    return false;
+  }
+  return true;
+}
+
 // -----------------------------------------------------------------
 // EA → Server: 受信エンドポイント（加工禁止）
 // -----------------------------------------------------------------
 
 /** EA 起動通知 */
 app.post("/connect", auth, async (req, res) => {
-  // Bridge EA 認証: X-Connection-Id + X-Connection-Token で二次検証
-  const connectionId    = (req.headers["x-connection-id"]    ?? "") as string;
-  const connectionToken = (req.headers["x-connection-token"] ?? "") as string;
-  if (connectionId && connectionToken) {
-    const authResult = await verifyBridgeAuth(connectionId, connectionToken);
-    if (!authResult) {
-      console.warn(`[EA] /connect 認証失敗: connection_id=${connectionId}`);
-      res.status(401).json({ error: "Connection Token 認証失敗" });
-      return;
-    }
-    console.log(`[EA] Bridge EA 認証成功: user=${authResult.userId}`);
-  }
+  if (!await enforceConnectionAuth(req, res)) return;
+  const connectionId = req.headers["x-connection-id"] as string;
   eaInfo = req.body as Record<string, unknown>;
   const { symbol, login, broker, serverTime } = eaInfo as Record<string, unknown>;
   console.log(`[EA] 接続: symbol=${symbol} login=${login} broker=${broker} serverTime=${serverTime}`);
-  broadcast({ type: "EA_CONNECTED", data: eaInfo, ts: Date.now() });
+  broadcastToConnection(connectionId, { type: "EA_CONNECTED", data: eaInfo, ts: Date.now() });
   res.json({ ok: true });
 });
 
 /** EA 停止 / 切断 */
-app.post("/event", auth, (req, res) => {
+app.post("/event", auth, async (req, res) => {
+  if (!await enforceConnectionAuth(req, res)) return;
+  const connectionId = req.headers["x-connection-id"] as string;
   const { type, symbol } = req.body as { type: string; symbol: string };
   if (type === "DISCONNECT") {
     eaInfo = null;
     console.log(`[EA] 切断: ${symbol}`);
   }
-  broadcast({ type, symbol, ts: Date.now() });
+  broadcastToConnection(connectionId, { type, symbol, ts: Date.now() });
   res.json({ ok: true });
 });
 
 /** Tick ストリーム — 受信値をそのまま保存・配信 */
-app.post("/tick", auth, (req, res) => {
+// STAGE1-REMEDIATION: Legacy endpoint — apply same auth as /bridge/ticks
+app.post("/tick", auth, async (req, res) => {
+  const connectionId    = (req.headers["x-connection-id"]    ?? "") as string;
+  const connectionToken = (req.headers["x-connection-token"] ?? "") as string;
+  if (!await enforceConnectionAuth(req, res)) return;
   const tick = req.body as Tick;
-  tickStore.set(tick.symbol, tick);
+  // connTickKey(connectionId, tick.symbol) is the canonical identity.
+  connectionMarketStore.setTick(connectionId, tick);
   lastTickTs = Date.now();
-  broadcast({ type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
+  broadcastToConnection(connectionId, { type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
   res.json({ ok: true });
 });
 
@@ -416,19 +645,50 @@ app.post("/tick", auth, (req, res) => {
  * バー リアルタイム更新 — 受信値をそのまま保存・配信
  * 同 time のバーは上書き（未確定バー更新）、新 time は追記。
  */
-app.post("/bar", auth, (req, res) => {
+// STAGE1-REMEDIATION: Legacy endpoint — apply same auth as /bridge/bars
+app.post("/bar", auth, async (req, res) => {
+  const connectionId    = (req.headers["x-connection-id"]    ?? "") as string;
+  const connectionToken = (req.headers["x-connection-token"] ?? "") as string;
+  if (!await enforceConnectionAuth(req, res)) return;
   const bar = req.body as Bar & { symbol: string; timeframe: string };
   if (bar.timeframe === "M1") {
     const norm = normalizeTime(bar.time);
     console.log(`[BAR/M1] raw=${bar.time} norm=${norm} close=${bar.close}`);
   }
-  upsertBar(bar.symbol, bar.timeframe, bar);
-  broadcast({ type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
+  const connectionBars = connectionMarketStore.getBars(connectionId, bar.symbol, bar.timeframe);
+  connectionMarketStore.upsertBars(
+    connectionId,
+    bar.symbol,
+    bar.timeframe,
+    dedupAndSort([...connectionBars, normalizeBar(bar)]),
+    MAX_BARS,
+  );
+  broadcastToConnection(connectionId, { type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
+
+  // ── M5確定検知 ──────────────────────────────────────────────────
+  if (bar.timeframe === "M5") {
+    const symKey  = bar.symbol.toUpperCase();
+    const prevTime = connectionMarketStore.getLastM5Time(connectionId, symKey);
+    const newTime  = bar.time;
+
+    if (prevTime !== undefined && prevTime !== newTime) {
+      console.log(`[M5Watcher] 確定: ${symKey} prev=${prevTime} new=${newTime} price=${bar.close}`);
+      notifyM5Close(symKey, prevTime, bar.close);
+      persistLastM5Time(connectionId, symKey, newTime);
+    }
+
+    connectionMarketStore.setLastM5Time(connectionId, symKey, newTime);
+  }
+
   res.json({ ok: true });
 });
 
 /** 過去バー一括受信（EA 起動時） */
-app.post("/bars/bulk", auth, (req, res) => {
+// STAGE1-REMEDIATION: Legacy endpoint — apply same auth as /bridge/bars/bulk
+app.post("/bars/bulk", auth, async (req, res) => {
+  const connId    = (req.headers["x-connection-id"]    ?? "") as string;
+  const connToken = (req.headers["x-connection-token"] ?? "") as string;
+  if (!await enforceConnectionAuth(req, res)) return;
   const { symbol, timeframe, bars } = req.body as {
     symbol: string; timeframe: string; bars: Bar[];
   };
@@ -436,13 +696,13 @@ app.post("/bars/bulk", auth, (req, res) => {
     res.status(400).json({ error: "symbol / timeframe / bars が必要です" });
     return;
   }
-  const key      = storeKey(symbol, timeframe);
-  const existing = barStore.get(key);
+  const key      = connBarKey(connId, symbol, timeframe);
+  const existing = connectionMarketStore.getBars(connId, symbol, timeframe);
   const normalized = bars.map(normalizeBar);
 
   // タイムスタンプ整合性チェック:
   // bulk最新バーがtickより1時間以上先の場合はチャートキャッシュのTZ不整合と判断してスキップ
-  const tick = tickStore.get(symbol.toUpperCase());
+  const tick = connectionMarketStore.getTick(connId, symbol);
   if (tick && normalized.length > 0) {
     const sorted0 = dedupAndSort(normalized);
     const lastBulkMs = sorted0[sorted0.length - 1].time;
@@ -458,7 +718,7 @@ app.post("/bars/bulk", auth, (req, res) => {
   // 既存より本数が多い（新規 or EA 再起動）場合のみ barStore を上書き
   if (!existing || bars.length >= existing.length) {
     const sorted = dedupAndSort(normalized);
-    barStore.set(key, sorted.slice(-MAX_BARS));
+    connectionMarketStore.upsertBars(connId, symbol, timeframe, sorted, MAX_BARS);
     console.log(`[Bulk] ${key}: ${sorted.length}本`);
     persistSave(); // Bulk受信は重要データなので即座に保存
   }
@@ -466,7 +726,7 @@ app.post("/bars/bulk", auth, (req, res) => {
   // Supabase への永続化（barStore の結果とは独立して常にupsert）
   // fire-and-forget: Gatewayレスポンスをブロックしない
   if (normalized.length > 0) {
-    upsertBulkBars(symbol, timeframe, normalized as BarRecord[]).catch((err: unknown) => {
+    upsertBulkBars(connId, symbol, timeframe, normalized as BarRecord[]).catch((err: unknown) => {
       console.warn(`[barData] bulk upsert failed ${key}:`, err);
     });
   }
@@ -475,22 +735,45 @@ app.post("/bars/bulk", auth, (req, res) => {
 });
 
 // Bridge EA 用エイリアス（/tick /bar /bars/bulk と同じ処理）
-app.post("/bridge/ticks", auth, (req, res) => {
+// STAGE1-04 AUDIT-021: connection-based 認証時はトークンをキャッシュ付きで検証
+app.post("/bridge/ticks", auth, async (req, res) => {
+  const connectionId    = (req.headers["x-connection-id"]    ?? "") as string;
+  const connectionToken = (req.headers["x-connection-token"] ?? "") as string;
+
+  if (!await enforceConnectionAuth(req, res)) return;
+
   const tick = req.body as Tick;
-  tickStore.set(tick.symbol, tick);
+  // P0-04: also store in connection-scoped store
+  connectionMarketStore.setTick(connectionId, tick);
   lastTickTs = Date.now();
-  broadcast({ type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
+  broadcastToConnection(connectionId, { type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
   res.json({ ok: true });
 });
 
-app.post("/bridge/bars", auth, (req, res) => {
+app.post("/bridge/bars", auth, async (req, res) => {
+  const connectionId    = (req.headers["x-connection-id"]    ?? "") as string;
+  const connectionToken = (req.headers["x-connection-token"] ?? "") as string;
+
+  if (!await enforceConnectionAuth(req, res)) return;
+
   const bar = req.body as Bar & { symbol: string; timeframe: string };
-  upsertBar(bar.symbol, bar.timeframe, bar);
-  broadcast({ type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
+  const existing = connectionMarketStore.getBars(connectionId, bar.symbol, bar.timeframe);
+  connectionMarketStore.upsertBars(
+    connectionId,
+    bar.symbol,
+    bar.timeframe,
+    dedupAndSort([...existing, normalizeBar(bar)]),
+    MAX_BARS,
+  );
+  broadcastToConnection(connectionId, { type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
   res.json({ ok: true });
 });
 
-app.post("/bridge/bars/bulk", auth, (req, res) => {
+// STAGE1-REMEDIATION AUDIT-021: add token verification
+app.post("/bridge/bars/bulk", auth, async (req, res) => {
+  const connectionId    = (req.headers["x-connection-id"]    ?? "") as string;
+  const connectionToken = (req.headers["x-connection-token"] ?? "") as string;
+  if (!await enforceConnectionAuth(req, res)) return;
   const { symbol, timeframe, bars } = req.body as {
     symbol: string; timeframe: string; bars: Bar[];
   };
@@ -498,19 +781,19 @@ app.post("/bridge/bars/bulk", auth, (req, res) => {
     res.status(400).json({ error: "symbol / timeframe / bars が必要です" });
     return;
   }
-  const key      = storeKey(symbol, timeframe);
-  const existing = barStore.get(key);
+  const key      = connBarKey(connectionId, symbol, timeframe);
+  const existing = connectionMarketStore.getBars(connectionId, symbol, timeframe);
   const normalized = bars.map(normalizeBar);
 
   if (!existing || bars.length >= existing.length) {
     const sorted = dedupAndSort(normalized);
-    barStore.set(key, sorted.slice(-MAX_BARS));
+    connectionMarketStore.upsertBars(connectionId, symbol, timeframe, sorted, MAX_BARS);
     console.log(`[Bridge/Bulk] ${key}: ${sorted.length}本`);
     persistSave();
   }
 
   if (normalized.length > 0) {
-    upsertBulkBars(symbol, timeframe, normalized as BarRecord[]).catch((err: unknown) => {
+    upsertBulkBars(connectionId, symbol, timeframe, normalized as BarRecord[]).catch((err: unknown) => {
       console.warn(`[barData] bridge bulk upsert failed ${key}:`, err);
     });
   }
@@ -519,27 +802,39 @@ app.post("/bridge/bars/bulk", auth, (req, res) => {
 });
 
 /** ポジション ストリーム */
-app.post("/positions", auth, (req, res) => {
+app.post("/positions", auth, async (req, res) => {
+  if (!await enforceConnectionAuth(req, res)) return;
+  const connectionId = req.headers["x-connection-id"] as string;
   const { positions: pos, symbol } = req.body as { positions: Position[]; symbol: string };
-  positions = pos ?? [];
-  broadcast({ type: "POSITIONS", symbol, data: positions, ts: Date.now() });
+  broadcastToConnection(connectionId, { type: "POSITIONS", symbol, data: pos ?? [], ts: Date.now() });
   res.json({ ok: true });
 });
 
 /** 口座情報 ストリーム */
-app.post("/account", auth, (req, res) => {
+app.post("/account", auth, async (req, res) => {
+  if (!await enforceConnectionAuth(req, res)) return;
+  const connectionId = req.headers["x-connection-id"] as string;
   account = req.body as Account;
-  broadcast({ type: "ACCOUNT", data: account, ts: Date.now() });
+  broadcastToConnection(connectionId, { type: "ACCOUNT", data: account, ts: Date.now() });
   res.json({ ok: true });
 });
 
 /** ハートビート — per-symbol last-seen tracking (Data Phase G) */
-app.post("/heartbeat", auth, (req, res) => {
+app.post("/heartbeat", auth, async (req, res) => {
+  if (!await enforceConnectionAuth(req, res)) return;
+  const connectionId = req.headers["x-connection-id"] as string;
   const body = req.body as { symbol?: string; serverTime?: number };
   if (body.symbol) {
     heartbeatStore.set(body.symbol.toUpperCase(), new Date().toISOString());
   }
-  broadcast({ type: "HEARTBEAT", data: req.body, ts: Date.now() });
+  broadcastToConnection(connectionId, { type: "HEARTBEAT", data: req.body, ts: Date.now() });
+  void sendConsoleMonitoringHeartbeat({
+    gateway_online: true,
+    mt5_connected: Boolean((req.body as { mt5_connected?: unknown }).mt5_connected),
+    mt5_account_mode: (req.body as { mt5_account_mode?: "HEDGING" | "NETTING" }).mt5_account_mode ?? null,
+    bridge_version: (req.body as { bridge_version?: string }).bridge_version ?? null,
+    metadata: { source: "customer-gateway" },
+  });
   res.json({ ok: true });
 });
 
@@ -547,7 +842,9 @@ app.post("/heartbeat", auth, (req, res) => {
 // Market Watch シンボル一括受信
 // -----------------------------------------------------------------
 
-app.post("/symbols/bulk", auth, (req, res) => {
+app.post("/symbols/bulk", auth, async (req, res) => {
+  if (!await enforceConnectionAuth(req, res)) return;
+  const connectionId = req.headers["x-connection-id"] as string;
   const body = req.body as { count?: number; symbols?: MarketWatchSymbol[] };
   if (!Array.isArray(body.symbols)) { res.status(400).json({ error: "symbols が必要です" }); return; }
 
@@ -556,11 +853,13 @@ app.post("/symbols/bulk", auth, (req, res) => {
   for (const sym of body.symbols) {
     if (!sym.symbol) continue;
     symbolStore.set(sym.symbol.toUpperCase(), { ...sym, receivedAt: now });
+    if (!connSymbolStore.has(connectionId)) connSymbolStore.set(connectionId, new Map());
+    connSymbolStore.get(connectionId)!.set(sym.symbol.toUpperCase(), { ...sym, receivedAt: now });
     updated++;
   }
 
   lastSymbolTs = now;
-  broadcast({ type: "SYMBOLS", data: Array.from(symbolStore.values()), ts: now });
+  broadcastToConnection(connectionId, { type: "SYMBOLS", data: Array.from(connSymbolStore.get(connectionId)?.values() ?? []), ts: now });
   res.json({ ok: true, updated });
 });
 
@@ -568,23 +867,31 @@ app.post("/symbols/bulk", auth, (req, res) => {
 // 注文ストリーム（EA から全注文+ポジションを受信）
 // -----------------------------------------------------------------
 
-app.post("/orders/stream", auth, (req, res) => {
+app.post("/orders/stream", auth, async (req, res) => {
+  if (!await enforceConnectionAuth(req, res)) return;
+  const connectionId = req.headers["x-connection-id"] as string;
   const body = req.body as { count?: number; orders?: Order[] };
   if (!Array.isArray(body.orders)) { res.status(400).json({ error: "orders が必要です" }); return; }
 
-  // 既存クリアして更新
+  // Keep the legacy store for compatibility, but stream only this connection's orders.
   orderStore.clear();
+  if (!connOrderStore.has(connectionId)) connOrderStore.set(connectionId, new Map());
+  const scopedOrders = connOrderStore.get(connectionId)!;
+  scopedOrders.clear();
   for (const order of body.orders) {
     if (!order.ticket) continue;
     orderStore.set(order.ticket, order);
+    scopedOrders.set(order.ticket, order);
   }
 
-  broadcast({ type: "ORDERS", data: Array.from(orderStore.values()), ts: Date.now() });
-  res.json({ ok: true, count: orderStore.size });
+  broadcastToConnection(connectionId, { type: "ORDERS", data: Array.from(scopedOrders.values()), ts: Date.now() });
+  res.json({ ok: true, count: scopedOrders.size });
 });
 
 /** インジケーターストリーム（AI基盤）— 拡張インジケーター */
-app.post("/indicators", auth, (req, res) => {
+app.post("/indicators", auth, async (req, res) => {
+  if (!await enforceConnectionAuth(req, res)) return;
+  const connectionId = req.headers["x-connection-id"] as string;
   const body = req.body as Omit<Indicators, "receivedAt">;
   if (!body.symbol || !body.timeframes) {
     res.status(400).json({ error: "symbol / timeframes が必要です" });
@@ -593,8 +900,10 @@ app.post("/indicators", auth, (req, res) => {
   const sessions = getTradingSessions(body.brokerTime);
   const data: Indicators = { ...body, receivedAt: Date.now(), sessions };
   indicatorStore.set(body.symbol.toUpperCase(), data);
+  if (!connIndicatorStore.has(connectionId)) connIndicatorStore.set(connectionId, new Map());
+  connIndicatorStore.get(connectionId)!.set(body.symbol.toUpperCase(), data);
   lastIndicatorTs = Date.now();
-  broadcast({ type: "INDICATORS", symbol: body.symbol, data, ts: Date.now() });
+  broadcastToConnection(connectionId, { type: "INDICATORS", symbol: body.symbol, data, ts: Date.now() });
   res.json({ ok: true });
 });
 
@@ -681,18 +990,20 @@ app.get("/orders/pending", auth, (req, res) => {
   res.json(pending);
 });
 
-app.post("/orders/:id/result", auth, (req, res) => {
+app.post("/orders/:id/result", auth, async (req, res) => {
+  if (!await enforceConnectionAuth(req, res)) return;
   const order = orderQueue.find((o) => o.id === req.params.id);
   if (!order) { res.status(404).json({ error: "not found" }); return; }
   order.status = (req.body as { success: boolean }).success ? "executed" : "failed";
-  broadcast({ type: "ORDER_RESULT", data: { ...order, result: req.body }, ts: Date.now() });
+  broadcastToConnection(req.headers["x-connection-id"] as string, { type: "ORDER_RESULT", data: { ...order, result: req.body }, ts: Date.now() });
   res.json({ ok: true });
 });
 
-app.post("/orders", (req, res) => {
+app.post("/orders", auth, async (req, res) => {
+  if (!await enforceConnectionAuth(req, res)) return;
   const order = { id: `order_${Date.now()}`, status: "pending", createdAt: Date.now(), ...req.body };
   orderQueue.push(order);
-  broadcast({ type: "ORDER_QUEUED", data: order, ts: Date.now() });
+  broadcastToConnection(req.headers["x-connection-id"] as string, { type: "ORDER_QUEUED", data: order, ts: Date.now() });
   res.json({ ok: true, id: order.id });
 });
 
@@ -722,38 +1033,82 @@ app.post("/bridge/heartbeat", auth, async (req, res) => {
   }
 
   if (!isExecutionEnabled()) {
-    res.json({ ok: true, tradingEnabled: false, emergencyStop: true, note: "Supabase未設定" });
+    res.status(503).json({ error: "認証バックエンド利用不可" });
+    return;
+  }
+
+  // STAGE1-03 AUDIT-078: token検証（口座データ更新前に認証）
+  const heartbeatAuthStatus = await verifyBridgeAuthStatus(connectionId, connectionToken);
+  if (heartbeatAuthStatus === "unavailable") {
+    res.status(503).json({ error: "認証バックエンド利用不可" });
+    return;
+  }
+  const heartbeatAuth = heartbeatAuthStatus === "denied" ? null : heartbeatAuthStatus;
+  if (!heartbeatAuth) {
+    res.status(401).json({ error: "認証失敗" });
     return;
   }
 
   const body = req.body as {
-    mt5Login?:    number;
-    broker?:      string;
-    accountType?: "REAL" | "DEMO";
-    accountMode?: "HEDGING" | "NETTING";
+    mt5Login?:     number;
+    broker?:       string;
+    accountType?:  "REAL" | "DEMO";
+    accountMode?:  "HEDGING" | "NETTING";
     tradeAllowed?: boolean;
-    balance?:     number;
-    equity?:      number;
-    margin?:      number;
-    freeMargin?:  number;
-    leverage?:    number;
+    balance?:      number;
+    equity?:       number;
+    margin?:       number;
+    freeMargin?:   number;
+    leverage?:     number;
   };
 
+  // STAGE1-REMEDIATION: Schema validation — required fields must be explicitly present.
+  // Reject malformed heartbeat: do NOT silently substitute safe-looking defaults.
+  const validAccountTypes = ["REAL", "DEMO"];
+  const validAccountModes = ["HEDGING", "NETTING"];
+
+  if (!body.accountType || !validAccountTypes.includes(body.accountType)) {
+    res.status(400).json({ error: `accountType が無効です: "${body.accountType}". 必須: REAL or DEMO` });
+    return;
+  }
+  if (!body.accountMode || !validAccountModes.includes(body.accountMode)) {
+    res.status(400).json({ error: `accountMode が無効です: "${body.accountMode}". 必須: HEDGING or NETTING` });
+    return;
+  }
+  if (typeof body.tradeAllowed !== "boolean") {
+    res.status(400).json({ error: "tradeAllowed が必要です" });
+    return;
+  }
+
+  const numeric = [body.balance, body.equity, body.margin, body.freeMargin, body.leverage];
+  if (numeric.some(v => typeof v !== "number" || !Number.isFinite(v) || v < 0)) {
+    res.status(400).json({ error: "heartbeat numeric fields are invalid" });
+    return;
+  }
+  const balance = body.balance as number;
+  const equity = body.equity as number;
+  const margin = body.margin as number;
+  const freeMargin = body.freeMargin as number;
+  const leverage = body.leverage as number;
+
   const flags = await updateBridgeHeartbeat(connectionId, {
-    accountType:  body.accountType  ?? "DEMO",
-    accountMode:  body.accountMode  ?? "HEDGING",
-    tradeAllowed: body.tradeAllowed ?? false,
-    balance:      body.balance      ?? 0,
-    equity:       body.equity       ?? 0,
-    margin:       body.margin       ?? 0,
-    freeMargin:   body.freeMargin   ?? 0,
-    leverage:     body.leverage     ?? 0,
+    accountType:  body.accountType,
+    accountMode:  body.accountMode,
+    tradeAllowed: body.tradeAllowed,
+    balance,
+    equity,
+    margin,
+    freeMargin,
+    leverage,
   });
 
   if (!flags) {
     res.status(401).json({ error: "接続が見つかりません" });
     return;
   }
+
+  // P3: track bridge heartbeat time for eaConnected health derivation
+  lastBridgeHeartbeatTs = Date.now();
 
   res.json({
     ok:             true,
@@ -765,12 +1120,117 @@ app.post("/bridge/heartbeat", auth, async (req, res) => {
   });
 });
 
-/** Bridge EA切断通知 */
-app.post("/bridge/disconnect", auth, async (req, res) => {
-  const connectionId = req.headers["x-connection-id"] as string | undefined;
-  if (connectionId && isExecutionEnabled()) {
-    await markConnectionDisconnected(connectionId);
+/** Bridge EA: Symbol Specification 送信（起動時・定期更新）
+ *  Risk Engine の Lot 計算 / Stop Level 検証の Source of Truth として DB に保存する。
+ */
+app.post("/bridge/symbol-spec", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"] as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+
+  if (!connectionId || !connectionToken) {
+    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
   }
+
+  if (!isExecutionEnabled()) {
+    res.json({ ok: true, note: "Supabase未設定 — symbol_spec は保存されません" });
+    return;
+  }
+
+  const disconnectAuth = await verifyBridgeAuthStatus(connectionId, connectionToken);
+  if (disconnectAuth === "unavailable") {
+    res.status(503).json({ error: "認証バックエンド利用不可" });
+    return;
+  }
+  if (disconnectAuth === "denied") {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+  const flags = disconnectAuth;
+
+  const body = req.body as {
+    brokerSymbol?:      string;
+    contractSize?:      number;
+    volumeMin?:         number;
+    volumeMax?:         number;
+    volumeStep?:        number;
+    tickSize?:          number;
+    tickValue?:         number;
+    pointSize?:         number;
+    digits?:            number;
+    stopsLevelPoints?:  number;
+    stopsLevelPrice?:   number;
+    currencyProfit?:    string;
+    currencyMargin?:    string;
+    marginInitial?:     number;
+    spreadCurrent?:     number;
+  };
+
+  if (!body.brokerSymbol) {
+    res.status(400).json({ error: "brokerSymbol が必要です" });
+    return;
+  }
+
+  // canonical symbol: GOLD#→GOLD, XAUUSD→GOLD, GOLD→GOLD
+  const canonical = body.brokerSymbol
+    .replace("#", "")
+    .replace("XAU", "GOLD")
+    .replace("USD", "")
+    .replace(/[-_].*/, "")
+    .toUpperCase();
+
+  const spec: SymbolSpecInput = {
+    connectionId,
+    userId:           flags.userId,
+    symbol:           canonical,
+    brokerSymbol:     body.brokerSymbol,
+    contractSize:     body.contractSize  ?? 0,
+    volumeMin:        body.volumeMin     ?? 0.01,
+    volumeMax:        body.volumeMax     ?? 100,
+    volumeStep:       body.volumeStep    ?? 0.01,
+    tickSize:         body.tickSize      ?? 0,
+    tickValue:        body.tickValue     ?? 0,
+    pointSize:        body.pointSize     ?? 0,
+    digits:           body.digits        ?? 2,
+    stopsLevelPoints: body.stopsLevelPoints ?? 0,
+    stopsLevelPrice:  body.stopsLevelPrice  ?? 0,
+    currencyProfit:   body.currencyProfit   ?? "USD",
+    currencyMargin:   body.currencyMargin   ?? "USD",
+    marginInitial:    body.marginInitial    ?? 0,
+    spreadCurrent:    body.spreadCurrent    ?? 0,
+  };
+
+  const ok = await upsertSymbolSpec(spec);
+  res.json({ ok, canonical, brokerSymbol: body.brokerSymbol });
+});
+
+/** Bridge EA切断通知 */
+// STAGE1-REMEDIATION: verify token before disconnecting + invalidate auth cache
+app.post("/bridge/disconnect", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"]    as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+
+  if (!connectionId || !connectionToken) {
+    res.status(400).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+
+  if (!isExecutionEnabled()) {
+    res.status(503).json({ error: "認証バックエンド利用不可" });
+    return;
+  }
+  const disconnectStatus = await verifyBridgeAuthStatus(connectionId, connectionToken);
+  if (disconnectStatus === "unavailable") {
+    res.status(503).json({ error: "認証バックエンド利用不可" });
+    return;
+  }
+  if (disconnectStatus === "denied") {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+  // Invalidate auth cache immediately (token is being retired)
+  bridgeAuthCache.delete(connectionId);
+  await markConnectionDisconnected(connectionId);
   res.json({ ok: true });
 });
 
@@ -855,21 +1315,30 @@ app.post("/execution-commands/:commandId/result", auth, async (req, res) => {
   const result = req.body as BridgeResultInput;
   result.commandId = commandId;
 
-  await submitCommandResult(result);
+  // STAGE1-05 AUDIT-022: connectionId ownership check
+  // STAGE1-REMEDIATION: only broadcast if DB update was actually successful
+  const { rowsAffected } = await processExecutionResult(result, flags.connectionId);
 
-  broadcast({
-    type: "EXECUTION_RESULT",
-    data: {
-      commandId,
-      status:       result.status,
-      success:      result.success,
-      orderTicket:  result.orderTicket,
-      dealTicket:   result.dealTicket,
-    },
-    ts: Date.now(),
-  });
+  if (rowsAffected > 0) {
+    // P0-05: EXECUTION_RESULT is connection-scoped — only send to owning connection's WS clients
+    const execResultMsg = {
+      type: "EXECUTION_RESULT",
+      data: {
+        commandId,
+        status:       result.status,
+        success:      result.success,
+        orderTicket:  result.orderTicket,
+        dealTicket:   result.dealTicket,
+      },
+      ts: Date.now(),
+    };
+    const connId = flags.connectionId;
+    broadcastToConnection(connId, execResultMsg);
+  } else {
+    console.warn(`[Gateway] result for commandId=${commandId} matched 0 rows (ownership mismatch or terminal state) — broadcast suppressed`);
+  }
 
-  res.json({ ok: true });
+  res.json({ ok: true, rowsAffected });
 });
 
 /** Bridge EA: Position同期 */
@@ -877,8 +1346,12 @@ app.post("/bridge/positions", auth, async (req, res) => {
   const connectionId    = req.headers["x-connection-id"] as string | undefined;
   const connectionToken = req.headers["x-connection-token"] as string | undefined;
 
-  if (!connectionId || !connectionToken || !isExecutionEnabled()) {
-    res.json({ ok: true });
+  if (!connectionId || !connectionToken) {
+    res.status(401).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+  if (!isExecutionEnabled()) {
+    res.status(503).json({ error: "Supabase未設定" });
     return;
   }
 
@@ -888,9 +1361,34 @@ app.post("/bridge/positions", auth, async (req, res) => {
     return;
   }
 
-  const { positions } = req.body as { positions: BridgePosition[] };
+  const { positions, snapshot_complete: snapshotComplete } = req.body as { positions?: BridgePosition[]; snapshot_complete?: boolean };
   if (Array.isArray(positions)) {
-    await upsertPositions(connectionId, flags.userId, positions);
+    // ── ポジション変化検知 (POSITION_CHANGED トリガー) ──
+    const userId        = flags.userId;
+    const prevCount     = lastPositionCountStore.get(userId) ?? -1;
+    const currentCount  = positions.length;
+    lastPositionCountStore.set(userId, currentCount);
+
+    if (prevCount >= 0 && prevCount !== currentCount) {
+      // ポジション数が変化した → 全ACTIVEトレーダーへ通知
+      const primarySymbol = positions.length > 0
+        ? (positions[0] as { symbol?: string }).symbol ?? "GOLD#"
+        : "GOLD#";
+      const primaryPrice  = positions.length > 0
+        ? (positions[0] as { currentPrice?: number }).currentPrice ?? 0
+        : 0;
+
+      console.log(`[POSITION_CHANGED] userId=${userId} prev=${prevCount} new=${currentCount} sym=${primarySymbol}`);
+      notifyWatcher(primarySymbol, 0, primaryPrice, "POSITION_CHANGED");
+    }
+
+    try {
+      await reconcilePositionSnapshot(connectionId, flags.userId, positions, undefined, { complete: snapshotComplete === true });
+    } catch (error) {
+      console.error("[Gateway] position reconciliation failed", error);
+      res.status(500).json({ ok: false, error: "POSITION_RECONCILIATION_FAILED" });
+      return;
+    }
   }
   res.json({ ok: true });
 });
@@ -900,8 +1398,12 @@ app.post("/bridge/deals", auth, async (req, res) => {
   const connectionId    = req.headers["x-connection-id"] as string | undefined;
   const connectionToken = req.headers["x-connection-token"] as string | undefined;
 
-  if (!connectionId || !connectionToken || !isExecutionEnabled()) {
-    res.json({ ok: true });
+  if (!connectionId || !connectionToken) {
+    res.status(401).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+  if (!isExecutionEnabled()) {
+    res.status(503).json({ error: "Supabase未設定" });
     return;
   }
 
@@ -919,6 +1421,166 @@ app.post("/bridge/deals", auth, async (req, res) => {
 });
 
 // -----------------------------------------------------------------
+// V2 Customer Market Data — EA → Gateway → customer_bar_data
+// -----------------------------------------------------------------
+
+interface MarketDataBarPayload {
+  symbol:           string;   // broker symbol (e.g., GOLD#, XAUUSD)
+  timeframe:        string;
+  time:             number;   // bar open time — Unix seconds (broker server time)
+  open:             number;
+  high:             number;
+  low:              number;
+  close:            number;
+  tick_volume?:     number;
+  spread?:          number;
+  utc_offset_hours?: number;  // broker server UTC offset (default 0 if EA normalises)
+  broker?:          string;
+  broker_server?:   string;
+}
+
+interface MarketDataBarsBody {
+  bars:              MarketDataBarPayload[];
+  broker?:           string;
+  broker_server?:    string;
+  utc_offset_hours?: number;
+}
+
+function buildBarIngestionInput(
+  payload: MarketDataBarPayload,
+  connectionId: string,
+  userId: string,
+  source: BarSource,
+  bodyDefaults: Pick<MarketDataBarsBody, "broker" | "broker_server" | "utc_offset_hours">,
+): BarIngestionInput {
+  const utcOffsetHours = payload.utc_offset_hours ?? bodyDefaults.utc_offset_hours ?? 0;
+  const brokerTimeSec  = payload.time;
+  const utcTimeSec     = brokerTimeSec - utcOffsetHours * 3600;
+  const timeUtc        = new Date(utcTimeSec * 1000).toISOString();
+
+  return {
+    connection_id:    connectionId,
+    user_id:          userId,
+    broker_symbol:    payload.symbol,
+    canonical_symbol: canonicalizeSymbol(payload.symbol),
+    timeframe:        payload.timeframe,
+    time_utc:         timeUtc,
+    open:             payload.open,
+    high:             payload.high,
+    low:              payload.low,
+    close:            payload.close,
+    tick_volume:      payload.tick_volume,
+    spread:           payload.spread,
+    source,
+    is_confirmed:     true,
+    broker:           payload.broker ?? bodyDefaults.broker,
+    broker_server:    payload.broker_server ?? bodyDefaults.broker_server,
+  };
+}
+
+/** V2: Bridge EA sends realtime closed bars */
+app.post("/market-data/bars", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"]    as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+  if (!connectionId || !connectionToken) {
+    res.status(401).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+  if (!isExecutionEnabled()) {
+    res.status(503).json({ error: "Supabase未設定" });
+    return;
+  }
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+
+  const body = req.body as MarketDataBarsBody;
+  if (!Array.isArray(body.bars) || body.bars.length === 0) {
+    res.status(400).json({ error: "bars array is required" });
+    return;
+  }
+  if (body.bars.length > 500) {
+    res.status(400).json({ error: "bars batch limit is 500 (use /market-data/backfill for larger batches)" });
+    return;
+  }
+
+  const inputs = body.bars.map((p) =>
+    buildBarIngestionInput(p, connectionId, flags.userId, "bridge_realtime", body),
+  );
+
+  const result = await upsertCustomerBars(inputs);
+  if (result.db_error) {
+    res.status(503).json({ ok: false, error: result.db_error });
+    return;
+  }
+  res.json({ ok: true, accepted: result.accepted, rejected: result.rejected, errors: result.errors });
+});
+
+/** V2: Bridge EA sends backfill / recovery bars (gap fill on reconnect) */
+app.post("/market-data/backfill", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"]    as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+  if (!connectionId || !connectionToken) {
+    res.status(401).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+  if (!isExecutionEnabled()) {
+    res.status(503).json({ error: "Supabase未設定" });
+    return;
+  }
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+
+  const body = req.body as MarketDataBarsBody;
+  if (!Array.isArray(body.bars) || body.bars.length === 0) {
+    res.status(400).json({ error: "bars array is required" });
+    return;
+  }
+  if (body.bars.length > 500) {
+    res.status(400).json({ error: "backfill batch limit is 500 — send multiple batches" });
+    return;
+  }
+
+  const inputs = body.bars.map((p) =>
+    buildBarIngestionInput(p, connectionId, flags.userId, "bridge_recovery", body),
+  );
+
+  const result = await upsertCustomerBars(inputs);
+  if (result.db_error) {
+    res.status(503).json({ ok: false, error: result.db_error });
+    return;
+  }
+  res.json({ ok: true, accepted: result.accepted, rejected: result.rejected, errors: result.errors });
+});
+
+/** V2: Bridge EA gap detection — get last persisted bar time */
+app.get("/market-data/last-bar", auth, async (req, res) => {
+  if (!await enforceConnectionAuth(req, res)) return;
+  const connectionId = req.headers["x-connection-id"] as string;
+
+  const symbol    = (req.query["symbol"]    ?? "") as string;
+  const timeframe = (req.query["timeframe"] ?? "") as string;
+
+  if (!symbol) {
+    res.status(400).json({ error: "symbol query param is required" });
+    return;
+  }
+  if (!timeframe || !CUSTOMER_BAR_TFS.has(timeframe)) {
+    res.status(400).json({ error: `timeframe must be one of: ${[...CUSTOMER_BAR_TFS].join(",")}` });
+    return;
+  }
+
+  const canonical = canonicalizeSymbol(symbol);
+  const result    = await getLastCustomerBar(connectionId, canonical, timeframe);
+  res.json({ ok: true, connection_id: connectionId, symbol: canonical, timeframe, last_bar_utc: result.time_utc });
+});
+
+// -----------------------------------------------------------------
 // Browser → Server: 読み取り専用 REST API
 // -----------------------------------------------------------------
 
@@ -932,7 +1594,7 @@ app.get("/health", (_req, res) => {
     status:           "ok",
     version:          "3.0",
     ea:               eaInfo ? { symbol: eaInfo.symbol, login: eaInfo.login, version: eaInfo.version } : null,
-    eaConnected:      eaInfo !== null,
+    eaConnected:      eaInfo !== null || (lastBridgeHeartbeatTs > 0 && Date.now() - lastBridgeHeartbeatTs < 90_000),
     marketWatch:      symbolStore.size,
     tickSymbols:      Array.from(tickStore.keys()),
     barKeys:          Array.from(barStore.keys()),
@@ -1004,6 +1666,40 @@ app.get("/bars/:symbol/:timeframe", (req, res) => {
   res.json(result);
 });
 
+// ── connections/:id エイリアス (P0-04: now actually scoped by connectionId) ───────
+// execute/analyze/dry-run ルートはこの形式を使用する。
+// Connection-scoped store を優先し、なければグローバルへフォールバック。
+
+app.get("/connections/:connectionId/tick/:symbol", auth, async (req, res) => {
+  const { connectionId, symbol } = req.params;
+  // X-Connection-Id header must match the URL path parameter.
+  // Returning without a response body causes a 502 at the proxy level; always
+  // send an explicit status code when rejecting.
+  if (req.headers["x-connection-id"] !== connectionId) {
+    res.status(401).json({ error: "X-Connection-Id header must match URL" });
+    return;
+  }
+  if (!(await enforceConnectionAuth(req, res))) return;
+  // connTickStore is connection-scoped; never fall back to global tickStore.
+  const tick = connectionMarketStore.getTick(connectionId, symbol);
+  if (!tick) { res.status(404).json({ error: "symbol not found" }); return; }
+  res.json(tick);
+});
+
+// P0-04: add auth to GET bars endpoint (was missing auth middleware)
+app.get("/connections/:connectionId/bars/:symbol/:timeframe", auth, async (req, res) => {
+  const { connectionId, symbol, timeframe } = req.params;
+  if (req.headers["x-connection-id"] !== connectionId) {
+    res.status(401).json({ error: "X-Connection-Id header must match URL" });
+    return;
+  }
+  if (!(await enforceConnectionAuth(req, res))) return;
+  // connBarStore is connection-scoped; never fall back to global barStore.
+  const count = Number(req.query.count ?? 500);
+  const bars = dedupAndSort(connectionMarketStore.getBars(connectionId, symbol, timeframe));
+  res.json(bars.slice(-count));
+});
+
 /** ポジション一覧 — 認証必須（口座情報保護） */
 app.get("/positions", auth, (_req, res) => {
   res.json(positions);
@@ -1044,7 +1740,7 @@ function dedupAndSort(bars: Bar[]): Bar[] {
  *   - 同じ time のバーが来た場合 → 未確定バーの更新（in-memory のみ、Supabase保存なし）
  *   - 新しい time のバーが来た場合 → 前のバーが確定した = Supabase に永続化
  */
-function upsertBar(symbol: string, timeframe: string, rawBar: Bar & { symbol?: string; timeframe?: string }): void {
+function upsertBar(connectionId: string, symbol: string, timeframe: string, rawBar: Bar & { symbol?: string; timeframe?: string }): void {
   const key  = storeKey(symbol, timeframe);
   const bars = barStore.get(key) ?? [];
   const last = bars[bars.length - 1];
@@ -1056,7 +1752,7 @@ function upsertBar(symbol: string, timeframe: string, rawBar: Bar & { symbol?: s
   } else {
     // 新時刻 → 前バーが確定 → Supabase に永続化（fire-and-forget）
     if (last) {
-      upsertSingleBar(symbol, timeframe, last as BarRecord).catch((err: unknown) => {
+      upsertSingleBar(connectionId, symbol, timeframe, last as BarRecord).catch((err: unknown) => {
         console.warn(`[barData] confirmed bar upsert failed ${symbol}:${timeframe}:`, err);
       });
     }
@@ -1147,15 +1843,9 @@ app.get("/debug/bar-timestamps", (req, res) => {
 // -----------------------------------------------------------------
 
 app.post("/admin/sync-to-supabase", auth, (_req, res) => {
-  if (!isSupabaseEnabled()) {
-    res.status(503).json({ error: "Supabase 未設定" });
-    return;
-  }
-  // fire-and-forget
-  syncBarStoreToSupabase(barStore as unknown as Map<string, BarRecord[]>).catch((err: unknown) => {
-    console.warn("[barData] sync-to-supabase error:", err);
-  });
-  res.json({ ok: true, message: "同期をバックグラウンドで開始しました。ログを確認してください。" });
+  // The legacy global barStore has no connection identity and must never be
+  // persisted as customer broker data. Use an authenticated connection feed.
+  res.status(409).json({ error: "connection-scoped bar sync required" });
 });
 
 // -----------------------------------------------------------------
@@ -1292,6 +1982,60 @@ const PORT = parseInt(process.env.PORT ?? process.env.MT5_WEBSOCKET_PORT ?? "808
 // 起動時にディスクからバーデータを復元
 persistLoad();
 
+// ディスクに保存データがない（Railway ephemeral fs 再起動）場合、
+// Supabase bar_data から主要シンボルの直近バーを復元する
+async function restoreFromSupabase(): Promise<void> {
+  // Legacy global barStore rows have no connection identity and are never
+  // restored into customer runtime state after Stage 6F.
+
+  const url = process.env.SUPABASE_URL;
+  const key  = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return;
+
+  // GOLD の主要TFを優先復元（Watcher で最低限必要なデータ）
+  const RESTORE_TARGETS = [
+    { sym: "GOLD#", tf: "M5",  count: 20  },
+    { sym: "GOLD#", tf: "H1",  count: 50  },
+    { sym: "GOLD#", tf: "H4",  count: 100 },
+    { sym: "XAUUSD", tf: "H4", count: 100 },
+  ];
+
+  let restored = 0;
+  for (const { sym, tf, count } of RESTORE_TARGETS) {
+    try {
+      const res = await fetch(
+        `${url}/rest/v1/bar_data?connection_id=not.is.null&symbol=eq.${encodeURIComponent(sym)}&timeframe=eq.${tf}&select=connection_id,time_utc,open,high,low,close,volume&order=time_utc.desc&limit=${count}`,
+        { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(8_000) }
+      );
+      if (!res.ok) continue;
+      const rows = await res.json() as { connection_id: string; time_utc: string; open: number; high: number; low: number; close: number; volume: number }[];
+      if (!rows.length) continue;
+      const byConnection = new Map<string, Bar[]>();
+      for (const row of rows) {
+        if (!row.connection_id) continue;
+        const bars = byConnection.get(row.connection_id) ?? [];
+        bars.push({ time: Math.floor(new Date(row.time_utc).getTime() / 1000), open: row.open, high: row.high, low: row.low, close: row.close, volume: row.volume });
+        byConnection.set(row.connection_id, bars);
+      }
+      for (const [connectionId, bars] of byConnection) {
+        connectionMarketStore.upsertBars(connectionId, sym, tf, bars.reverse(), count);
+        restored += bars.length;
+        console.log(`[Restore] ${connectionId}:${sym}:${tf} → ${bars.length}本復元`);
+      }
+    } catch (e) {
+      console.warn(`[Restore] ${sym}:${tf} 失敗:`, e instanceof Error ? e.message : e);
+    }
+  }
+  if (restored > 0) {
+    console.log(`[Restore] Supabase から計 ${restored} 本復元完了`);
+  }
+}
+
+// 非同期で復元（起動を遅らせない）
+void restoreFromSupabase();
+// lastM5Time を Supabase から復元（Gateway 再起動時の M5 dedup）
+void restoreLastM5Times();
+
 // Railway requires binding to 0.0.0.0
 server.listen(PORT, "0.0.0.0", () => {
   console.log("==============================================");
@@ -1310,9 +2054,8 @@ server.listen(PORT, "0.0.0.0", () => {
     const totalBars = Array.from(barStore.values()).reduce((s, b) => s + b.length, 0);
     if (totalBars > 0) {
       console.log(`[barData] 起動時同期: barStore ${totalBars}本 → Supabase ...`);
-      syncBarStoreToSupabase(barStore as unknown as Map<string, BarRecord[]>).catch((err: unknown) => {
-        console.warn("[barData] startup sync error:", err);
-      });
+      // Unscoped legacy barStore cannot be persisted after Stage 6F.
+      console.warn("[barData] startup sync skipped: connection identity required");
     }
   }
 });

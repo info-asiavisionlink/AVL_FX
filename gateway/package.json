@@ -1,12 +1,14 @@
 {
-  "name": "avl-fx-gateway",
-  "version": "2.0.0",
+  "name": "avlfx-trading-gateway",
+  "version": "3.0.0",
   "private": true,
-  "description": "MT5 ↔ AVL FX data bridge server",
+  "description": "AVL Trading Gateway — Customer MT5 Bridge + Execution Commands",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
