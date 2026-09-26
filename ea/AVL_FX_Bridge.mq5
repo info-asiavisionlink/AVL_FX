@@ -93,6 +93,7 @@ ENUM_TIMEFRAMES g_TfList[] = {
 
 // [C] Historical Data
 datetime g_LastBackfillCheck = 0;
+bool     g_BackfillNeeded    = false;  // set on reconnect, cleared after Module_C runs
 
 // [E/F/G] Sync timing
 datetime g_LastPositionSync = 0;
@@ -159,20 +160,18 @@ int OnInit()
    Print("  Connection  : ", StringSubstr(InpConnectionId, 0, 8), "...");
    Print("==============================================");
 
-   // [A] Initial heartbeat — establishes connection, fetches safety flags
+   // [A] Initial heartbeat — P1-6: do NOT fail init on transient heartbeat failure.
+   // EA starts in disconnected state; OnTimer will retry via heartbeat.
    if(!Module_A_Heartbeat()) {
-      Print("[Bridge] 初回Heartbeat失敗。Gateway URLとWebRequest許可を確認: ", InpGatewayURL);
-      return INIT_FAILED;
+      Print("[Bridge] 初回Heartbeat失敗。OnTimerでリトライします。Gateway URL確認: ", InpGatewayURL);
+      // Continue: g_Connected=false, g_TradingEnabled=false (safe defaults already set)
    }
 
    // [D] Symbol spec — on connect for Risk Engine lot calculation
    Module_D_SymbolSpec(g_Symbol);
 
-   // [C] Historical Data backfill on startup
-   if(InpOHLCEnabled) {
-      Module_C_BackfillAll();
-      g_LastBackfillCheck = TimeCurrent();
-   }
+   // [C] Historical Data backfill on startup — defer to OnTimer to avoid blocking init
+   if(InpOHLCEnabled) g_BackfillNeeded = true;
 
    EventSetTimer(InpTimerSec);
    return INIT_SUCCEEDED;
@@ -215,11 +214,10 @@ void OnTimer()
       g_PrevConnected = g_Connected;
       Module_A_Heartbeat();
       g_LastHeartbeat = now;
-      // P1-8: Detect reconnect → trigger backfill to recover outage gap
+      // P1-8: Detect reconnect → schedule backfill (NOT synchronous — P1-3)
       if(!g_PrevConnected && g_Connected && InpOHLCEnabled) {
-         Print("[Bridge][A] Reconnect detected → triggering backfill");
-         Module_C_BackfillAll();
-         g_LastBackfillCheck = now;
+         Print("[Bridge][A] Reconnect detected → backfill scheduled");
+         g_BackfillNeeded = true;
       }
    }
 
@@ -232,7 +230,8 @@ void OnTimer()
    // [G] Deal sync
    if(InpDealEnabled) {
       if(g_LastDealSync == 0 || (int)(now - g_LastDealSync) >= 300) {
-         Module_G_DealSync(false);
+         // P2: Pass true for initial sync (g_LastDealSync==0) to use InpDealDays window
+         Module_G_DealSync(g_LastDealSync == 0);
          g_LastDealSync = now;
       }
    }
@@ -243,10 +242,13 @@ void OnTimer()
       g_LastPollTime = now;
    }
 
-   // [C] Periodic backfill re-check
-   if(InpOHLCEnabled && (int)(now - g_LastBackfillCheck) >= InpBackfillSec) {
+   // [C] Backfill: run when flagged (reconnect/startup) OR on periodic schedule.
+   // Execution polling always runs first (above); backfill is deferred to here.
+   bool periodicBackfill = (InpOHLCEnabled && (int)(now - g_LastBackfillCheck) >= InpBackfillSec);
+   if(g_BackfillNeeded || periodicBackfill) {
       Module_C_BackfillAll();
       g_LastBackfillCheck = now;
+      g_BackfillNeeded    = false;
    }
 }
 
@@ -434,11 +436,27 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf)
          " lastBar=", TimeToString(lastBarSec),
          " missing≈", barsMissing, " fetching=", barsToFetch);
 
-   // Step 4: CopyRates and send in batches of ≤500
+   // Step 4: CopyRates — shift=1 to exclude the currently forming (unconfirmed) candle.
+   // P1-1: Only persist confirmed/closed bars to customer_bar_data.
+   // P1-2: Use CopyRatesByTime to fetch from lastBarSec forward, not just newest N bars.
+   //       This prevents permanently skipping older gaps when gap > InpBackfillBars.
    MqlRates rates[];
-   int n = CopyRates(g_Symbol, tf, 0, barsToFetch, rates);
+   int n = 0;
+   if(hasLastBar) {
+      // Start from the bar AFTER the last stored confirmed bar
+      datetime fromTime = lastBarSec + (datetime)tfPeriodSec;
+      datetime toTime   = now - (datetime)tfPeriodSec; // exclude current forming bar
+      n = CopyRatesByTime(g_Symbol, tf, fromTime, toTime, rates);
+      if(n > InpBackfillBars) {
+         // Paginate: only send first InpBackfillBars; next reconnect will continue
+         n = InpBackfillBars;
+      }
+   } else {
+      // No history: get most recent N confirmed bars (shift=1 = skip forming)
+      n = CopyRates(g_Symbol, tf, 1, barsToFetch, rates);
+   }
    if(n <= 0) {
-      Print("[Bridge][C] CopyRates failed: ", g_Symbol, ":", tfStr);
+      Print("[Bridge][C] CopyRates failed or no bars available: ", g_Symbol, ":", tfStr);
       return;
    }
 
@@ -784,10 +802,13 @@ void Module_H_ProcessCommand(const string cmdJson)
       return;
    }
 
-   // ── CHECK 5: Atomic claim ─────────────────────────────────────
+   // ── CHECK 5: Atomic claim ────────────────────────────────────────
+   // P1-5: Do NOT MarkProcessed on claim failure — transient network errors (503,
+   // timeout) must allow retry on next poll. Only cache after execution or terminal
+   // disposition is confirmed. Gateway atomic claim endpoint is idempotent.
    if(!Module_H_ClaimCommand(commandId)) {
-      MarkProcessed(commandId);
-      return;
+      Print("[Bridge][H] Claim failed (transient?) — will retry next poll: ", commandId);
+      return; // NOT marked as processed
    }
 
    // ── CHECK 6: Symbol presence + broker suffix resolution (P1-6) ──
@@ -976,6 +997,9 @@ bool Module_H_ExecuteCLOSE(const string commandId, const string symbol,
       Module_H_SendFailed(commandId, StringFormat("SYMBOL_MISMATCH: expected=%s actual=%s", symbol, posSymbol));
       return false;
    }
+
+   // P1-4: Apply per-symbol filling mode before close (same requirement as BUY/SELL)
+   Apply_FillingMode(posSymbol);
 
    bool ok = g_Trade.PositionClose(positionTicket);
    retcode  = (int)g_Trade.ResultRetcode();
