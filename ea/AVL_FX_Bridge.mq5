@@ -96,6 +96,7 @@ datetime g_LastBackfillCheck  = 0;
 bool     g_BackfillNeeded     = false;   // set on reconnect, cleared after Module_C completes
 int      g_BackfillTFIndex    = 0;       // which TF to process next (bounded: 1 per timer tick)
 datetime g_RecoveryCursor[];             // per-TF independent recovery cursor (separate from realtime)
+datetime g_LastSuccessSentTime[];        // last time Module_B SUCCESSFULLY sent a confirmed bar (per TF)
 
 // [E/F/G] Sync timing (use GetTickCount for monotonic advance independent of quote feed)
 uint g_LastPositionTick = 0;
@@ -168,6 +169,8 @@ int OnInit()
    // [C] Recovery cursor init (one per TF)
    ArrayResize(g_RecoveryCursor, ArraySize(g_TfList));
    ArrayInitialize(g_RecoveryCursor, 0);
+   ArrayResize(g_LastSuccessSentTime, ArraySize(g_TfList));
+   ArrayInitialize(g_LastSuccessSentTime, 0);
 
    // Pre-set cursors from DB BEFORE EventSetTimer (before OnTick can write).
    // This anchors recovery boundaries at EA-startup watermarks, preventing
@@ -416,19 +419,25 @@ void Module_B_OnBarClose()
       if(curTime == 0) continue;
 
       if(g_LastBarTimes[i] != 0 && curTime > g_LastBarTimes[i]) {
-         // P1-2: Only send confirmed (closed) bars to /market-data/bars.
-         // Forming bars must NOT be persisted as confirmed history.
-         Module_B_SendBar(tf, 1);
+         // Only send confirmed (closed) bars to /market-data/bars.
+         bool sent = Module_B_SendBar(tf, 1);
+         if(sent) {
+            // Track confirmed send boundary so Module C knows what was actually delivered.
+            if(i < ArraySize(g_LastSuccessSentTime))
+               g_LastSuccessSentTime[i] = g_LastBarTimes[i];
+         } else {
+            // Realtime send failed — trigger Module C to recover this bar on next timer tick.
+            g_BackfillNeeded = true;
+         }
       }
       g_LastBarTimes[i] = curTime;
-      // Forming bar: do NOT send to /market-data/bars (would be persisted as confirmed)
    }
 }
 
-void Module_B_SendBar(ENUM_TIMEFRAMES tf, int shift)
+bool Module_B_SendBar(ENUM_TIMEFRAMES tf, int shift)
 {
    MqlRates rates[];
-   if(CopyRates(g_Symbol, tf, shift, 1, rates) <= 0) return;
+   if(CopyRates(g_Symbol, tf, shift, 1, rates) <= 0) return false;
 
    // P1-4: Use TimeTradeServer() for reliable broker offset (TimeCurrent() is stale on weekends)
    int utcOffsetHours = (int)MathRound((double)(TimeTradeServer() - TimeGMT()) / 3600.0);
@@ -449,7 +458,8 @@ void Module_B_SendBar(ENUM_TIMEFRAMES tf, int shift)
       (long)rates[0].tick_volume,
       utcOffsetHours
    );
-   HTTP_Post("/market-data/bars", body);
+   int code = HTTP_Post("/market-data/bars", body);
+   return (code == 200 || code == 201);
 }
 
 //=================================================================//
@@ -650,15 +660,28 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
       int batchCount = end - start;
       barsSent += batchCount;
       if(bCode == 200) {
-         barsAccepted += batchCount;
-         // P1-2: Advance cursor only after successful POST.
-         // Failed batches leave the cursor unchanged; next timer tick retries from same position.
-         if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) {
-            g_RecoveryCursor[tfIdx] = rates[end - 1].time;
+         // Use server-reported accepted count — server may accept fewer bars (dedup / validation).
+         string bResStr = CharArrayToString(bres);
+         bool   keyFound = (StringFind(bResStr, "\"accepted\":") >= 0);
+         int    acceptedCount = keyFound ? (int)JsonGetDbl(bResStr, "accepted") : batchCount;
+         if(acceptedCount < 0) acceptedCount = batchCount; // defensive: treat negative as full batch
+
+         barsAccepted += acceptedCount;
+
+         // Advance cursor to last accepted bar, not last sent bar.
+         if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor) && acceptedCount > 0) {
+            int acceptedIdx = start + acceptedCount - 1;
+            g_RecoveryCursor[tfIdx] = (acceptedIdx < end) ? rates[acceptedIdx].time : rates[end - 1].time;
+         }
+
+         if(acceptedCount < batchCount) {
+            // Partial accept — stop pagination; retry remaining bars from cursor next tick.
+            Print("[Bridge][C] Partial accept: ", acceptedCount, "/", batchCount, " tf=", tfStr, " — stopping batch");
+            break;
          }
       } else {
          Print("[Bridge][C] backfill batch FAIL code=", bCode, " tf=", tfStr, " — stopping pagination");
-         break;  // P1-2: Stop on first failure; retry entire remaining range next timer tick
+         break;
       }
 
       Sleep(30);
