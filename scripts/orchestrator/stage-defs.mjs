@@ -98,14 +98,28 @@ export function buildReviewPrompt(stageName, commitSha, reviewCycle, baseCommit)
   const filesList = def.files_changed.map(f => `  - ${f}`).join("\n");
   const resolvedBase = baseCommit ?? (V2_STAGE_BASELINES[stageName] ?? "HEAD~10");
   const gitRangeInstructions = `
-HOW TO FIND ALL STAGE CHANGES:
-  This stage spans multiple commits since baseline ${resolvedBase}.
-  Run: git log ${resolvedBase}..HEAD --oneline
+HOW TO FIND THE STAGE CHANGES (SCOPED):
+  IMPORTANT: Only review the Stage 1 specific files listed below.
+  Do NOT review pre-existing V1 code or unrelated changes.
   Run: git diff ${resolvedBase} HEAD -- supabase/migrations/035_customer_bar_data.sql
   Run: git diff ${resolvedBase} HEAD -- gateway/src/customerBarDataStore.ts
   Run: git diff ${resolvedBase} HEAD -- gateway/src/customer-bar-data.test.ts
-  Run: git diff ${resolvedBase} HEAD -- gateway/src/index.ts
-  Run: git diff ${resolvedBase} HEAD -- gateway/src/barDataStore.ts`;
+  Then read the NEW routes added to index.ts (search for /market-data/ in the file)
+  Run: grep -n "market-data" gateway/src/index.ts
+  Run: git diff ${resolvedBase} HEAD -- gateway/src/barDataStore.ts
+  Run: git diff ${resolvedBase} HEAD -- gateway/package.json
+
+SCOPE RESTRICTION: The DoD and findings should ONLY cover:
+  1. supabase/migrations/035_customer_bar_data.sql (new migration)
+  2. gateway/src/customerBarDataStore.ts (new module)
+  3. gateway/src/customer-bar-data.test.ts (new tests)
+  4. /market-data/bars, /market-data/backfill, /market-data/last-bar routes in index.ts
+  5. gateway/package.json (test script)
+  6. Scripts and documentation files
+
+DO NOT flag issues in pre-existing V1 routes (/bar, /bridge/bars, /tick, /positions, etc.)
+that existed before this stage. Those are V1 code outside Stage 1 scope.
+V1 route changes in the cumulative diff are backward-compat maintenance, not Stage 1 deliverables.`;
 
   return `You are Codex, an INDEPENDENT code reviewer for the AVL-FX trading system.
 
