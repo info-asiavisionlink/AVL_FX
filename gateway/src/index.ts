@@ -655,6 +655,8 @@ app.post("/bar", auth, async (req, res) => {
     const norm = normalizeTime(bar.time);
     console.log(`[BAR/M1] raw=${bar.time} norm=${norm} close=${bar.close}`);
   }
+  // V1 persistence: detect confirmed bar BEFORE updating store (ordering is critical)
+  upsertBar(connectionId, bar.symbol, bar.timeframe, bar);
   const connectionBars = connectionMarketStore.getBars(connectionId, bar.symbol, bar.timeframe);
   connectionMarketStore.upsertBars(
     connectionId,
@@ -663,8 +665,6 @@ app.post("/bar", auth, async (req, res) => {
     dedupAndSort([...connectionBars, normalizeBar(bar)]),
     MAX_BARS,
   );
-  // V1 persistence: persist confirmed bar to bar_data (V1 safety baseline — do not remove until Stage 9)
-  upsertBar(connectionId, bar.symbol, bar.timeframe, bar);
   broadcastToConnection(connectionId, { type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
 
   // ── M5確定検知 ──────────────────────────────────────────────────
@@ -759,6 +759,10 @@ app.post("/bridge/bars", auth, async (req, res) => {
   if (!await enforceConnectionAuth(req, res)) return;
 
   const bar = req.body as Bar & { symbol: string; timeframe: string };
+  // V1 persistence: detect confirmed bar BEFORE updating store (ordering is critical).
+  // upsertBar reads connectionMarketStore to find the previous bar; calling it after
+  // upsertBars would make it see the new bar as "last", skipping persistence.
+  upsertBar(connectionId, bar.symbol, bar.timeframe, bar);
   const existing = connectionMarketStore.getBars(connectionId, bar.symbol, bar.timeframe);
   connectionMarketStore.upsertBars(
     connectionId,
@@ -767,8 +771,6 @@ app.post("/bridge/bars", auth, async (req, res) => {
     dedupAndSort([...existing, normalizeBar(bar)]),
     MAX_BARS,
   );
-  // V1 persistence: persist confirmed bar to bar_data (V1 safety baseline — do not remove until Stage 9)
-  upsertBar(connectionId, bar.symbol, bar.timeframe, bar);
   broadcastToConnection(connectionId, { type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
   res.json({ ok: true });
 });
