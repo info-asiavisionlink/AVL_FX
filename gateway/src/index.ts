@@ -638,6 +638,8 @@ app.post("/tick", auth, async (req, res) => {
   const tick = req.body as Tick;
   // connTickKey(connectionId, tick.symbol) is the canonical identity.
   connectionMarketStore.setTick(connectionId, tick);
+  // Legacy tickStore kept in sync for GET /tick/:symbol backward compat (removed Stage 9)
+  tickStore.set(tick.symbol.toUpperCase(), tick);
   lastTickTs = Date.now();
   broadcastToConnection(connectionId, { type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
   res.json({ ok: true });
@@ -755,6 +757,8 @@ app.post("/bridge/ticks", auth, async (req, res) => {
   const tick = req.body as Tick;
   // P0-04: also store in connection-scoped store
   connectionMarketStore.setTick(connectionId, tick);
+  // Legacy tickStore kept in sync for GET /tick/:symbol backward compat (removed Stage 9)
+  tickStore.set(tick.symbol.toUpperCase(), tick);
   lastTickTs = Date.now();
   broadcastToConnection(connectionId, { type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
   res.json({ ok: true });
