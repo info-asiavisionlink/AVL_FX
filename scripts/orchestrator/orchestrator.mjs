@@ -1,16 +1,23 @@
 #!/usr/bin/env node
 // orchestrator.mjs — AVL Development Orchestrator
 //
+// Development loop (Codex-optional since 2026-09-26 Owner decision):
+//   Builder implements → Self-review → Tests/Typecheck/Build →
+//   DoD verification → avl:builder-ready → avl:next
+//
 // Commands:
-//   status  — Show current STATE.json + recent activity
-//   resume  — Determine next action from STATE.json
-//   review  — Run Codex review on last_builder_commit
-//   next    — Advance to next stage (requires PASS)
-//   auto    — Run review → (PASS: advance, FAIL: report findings)
+//   status         — Show current STATE.json + activity
+//   resume         — Determine next action from STATE.json
+//   review         — Run Codex review (optional independent audit)
+//   next           — Advance to next stage (Codex NOT required)
+//   auto           — Run review → (PASS: advance, FAIL: report findings)
+//   builder-ready  — Record self-review/tests PASS; enables avl:next
+//   open-window    — Open Owner-approved Codex remediation window
 //
 // Usage:
 //   node scripts/orchestrator/orchestrator.mjs <command>
 //   npm run avl:status | avl:resume | avl:review | avl:next | avl:auto
+//   npm run avl:builder-ready | avl:open-window
 
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,14 +55,15 @@ function cmdStatus() {
   console.log(`  Current Stage:   ${state.current_stage}`);
   console.log(`  Stage Status:    ${state.stage_status}`);
   console.log(`  Builder Commit:  ${state.last_builder_commit ?? "(none)"}`);
+  console.log(`  Self Review:     ${state.self_review_status ?? "NOT_RUN"}`);
+  console.log(`  Tests:           ${state.last_test_status ?? "NOT_RUN"}`);
+  console.log(`  Typecheck:       ${state.typecheck_status ?? "NOT_RUN"}`);
+  console.log(`  Build:           ${state.build_status ?? "NOT_RUN"}`);
+  console.log(`  Codex:           ${state.codex_status ?? "NOT_RUN"} (optional independent audit)`);
   console.log(`  Reviewed Commit: ${state.last_reviewed_commit ?? "(none)"}`);
   if (win) {
-    console.log(`  Remediation Win: #${win.id}  cycle ${win.window_cycle_count}/${win.max_cycles}  total=${win.total_cycles_historical + win.window_cycle_count}`);
-  } else {
-    console.log(`  Review Cycles:   ${state.review_cycle_count}`);
+    console.log(`  Codex Window:    #${win.id}  cycle ${win.window_cycle_count}/${win.max_cycles}  total=${win.total_cycles_historical + win.window_cycle_count}`);
   }
-  console.log(`  Test Status:     ${state.last_test_status}`);
-  console.log(`  Reviewer Status: ${state.last_reviewer_status}`);
   console.log(`  Human Gate:      ${state.human_gate_required ? "⚠  REQUIRED" : "✓ clear"}`);
   if (state.human_gate_required) {
     console.log(`  Gate Reason:     ${state.human_gate_reason}`);
@@ -90,8 +98,7 @@ function cmdResume() {
     process.exit(1);
   }
 
-  const { current_stage, stage_status, last_builder_commit, last_reviewed_commit,
-          review_cycle_count, last_reviewer_status, last_test_status } = state;
+  const { current_stage, stage_status, last_builder_commit } = state;
 
   switch (stage_status) {
     case "COMPLETE":
@@ -99,42 +106,40 @@ function cmdResume() {
       console.log("  Run: npm run avl:next — to load and start next stage.");
       break;
 
+    case "SELF_REVIEW_PASS":
+      console.log(`✓ ${current_stage} self-review PASSED. Ready to advance.`);
+      console.log("  Run: npm run avl:next — to freeze and advance to next stage.");
+      break;
+
     case "IN_PROGRESS":
       if (!last_builder_commit) {
         console.log(`⚡ ${current_stage} needs implementation.`);
         console.log("  Claude Code should implement the stage and commit.");
-      } else if (last_reviewer_status === "NOT_RUN" || !last_reviewed_commit) {
-        console.log(`⚡ ${current_stage} has commit ${last_builder_commit} but no Codex review.`);
-        console.log("  Run: npm run avl:review — to start Codex independent review.");
-      } else if (last_reviewer_status === "PASS") {
-        console.log(`✓ ${current_stage} Codex review PASSED. Ready to advance.`);
-        console.log("  Run: npm run avl:next — to freeze and advance to next stage.");
+      } else if ((state.self_review_status ?? "NOT_RUN") !== "PASS") {
+        console.log(`⚡ ${current_stage} has commit ${last_builder_commit} — self-review pending.`);
+        console.log("  Claude Code should run self-review, tests, typecheck, build.");
+        console.log("  When all pass: npm run avl:builder-ready");
       } else {
-        console.log(`✗ ${current_stage} Codex review: ${last_reviewer_status}`);
-        console.log(`  Review cycle: ${review_cycle_count}/${MAX_REVIEW_CYCLES}`);
-        if (state.pending_findings?.length > 0) {
-          console.log("  Findings to fix:");
-          for (const f of state.pending_findings) {
-            console.log(`    [${f.priority}] ${f.text}`);
-          }
-        }
-        if (review_cycle_count >= MAX_REVIEW_CYCLES) {
-          console.log("  ⚠  MAX_REVIEW_CYCLES reached. Human review required.");
-        } else {
-          console.log("  Claude Code should fix findings, commit, then run: npm run avl:review");
+        console.log(`✓ ${current_stage} self-review PASS. Run: npm run avl:next`);
+      }
+      if (state.pending_findings?.length > 0) {
+        console.log("  Unresolved findings:");
+        for (const f of state.pending_findings) {
+          console.log(`    [${f.priority}] ${f.text}`);
         }
       }
       break;
 
     case "REVIEW_FAIL":
-      console.log(`✗ ${current_stage} Codex review FAILED (cycle ${review_cycle_count}).`);
+      console.log(`✗ ${current_stage} Codex review FAILED (optional audit).`);
       if (state.pending_findings?.length > 0) {
         console.log("  P0/P1 findings to fix:");
         for (const f of state.pending_findings) {
           console.log(`    [${f.priority}] ${f.text}`);
         }
       }
-      console.log("  After fixing: commit then run npm run avl:review");
+      console.log("  Fix findings, commit, then run: npm run avl:review");
+      console.log("  Or: npm run avl:builder-ready (if self-review already complete)");
       break;
 
     case "HUMAN_GATE_REQUIRED":
@@ -286,14 +291,25 @@ async function cmdReview() {
 function cmdNext() {
   const state = readState();
 
-  if (state.last_reviewer_status !== "PASS") {
-    console.error("ERROR: Cannot advance — Codex review has not PASSED.");
-    console.error(`  Current reviewer status: ${state.last_reviewer_status}`);
+  // New progression conditions (Codex NOT required — Owner decision 2026-09-26)
+  const hasBuilderCommit = !!state.last_builder_commit;
+  const selfReviewPass   = state.self_review_status === "PASS";
+  const noUnresolvedP01  = (state.pending_findings ?? []).length === 0;
+  const noHumanGate      = !state.human_gate_required;
+  // Codex PASS also qualifies (backward compat) but is never mandatory
+  const codexOk = selfReviewPass || state.last_reviewer_status === "PASS";
+
+  if (!hasBuilderCommit || !codexOk || !noUnresolvedP01 || !noHumanGate) {
+    console.error("ERROR: Cannot advance — stage progression conditions not met.");
+    console.error(`  ${hasBuilderCommit  ? "✓" : "✗"} builder commit`);
+    console.error(`  ${selfReviewPass    ? "✓" : "✗"} self-review PASS   (run: npm run avl:builder-ready)`);
+    console.error(`  ${noUnresolvedP01   ? "✓" : "✗"} no unresolved P0/P1`);
+    console.error(`  ${noHumanGate       ? "✓" : "✗"} human gate clear`);
+    console.error(`  Codex: ${state.codex_status ?? state.last_reviewer_status ?? "NOT_RUN"} (optional independent audit)`);
     process.exit(1);
   }
 
   if (state.stage_status !== "COMPLETE") {
-    // Mark it complete if reviewer PASS
     updateState({ stage_status: "COMPLETE" });
   }
 
@@ -311,7 +327,7 @@ function cmdNext() {
 
   const nextStage = STAGE_ORDER[currentIdx + 1];
   if (!nextStage) {
-    console.log("🎉 All V2 stages complete! V2 PRODUCTION COMPLETE.");
+    console.log("All V2 stages complete! V2 PRODUCTION COMPLETE.");
     process.exit(0);
   }
 
@@ -319,10 +335,14 @@ function cmdNext() {
   const updatedState = readState();
   const history = updatedState.stage_history ?? {};
   history[state.current_stage] = {
-    status:       "COMPLETE",
-    completed_at: new Date().toISOString(),
-    commit:       state.last_builder_commit,
-    codex_status: "PASS",
+    status:              "COMPLETE",
+    completed_at:        new Date().toISOString(),
+    commit:              state.last_builder_commit,
+    self_review_status:  state.self_review_status ?? "NOT_RUN",
+    codex_status:        state.codex_status ?? state.last_reviewer_status ?? "NOT_RUN",
+    tests_status:        state.last_test_status ?? "NOT_RUN",
+    typecheck_status:    state.typecheck_status ?? "NOT_RUN",
+    build_status:        state.build_status ?? "NOT_RUN",
   };
 
   updateState({
@@ -333,16 +353,20 @@ function cmdNext() {
     review_cycle_count:   0,
     last_test_status:     "NOT_RUN",
     last_reviewer_status: "NOT_RUN",
+    self_review_status:   "NOT_RUN",
+    codex_status:         "NOT_RUN",
+    typecheck_status:     "NOT_RUN",
+    build_status:         "NOT_RUN",
     pending_findings:     [],
     human_gate_required:  false,
     human_gate_reason:    null,
     stage_history:        history,
+    remediation_window:   null,
   });
 
   console.log(`\n✓ ${state.current_stage} → FROZEN`);
   console.log(`⚡ Advancing to: ${nextStage}\n`);
 
-  // Check if next stage has a Human Gate requirement
   const nextDef = STAGE_DEFINITIONS[nextStage];
   if (nextDef) {
     console.log(`Next Stage: ${nextStage} — ${nextDef.name}`);
@@ -352,6 +376,51 @@ function cmdNext() {
     console.log(`Next Stage: ${nextStage} — see docs/v2/V2_IMPLEMENTATION_ROADMAP.md`);
   }
   console.log("\nClaude Code should now implement the next stage.\n");
+}
+
+// ----------------------------------------------------------------
+// command: builder-ready
+// Records that the Builder (Claude) has completed self-review + tests.
+// This is the new gate before avl:next (replaces Codex PASS requirement).
+// Must only be run after:
+//   - Self-review complete
+//   - Tests PASS
+//   - Typecheck PASS
+//   - Build PASS
+//   - No unresolved P0/P1
+// ----------------------------------------------------------------
+
+function cmdBuilderReady() {
+  const state = readState();
+
+  if (state.human_gate_required) {
+    printHumanGateRequired(state);
+    process.exit(1);
+  }
+
+  if (!state.last_builder_commit) {
+    console.error("ERROR: No builder commit found in STATE.json.");
+    process.exit(1);
+  }
+
+  if ((state.pending_findings ?? []).length > 0) {
+    console.error("ERROR: Cannot mark builder-ready — unresolved P0/P1 findings:");
+    for (const f of state.pending_findings) {
+      console.error(`  [${f.priority}] ${f.text}`);
+    }
+    process.exit(1);
+  }
+
+  updateState({
+    self_review_status: "PASS",
+    stage_status:       "SELF_REVIEW_PASS",
+    codex_status:       state.codex_status ?? "DEFERRED",  // preserve if already set
+  });
+
+  console.log(`\n✓ ${state.current_stage} commit ${state.last_builder_commit} — BUILDER READY`);
+  console.log(`  Self-review: PASS`);
+  console.log(`  Codex:       ${state.codex_status ?? "DEFERRED"} (optional independent audit)`);
+  console.log("\nRun: npm run avl:next — to freeze and advance to next stage.\n");
 }
 
 // ----------------------------------------------------------------
@@ -424,11 +493,14 @@ switch (cmd) {
   case "auto":
     await cmdAuto();
     break;
+  case "builder-ready":
+    cmdBuilderReady();
+    break;
   case "open-window":
     cmdOpenWindow();
     break;
   default:
     console.error(`Unknown command: ${cmd}`);
-    console.error("Usage: node orchestrator.mjs [status|resume|review|next|auto|open-window]");
+    console.error("Usage: node orchestrator.mjs [status|resume|review|next|auto|builder-ready|open-window]");
     process.exit(1);
 }
