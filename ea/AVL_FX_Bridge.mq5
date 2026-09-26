@@ -482,29 +482,29 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
    string lastBarUtc  = JsonGetStr(resp, "last_bar_utc");
    bool   hasLastBar  = (StringLen(lastBarUtc) > 5);
 
-   // Step 2: Gap detection
-   datetime lastBarSec = hasLastBar ? ParseISO(lastBarUtc) : 0;
+   // Step 2: Gap detection + cursor anchoring
+   datetime lastBarSec  = hasLastBar ? ParseISO(lastBarUtc) : 0;
    int      tfPeriodSec = TF_ToSeconds(tf);
    datetime now         = TimeCurrent();
 
-   bool gapExists = (!hasLastBar || (now > lastBarSec + tfPeriodSec));
-
    // P1-3: An active cursor means recovery is still in progress.
-   // Do NOT declare recovery complete just because the DB watermark advanced
-   // (realtime Module_B may have written bars that skip an older gap).
    datetime cursor = (tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor))
       ? g_RecoveryCursor[tfIdx] : 0;
    bool cursorActive = (cursor > 0);
 
-   if(!gapExists && !cursorActive) {
-      Print("[Bridge][C] No gap and no active cursor: ", g_Symbol, ":", tfStr);
-      return;
+   // P1-1: IMMEDIATELY anchor the cursor to lastBarSec (current DB watermark).
+   // Do this BEFORE gap detection so that realtime writes after this point
+   // cannot shift the cursor to a post-gap value.
+   if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor) && !cursorActive && hasLastBar) {
+      g_RecoveryCursor[tfIdx] = lastBarSec;
+      cursor      = lastBarSec;
+      cursorActive = (cursor > 0);
    }
 
-   // P1-1: Set recovery cursor to gap start on FIRST detection (before any POST).
-   if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor) && !cursorActive) {
-      g_RecoveryCursor[tfIdx] = hasLastBar ? lastBarSec : 0;
-      cursor = g_RecoveryCursor[tfIdx];
+   bool gapExists = (!hasLastBar || (now > lastBarSec + tfPeriodSec));
+   if(!gapExists && !cursorActive) {
+      Print("[Bridge][C] No gap: ", g_Symbol, ":", tfStr);
+      return;
    }
 
    // Step 3: Calculate how many bars to fetch
@@ -550,7 +550,10 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
       n = CopyRates(g_Symbol, tf, 1, barsToFetch, rates);
    }
    if(n <= 0) {
-      Print("[Bridge][C] CopyRates: no bars available: ", g_Symbol, ":", tfStr);
+      // P1-2: No bars available in range — recovery is complete for this TF.
+      // Clear cursor to prevent infinite backfill cycling every timer tick.
+      Print("[Bridge][C] CopyRates: no bars in recovery range (complete): ", g_Symbol, ":", tfStr);
+      if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) g_RecoveryCursor[tfIdx] = 0;
       return;
    }
 
