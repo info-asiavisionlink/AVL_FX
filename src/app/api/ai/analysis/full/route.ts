@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import OpenAI from "openai";
 import { getOpenAIClient, MODELS, KNOWLEDGE_STORE_ID } from "@/infrastructure/ai/openai-client";
 import { getUpcomingEvents, getRecentNews } from "@/infrastructure/supabase/repository";
@@ -18,10 +20,16 @@ const cache = new Map<string, FullAnalysisResult>();
 
 const GATEWAY = process.env.MT5_GATEWAY_URL ?? "http://127.0.0.1:8080";
 
-async function fetchJSON<T>(path: string): Promise<T | null> {
+async function fetchJSON<T>(path: string, connectionId?: string): Promise<T | null> {
   try {
+    const secret = process.env.MT5_GATEWAY_SECRET ?? "";
+    const headers: Record<string, string> = secret ? { Authorization: `Bearer ${secret}` } : {};
+    if (connectionId) {
+      headers["x-internal-service-auth"] = secret;
+      headers["x-connection-id"] = connectionId;
+    }
     const res = await fetch(`${GATEWAY}${path}`, {
-      headers: { Authorization: `Bearer ${process.env.MT5_GATEWAY_SECRET ?? ""}` },
+      headers,
       signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return null;
@@ -181,10 +189,23 @@ function buildTradeSetup(
 
 export async function POST(req: NextRequest) {
   try {
-    const { symbol = "EURUSD" } = await req.json() as { symbol?: string };
+    const { symbol = "EURUSD", connection_id } = await req.json() as { symbol?: string; connection_id?: string };
+    const cookieStore = await cookies();
+    const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } });
+    const internalSecret = process.env.MT5_GATEWAY_SECRET ?? "";
+    const internalAuth = Boolean(internalSecret) && req.headers.get("x-internal-service-auth") === internalSecret;
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (!internalAuth && (authError || !user)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (internalAuth && !connection_id) return NextResponse.json({ error: "connection_id required" }, { status: 400 });
+    let connectionQuery = supabase.from("mt5_connections").select("id");
+    if (!internalAuth) connectionQuery = connectionQuery.eq("user_id", user!.id);
+    if (connection_id) connectionQuery = connectionQuery.eq("id", connection_id);
+    const { data: connection, error: connectionError } = await connectionQuery.order("created_at", { ascending: false }).limit(1).single();
+    if (connectionError) return NextResponse.json({ error: "Connection ownership unavailable" }, { status: 503 });
+    if (!connection) return NextResponse.json({ error: "MT5 connection unavailable" }, { status: 404 });
     const sym = symbol.toUpperCase();
 
-    const cacheKey = `${sym}_${Math.floor(Date.now() / 300_000)}`;
+    const cacheKey = `${connection.id}_${sym}_${Math.floor(Date.now() / 300_000)}`;
     const cached = cache.get(cacheKey);
     if (cached) return NextResponse.json(cached);
 
@@ -194,17 +215,17 @@ export async function POST(req: NextRequest) {
 
     const [tick, indicators, h4Bars, h1Bars, d1Bars, w1Bars, m15Bars, m5Bars, economicEvents, recentNews, ...corrTicksArr] =
       await Promise.all([
-        fetchJSON<Tick>(`/tick/${sym}`),
+        fetchJSON<Tick>(`/connections/${encodeURIComponent(connection.id)}/tick/${sym}`, connection.id),
         fetchJSON<Indicators>(`/indicators/${sym}`),
-        fetchJSON<Bar[]>(`/bars/${sym}/H4?count=100`),
-        fetchJSON<Bar[]>(`/bars/${sym}/H1?count=50`),
-        fetchJSON<Bar[]>(`/bars/${sym}/D1?count=30`),
-        fetchJSON<Bar[]>(`/bars/${sym}/W1?count=10`),
-        fetchJSON<Bar[]>(`/bars/${sym}/M15?count=50`),
-        fetchJSON<Bar[]>(`/bars/${sym}/M5?count=30`),
+        fetchJSON<Bar[]>(`/connections/${encodeURIComponent(connection.id)}/bars/${sym}/H4?count=100`, connection.id),
+        fetchJSON<Bar[]>(`/connections/${encodeURIComponent(connection.id)}/bars/${sym}/H1?count=50`, connection.id),
+        fetchJSON<Bar[]>(`/connections/${encodeURIComponent(connection.id)}/bars/${sym}/D1?count=30`, connection.id),
+        fetchJSON<Bar[]>(`/connections/${encodeURIComponent(connection.id)}/bars/${sym}/W1?count=10`, connection.id),
+        fetchJSON<Bar[]>(`/connections/${encodeURIComponent(connection.id)}/bars/${sym}/M15?count=50`, connection.id),
+        fetchJSON<Bar[]>(`/connections/${encodeURIComponent(connection.id)}/bars/${sym}/M5?count=30`, connection.id),
         getUpcomingEvents(currencies, 24).catch(() => []),
         getRecentNews(sym, 10).catch(() => []),
-        ...corrSymbols.map(cs => fetchJSON<Tick>(`/tick/${cs}`)),
+        ...corrSymbols.map(cs => fetchJSON<Tick>(`/connections/${encodeURIComponent(connection.id)}/tick/${cs}`, connection.id)),
       ]);
 
     const corrTicks: Record<string, { bid: number; ask: number }> = {};

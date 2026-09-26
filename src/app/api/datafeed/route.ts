@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/infrastructure/supabase/server";
 
 // =================================================================
 // TradingView UDF Datafeed — Supabase bar_data を直接参照
 // Gateway のメモリではなく Supabase の永続データを使う
 // =================================================================
-
-// リクエスト時に初期化（ビルド時にenv変数が未設定のためモジュールレベルは避ける）
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-  );
-}
 
 // TradingView resolution → DB timeframe
 const RESOLUTION_MAP: Record<string, string> = {
@@ -62,11 +54,11 @@ export async function GET(request: NextRequest) {
       return await fetchHistory(searchParams);
 
     case "search_symbols": {
-      // Supabase から利用可能なシンボル一覧を返す
-      const { data } = await getSupabase()
-        .from("bar_data")
-        .select("symbol")
-        .limit(1000);
+      const supabase = await createClient();
+      const owned = await getOwnedConnection(supabase, searchParams.get("connection_id"));
+      if (owned.error) return owned.error;
+      const { data } = await supabase.from("bar_data")
+        .select("symbol").eq("connection_id", owned.connectionId).limit(1000);
       const symbols = [...new Set((data ?? []).map(r => r.symbol))].sort();
       return NextResponse.json(
         symbols.map(s => ({
@@ -94,10 +86,13 @@ async function fetchHistory(params: URLSearchParams) {
   const toBroker   = new Date((to   + BROKER_OFFSET_SEC) * 1000).toISOString();
 
   try {
-    const sb = getSupabase();
-    const { data, error } = await sb
+    const supabase = await createClient();
+    const owned = await getOwnedConnection(supabase, params.get("connection_id"));
+    if (owned.error) return owned.error;
+    const { data, error } = await supabase
       .from("bar_data")
       .select("time_utc, open, high, low, close, volume")
+      .eq("connection_id", owned.connectionId)
       .eq("symbol", symbol)
       .eq("timeframe", timeframe)
       .gte("time_utc", fromBroker)
@@ -107,9 +102,10 @@ async function fetchHistory(params: URLSearchParams) {
 
     if (error || !data || data.length === 0) {
       // 範囲にデータがない場合は直近N本をフォールバックで返す
-      const { data: recent } = await sb
+      const { data: recent } = await supabase
         .from("bar_data")
         .select("time_utc, open, high, low, close, volume")
+        .eq("connection_id", owned.connectionId)
         .eq("symbol", symbol)
         .eq("timeframe", timeframe)
         .order("time_utc", { ascending: false })
@@ -126,6 +122,17 @@ async function fetchHistory(params: URLSearchParams) {
   } catch {
     return NextResponse.json({ s: "no_data" });
   }
+}
+
+async function getOwnedConnection(supabase: Awaited<ReturnType<typeof createClient>>, requested: string | null) {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) } as const;
+  let query = supabase.from("mt5_connections").select("id").eq("user_id", user.id);
+  if (requested) query = query.eq("id", requested);
+  const { data: connection, error } = await query.order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) return { error: NextResponse.json({ error: "Connection ownership unavailable" }, { status: 503 }) } as const;
+  if (!connection) return { error: NextResponse.json({ error: "Connection not found" }, { status: 404 }) } as const;
+  return { userId: user.id, connectionId: connection.id } as const;
 }
 
 function toUDF(bars: { time_utc: string; open: number; high: number; low: number; close: number; volume: number }[]) {

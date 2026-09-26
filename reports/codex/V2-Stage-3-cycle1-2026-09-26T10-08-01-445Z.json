@@ -1,0 +1,28 @@
+{
+  "stage": "V2-Stage-3",
+  "reviewed_commit": "ed7272a",
+  "review_cycle": 1,
+  "status": "FAIL",
+  "findings": {
+    "p0": [],
+    "p1": [
+      "Schedule periodic recovery using the backfill clock — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:297-298",
+      "Exclude the forming candle using its actual opening time — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:520-528",
+      "Preserve active recovery cursors during gap detection — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:479-483",
+      "Use a current server offset when parsing recovery timestamps — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:1251-1252"
+    ],
+    "p2": [
+      "Exercise actual bridge behavior in the integration tests — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/unified-bridge.test.ts:220-225"
+    ],
+    "p3": []
+  },
+  "checks": {},
+  "next_action": "FIX_AND_RESUBMIT",
+  "reviewer_notes": "Historical recovery has scheduling and boundary defects that can leave gaps unfilled or persist forming candles as confirmed data. The added tests do not exercise the required bridge integration paths.",
+  "_meta": {
+    "reviewed_at": "2026-09-26T10:09:25.772Z",
+    "codex_version": "0.155.1",
+    "repo_path": "/Users/tanakayoshiki/Desktop/AVL_FX　trading view",
+    "raw_output_len": 3159
+  }
+}

@@ -264,9 +264,8 @@ export function AVLChart() {
     try {
       // User MT5 connection-specific bars（Admin MT5 dataは使用しない）
       const p = new URLSearchParams({ symbol: activeSymbol, tf, count: String(BAR_COUNT) });
-      const endpoint = connectionId
-        ? `/api/live/connection/bars?${p}`
-        : `/api/mt5/bars/simple?${p}`; // fallback: 接続ID未取得時
+      if (connectionId) p.set("connection_id", connectionId);
+      const endpoint = `/api/live/connection/bars?${p}`;
       const res = await fetch(endpoint, { signal: abort.signal });
       if (res.ok) {
         const data = await res.json() as unknown;

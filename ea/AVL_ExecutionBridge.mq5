@@ -325,9 +325,22 @@ void Command_Process(const string cmdJson)
    }
 
    // ─── 2. Expiry確認 ───────────────────────────────────────────
-   if(StringLen(expiresAt) > 0) {
-      datetime expiry = ParseISO(expiresAt);
-      if(expiry > 0 && TimeCurrent() > expiry) {
+   if(StringLen(expiresAt) == 0) {
+      Print("[Bridge] REJECTED: missing expiresAt commandId=", commandId);
+      MarkProcessed(commandId);
+      Result_Send(commandId, "REJECTED", false, 0,
+                  0, 0, 0, 0, 0, 0, 0, -1, "Missing command expiry");
+      return;
+   }
+   datetime expiry = ParseISO(expiresAt);
+   if(expiry <= 0) {
+      Print("[Bridge] REJECTED: invalid expiresAt commandId=", commandId);
+      MarkProcessed(commandId);
+      Result_Send(commandId, "REJECTED", false, 0,
+                  0, 0, 0, 0, 0, 0, 0, -1, "Invalid command expiry");
+      return;
+   }
+   if(TimeCurrent() >= expiry) {
          Print("[Bridge] EXPIRED commandId=", commandId,
                " expiresAt=", expiresAt);
          MarkProcessed(commandId);
@@ -485,15 +498,24 @@ bool Execute_BUY(
    double roundedSL = (sl > 0) ? NormalizeDouble(sl, digits) : 0;
    double roundedTP = (tp > 0) ? NormalizeDouble(tp, digits) : 0;
 
+   // STAGE1-07 AUDIT-076: SL必須チェック。SL=0での自動発注を禁止する。
+   if(roundedSL <= 0) {
+      Print("[Bridge] REJECTED: SL required for automated orders. commandId=", commandId);
+      Send_Failed(commandId, "SL_REQUIRED: automated BUY must have valid stop loss");
+      return false;
+   }
+
    // SL/TP Stops Level検証
    double stopsLevel = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL) *
                        SymbolInfoDouble(symbol, SYMBOL_POINT);
    double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
 
-   if(roundedSL > 0 && ask - roundedSL < stopsLevel) {
-      Print("[Bridge] SL too close to price. symbol=", symbol,
+   // STAGE1-07 AUDIT-076: SLが近すぎる場合は発注拒否（0クリアは禁止）
+   if(ask - roundedSL < stopsLevel) {
+      Print("[Bridge] REJECTED: SL too close. commandId=", commandId,
             " ask=", ask, " sl=", roundedSL, " stopsLevel=", stopsLevel);
-      roundedSL = 0; // SL無しで注文（安全側）
+      Send_Failed(commandId, StringFormat("SL_TOO_CLOSE sl=%.5f stopsLevel=%.5f", roundedSL, stopsLevel));
+      return false;
    }
    if(roundedTP > 0 && roundedTP - ask < stopsLevel) {
       Print("[Bridge] TP too close to price. Clearing TP.");
@@ -541,13 +563,23 @@ bool Execute_SELL(
    double roundedSL = (sl > 0) ? NormalizeDouble(sl, digits) : 0;
    double roundedTP = (tp > 0) ? NormalizeDouble(tp, digits) : 0;
 
+   // STAGE1-07 AUDIT-076: SL必須チェック。SL=0での自動発注を禁止する。
+   if(roundedSL <= 0) {
+      Print("[Bridge] REJECTED: SL required for automated orders. commandId=", commandId);
+      Send_Failed(commandId, "SL_REQUIRED: automated SELL must have valid stop loss");
+      return false;
+   }
+
    double stopsLevel = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL) *
                        SymbolInfoDouble(symbol, SYMBOL_POINT);
    double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
 
-   if(roundedSL > 0 && roundedSL - bid < stopsLevel) {
-      Print("[Bridge] SL too close. Clearing SL for safety.");
-      roundedSL = 0;
+   // STAGE1-07 AUDIT-076: SLが近すぎる場合は発注拒否（0クリアは禁止）
+   if(roundedSL - bid < stopsLevel) {
+      Print("[Bridge] REJECTED: SL too close. commandId=", commandId,
+            " bid=", bid, " sl=", roundedSL, " stopsLevel=", stopsLevel);
+      Send_Failed(commandId, StringFormat("SL_TOO_CLOSE sl=%.5f stopsLevel=%.5f", roundedSL, stopsLevel));
+      return false;
    }
    if(roundedTP > 0 && bid - roundedTP < stopsLevel) {
       Print("[Bridge] TP too close. Clearing TP.");
@@ -660,6 +692,52 @@ bool Execute_MODIFY(
    double applyingSL = modifySL ? NormalizeDouble(newSL, digits) : currentSL;
    double applyingTP = modifyTP ? NormalizeDouble(newTP, digits) : currentTP;
 
+   // Stage 1 final defense: an AI command may never erase or widen a broker
+   // stop.  All checks are repeated after broker-digit normalization.
+   if(modifySL && (!MathIsValidNumber(newSL) || newSL <= 0)) {
+      Send_Failed(commandId, "MODIFY_SL_INVALID");
+      return false;
+   }
+   if(modifySL && applyingSL <= 0) {
+      Print("[Bridge] REJECTED: MODIFY_SL rounded to 0. commandId=", commandId,
+            " newSL=", newSL, " digits=", digits, " rounded=", applyingSL);
+      Send_Failed(commandId, StringFormat("MODIFY_SL_ROUNDS_TO_ZERO newSL=%.5f rounded=%.5f", newSL, applyingSL));
+      return false;
+   }
+
+   if(modifySL) {
+      long positionType = PositionGetInteger(POSITION_TYPE);
+      if(!MathIsValidNumber(currentSL) || currentSL <= 0) {
+         Send_Failed(commandId, "MODIFY_SL_CURRENT_BROKER_SL_INVALID");
+         return false;
+      }
+      double point = SymbolInfoDouble(sym, SYMBOL_POINT);
+      double stopsLevel = (double)SymbolInfoInteger(sym, SYMBOL_TRADE_STOPS_LEVEL) * point;
+      double bid = SymbolInfoDouble(sym, SYMBOL_BID);
+      double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
+      if(!MathIsValidNumber(point) || point <= 0 || !MathIsValidNumber(stopsLevel) ||
+         !MathIsValidNumber(bid) || !MathIsValidNumber(ask)) {
+         Send_Failed(commandId, "MODIFY_SL_MARKET_DATA_INVALID");
+         return false;
+      }
+      if(positionType == POSITION_TYPE_BUY) {
+         if(applyingSL >= bid || bid - applyingSL < stopsLevel ||
+            applyingSL < currentSL) {
+            Send_Failed(commandId, "MODIFY_SL_BUY_DIRECTION_OR_STOPS_INVALID");
+            return false;
+         }
+      } else if(positionType == POSITION_TYPE_SELL) {
+         if(applyingSL <= ask || applyingSL - ask < stopsLevel ||
+            applyingSL > currentSL) {
+            Send_Failed(commandId, "MODIFY_SL_SELL_DIRECTION_OR_STOPS_INVALID");
+            return false;
+         }
+      } else {
+         Send_Failed(commandId, "MODIFY_SL_POSITION_TYPE_INVALID");
+         return false;
+      }
+   }
+
    bool ok = g_Trade.PositionModify(positionTicket, applyingSL, applyingTP);
    retcode = (int)g_Trade.ResultRetcode();
 
@@ -717,7 +795,7 @@ void PositionSync_Send()
       count++;
    }
 
-   string body = StringFormat("{\"positions\":[%s]}", posArr);
+   string body = StringFormat("{\"snapshot_complete\":true,\"positions\":[%s]}", posArr);
    string resp = "";
    HTTP_Post("/bridge/positions", body, resp);
 }
@@ -1008,7 +1086,10 @@ datetime ParseISO(const string iso)
                     + StringSubstr(datePart, 5, 2) + "."
                     + StringSubstr(datePart, 8, 2) + " "
                     + timePart;
-   return StringToTime(converted);
+   // ISO入力はUTC(+00:00)。StringToTimeのサーバー時刻表現を
+   // TimeCurrent()と比較するため、実行時のbroker UTC offsetを一度だけ適用する。
+   int gmtOffset = (int)(TimeCurrent() - TimeGMT());
+   return StringToTime(converted) + gmtOffset;
 }
 
 //=================================================================//

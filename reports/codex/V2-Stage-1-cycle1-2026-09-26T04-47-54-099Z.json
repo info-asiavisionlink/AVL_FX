@@ -1,0 +1,23 @@
+{
+  "stage": "V2-Stage-1",
+  "reviewed_commit": "d147b2a",
+  "review_cycle": 1,
+  "status": "FAIL",
+  "findings": {
+    "p0": [],
+    "p1": [
+      "Match the persistence call to the committed store signature — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/index.ts:659-660"
+    ],
+    "p2": [],
+    "p3": []
+  },
+  "checks": {},
+  "next_action": "FIX_AND_RESUBMIT",
+  "reviewer_notes": "Commit d147b2a only reorders persistence calls in two V1 routes; it does not introduce the listed migration or market-data endpoints. The ordering fix activates an incompatible persistence call, so confirmed bars still fail to persist. Tests, typecheck, and build were not verified against an isolated committed tree.\n\nReview comment:\n\n- [P1] Match the persistence call to the committed store signature — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/index.ts:659-660\n  When Supabase i",
+  "_meta": {
+    "reviewed_at": "2026-09-26T04:48:39.713Z",
+    "codex_version": "0.155.1",
+    "repo_path": "/Users/tanakayoshiki/Desktop/AVL_FX　trading view",
+    "raw_output_len": 1053
+  }
+}

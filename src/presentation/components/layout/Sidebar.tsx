@@ -8,12 +8,13 @@ import { createClient } from "@/infrastructure/supabase/client";
 import { useEffect, useState } from "react";
 import {
   BarChart2, CalendarDays, Newspaper,
-  Briefcase, History, Settings, Cable, X, Bot, LogOut, User,
+  Briefcase, History, Settings, Cable, X, Bot, LogOut, User, ScrollText,
 } from "lucide-react";
 
 export const NAV = [
   { href: "/traders",   icon: Bot,          label: "AIトレーダー", group: 1 },
   { href: "/chart",     icon: BarChart2,    label: "チャート",      group: 1 },
+  { href: "/logs",      icon: ScrollText,   label: "ログ",          group: 1 },
   { href: "/calendar",  icon: CalendarDays, label: "カレンダー",    group: 1 },
   { href: "/news",      icon: Newspaper,    label: "ニュース",      group: 1 },
   { href: "/positions", icon: Briefcase,    label: "ポジション",    group: 2 },

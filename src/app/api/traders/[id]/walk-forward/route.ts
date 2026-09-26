@@ -113,8 +113,13 @@ export async function POST(
   // Research API fallback（Console bars）
   if (!bars.length) {
     try {
-      const consoleRes = await fetch(`${CONSOLE_URL}/api/research/bars?symbol=GOLD&timeframe=H4&limit=3000`, {
-        headers: CONSOLE_SVC ? { Authorization: `Bearer ${CONSOLE_SVC}` } : {},
+      const consoleRes = await fetch(`${CONSOLE_URL}/api/research/bars`, {
+        method:  "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(CONSOLE_SVC ? { Authorization: `Bearer ${CONSOLE_SVC}` } : {}),
+        },
+        body: JSON.stringify({ symbol: "GOLD", timeframe: "H4", limit: 3000 }),
         signal: AbortSignal.timeout(15_000),
       });
       if (consoleRes.ok) {

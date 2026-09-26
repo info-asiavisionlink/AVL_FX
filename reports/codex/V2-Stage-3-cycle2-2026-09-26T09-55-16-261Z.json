@@ -1,0 +1,31 @@
+{
+  "stage": "V2-Stage-3",
+  "reviewed_commit": "6a04569",
+  "review_cycle": 2,
+  "status": "FAIL",
+  "findings": {
+    "p0": [],
+    "p1": [
+      "Exclude the forming candle from historical backfill — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:438-439",
+      "Recover gaps before advancing the persisted watermark — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:427-439",
+      "Keep synchronous backfill out of the execution polling path — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:219-222",
+      "Set the position symbol's filling mode before closing — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:980-980",
+      "Retry transient claim failures without caching completion — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:788-790",
+      "Keep the EA running when the initial heartbeat fails — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:163-165"
+    ],
+    "p2": [
+      "Perform the configured initial deal-history synchronization — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:234-236",
+      "Exercise real bridge interfaces in the integration tests — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/unified-bridge.test.ts:220-225"
+    ],
+    "p3": []
+  },
+  "checks": {},
+  "next_action": "FIX_AND_RESUBMIT",
+  "reviewer_notes": "The scoped changes introduce incomplete historical persistence, execution starvation, close-order compatibility regressions, and unrecoverable transient failures. The new tests do not exercise the integration behavior required to establish stage completion.",
+  "_meta": {
+    "reviewed_at": "2026-09-26T09:56:57.304Z",
+    "codex_version": "0.155.1",
+    "repo_path": "/Users/tanakayoshiki/Desktop/AVL_FX　trading view",
+    "raw_output_len": 4993
+  }
+}

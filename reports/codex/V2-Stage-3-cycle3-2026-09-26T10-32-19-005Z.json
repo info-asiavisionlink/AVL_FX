@@ -1,0 +1,26 @@
+{
+  "stage": "V2-Stage-3",
+  "reviewed_commit": "835938e",
+  "review_cycle": 3,
+  "status": "FAIL",
+  "findings": {
+    "p0": [],
+    "p1": [
+      "Fetch bars forward from the recovery cursor — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:602-604",
+      "Retain a recovery boundary when no successful send exists — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:433-437"
+    ],
+    "p2": [
+      "Exercise implementation paths in bridge integration tests — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/unified-bridge.test.ts:220-225"
+    ],
+    "p3": []
+  },
+  "checks": {},
+  "next_action": "FIX_AND_RESUBMIT",
+  "reviewer_notes": "Historical recovery retrieves bars in the wrong direction and can also lose its recovery boundary after startup failures. The added tests do not exercise the integration paths needed to detect these regressions.",
+  "_meta": {
+    "reviewed_at": "2026-09-26T10:33:36.459Z",
+    "codex_version": "0.155.1",
+    "repo_path": "/Users/tanakayoshiki/Desktop/AVL_FX　trading view",
+    "raw_output_len": 2244
+  }
+}

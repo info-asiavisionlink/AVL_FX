@@ -13,7 +13,13 @@ import { evaluateStrategy } from "@/infrastructure/backtest/evaluator";
 import { precomputeIndicators } from "@/infrastructure/backtest/indicators";
 import { StrategySpecSchema } from "@/lib/strategySchema";
 import type { Bar } from "@/infrastructure/analysis/types";
-import { randomUUID } from "crypto";
+import { validateBarsForEntry } from "@/lib/ai-trader/market-data-validator";
+import {
+  runCommonRiskCheck,
+  createEntryExecutionCommand,
+  buildStrategyRiskEngineTrader,
+  buildDefaultRiskEngineProfile,
+} from "@/lib/ai-trader/execution-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +51,7 @@ async function fetchBarsFromGateway(
   try {
     const url = `${GATEWAY_URL}/connections/${connectionId}/bars/${encodeURIComponent(symbol.toUpperCase())}/${tf.toUpperCase()}?count=${count}`;
     const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${GATEWAY_SECRET}` },
+      headers: { Authorization: `Bearer ${GATEWAY_SECRET}`, "x-internal-service-auth": GATEWAY_SECRET, "x-connection-id": connectionId },
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return [];
@@ -197,6 +203,15 @@ async function handleEvaluation(req: NextRequest) {
 
       // e. evaluateStrategy でシグナル評価
       const lastBar = mainBars[mainBars.length - 1]!;
+      const marketValidation = validateBarsForEntry(
+        mainBars as import("@/lib/ai-trader/market-data-validator").Bar[],
+        mainTf,
+        5,
+      );
+      if (!marketValidation.valid) {
+        results.push({ strategyId, signal: "SKIP", inserted: false, error: `INVALID_MARKET_DATA: ${marketValidation.reason}` });
+        continue;
+      }
       const signal = evaluateStrategy({
         spec,
         evaluationTime:        lastBar.time * 1000, // broker seconds → ms
@@ -224,12 +239,23 @@ async function handleEvaluation(req: NextRequest) {
           .single();
 
         if (!existingCmd) {
-          // currentPrice (lastBar.close を使用)
-          const currentPrice = lastBar.close;
+          // P0-1: Route ALL automated new entries through Common Risk Engine.
+          // Direct INSERT without Risk Engine is prohibited.
 
-          // SL/TP計算 (pips指定がある場合のみ計算、それ以外はnull)
-          // ポイント値はシンボル依存だがデフォルト 0.00001 (FX標準)
-          // XAUUSD等は 0.01 だが、安全のためにnullを許容
+          // Get connection safety flags for buildStrategyRiskEngineTrader
+          const { data: connSafety } = await db
+            .from("mt5_connections")
+            .select("id, trading_enabled, emergency_stop")
+            .eq("id", connectionId)
+            .maybeSingle();
+
+          if (!connSafety) {
+            results.push({ strategyId, signal, inserted: false, error: "NO_CONNECTION" });
+            continue;
+          }
+
+          // SL/TP calculation
+          const currentPrice = lastBar.close;
           let stopLoss:   number | null = null;
           let takeProfit: number | null = null;
 
@@ -237,44 +263,60 @@ async function handleEvaluation(req: NextRequest) {
           const tpSpec = spec.exit_conditions?.take_profit;
 
           if (slSpec?.method === "FIXED_PIPS" && slSpec.pips) {
-            const pointValue = 0.00001; // FX standard
-            const slPips = slSpec.pips * pointValue * 10; // pips → price distance
-            stopLoss = signal === "BUY"
-              ? currentPrice - slPips
-              : currentPrice + slPips;
+            const pointValue = 0.00001;
+            const slPips = slSpec.pips * pointValue * 10;
+            stopLoss = signal === "BUY" ? currentPrice - slPips : currentPrice + slPips;
           }
-
           if (tpSpec?.method === "FIXED_PIPS" && tpSpec.pips) {
             const pointValue = 0.00001;
             const tpPips = tpSpec.pips * pointValue * 10;
-            takeProfit = signal === "BUY"
-              ? currentPrice + tpPips
-              : currentPrice - tpPips;
+            takeProfit = signal === "BUY" ? currentPrice + tpPips : currentPrice - tpPips;
           }
 
-          const { error: insertErr } = await db
-            .from("execution_commands")
-            .insert({
-              command_id:   randomUUID(),
-              user_id:      stratRow.user_id,
-              connection_id: connectionId,
-              strategy_id:  strategyId,
-              magic_number: stratRow.magic_number,
-              action:       signal,
-              symbol:       symbol,
-              volume:       0.01,
-              stop_loss:    stopLoss,
-              take_profit:  takeProfit,
-              status:       "PENDING",
-              expires_at:   new Date(Date.now() + 300_000).toISOString(),
-              created_at:   nowIso,
-            });
+          // Build Risk Engine inputs
+          const trader = buildStrategyRiskEngineTrader({
+            userId:       stratRow.user_id as string,
+            tradingEnabled: connSafety.trading_enabled as boolean,
+            emergencyStop:  connSafety.emergency_stop  as boolean,
+          });
+          const riskProfile = buildDefaultRiskEngineProfile(
+            strategyId,
+            stratRow.magic_number as number | null,
+            { max_risk_per_trade: 0.5, max_total_exposure_lots: 0.10 },
+          );
 
-          if (insertErr) {
-            console.error(`[evaluate-strategies] Insert command failed for ${strategyId}:`, insertErr);
-            results.push({ strategyId, signal, inserted: false, error: insertErr.message });
+          const { riskResult } = await runCommonRiskCheck({
+            trader,
+            profile:             riskProfile,
+            connectionId,
+            symbol,
+            decision:            signal === "BUY" ? "ENTER_LONG" : "ENTER_SHORT",
+            suggestedSl:         stopLoss,
+            suggestedTp:         takeProfit,
+            openPositionCount:   0,
+            totalExposureLots:   0,
+            marketBars:          mainBars as import("@/lib/ai-trader/market-data-validator").Bar[],
+            marketTimeframe:     mainTf,
+          }, db, GATEWAY_URL, GATEWAY_SECRET);
+
+          if (!riskResult.approved) {
+            results.push({ strategyId, signal, inserted: false, error: `RISK_DENIED: ${riskResult.deniedReason}` });
           } else {
-            results.push({ strategyId, signal, inserted: true });
+            try {
+              await createEntryExecutionCommand({
+                userId:      stratRow.user_id as string,
+                connectionId,
+                symbol,
+                riskResult,
+                magicNumber: stratRow.magic_number as number,
+                strategyId,
+                metadata:    { source: "evaluate-strategies" },
+              }, db);
+              results.push({ strategyId, signal, inserted: true });
+            } catch (cmdErr) {
+              const msg = cmdErr instanceof Error ? cmdErr.message : String(cmdErr);
+              results.push({ strategyId, signal, inserted: false, error: msg });
+            }
           }
         } else {
           // 既にPENDINGあり — 重複insertしない

@@ -1,0 +1,1097 @@
+classification	action	path
+INTENTIONAL(agent worktree artifact)	COMMIT_DELETION	.claire/worktrees/agent-aba6f1a2789f067f2/src/app/api/ai/knowledge/init/route.ts
+INTENTIONAL(agent worktree artifact)	COMMIT_DELETION	.claude/worktrees/agent-aba6f1a2789f067f2
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVL-FX document/AVL-FX_システム仕様書.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/00_MASTER/AVLFX_MASTER.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/00_MASTER/DEVELOPMENT_ROADMAP.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/00_MASTER/FINAL_PRODUCT_VISION.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/00_MASTER/SYSTEM_ARCHITECTURE.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/01_CURRENT_SYSTEM/AI.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/01_CURRENT_SYSTEM/BACKEND.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/01_CURRENT_SYSTEM/CURRENT_STATUS.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/01_CURRENT_SYSTEM/DATABASE.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/01_CURRENT_SYSTEM/FRONTEND.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/01_CURRENT_SYSTEM/GATEWAY.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/01_CURRENT_SYSTEM/MT5.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/01_CURRENT_SYSTEM/RESEARCH_ENGINE.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/20260822_MISC_BACKTEST_DIAGNOSTIC_UI_JAPANESE.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/20260822_STAGE1_STEP04_UI_JAPANESE_LOCALIZATION.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/20260823_STAGE1_STEP04_PRODUCTION_UI_CLEANUP.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/20260823_STAGE1_STEP05_CONVERSATIONAL_STRATEGY_RESEARCH.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/20260823_STAGE1_STEP06_CANDLESTICK_TRAILING_MULTITP.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/20260823_STAGE1_STEP07_CURATED_EA_SCREENING.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/20260823_STRATEGY_RESEARCH_5EA.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/LIVE_TRADING_ARCHITECTURE_AUDIT.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/ONE_COMMON_EA_ARCHITECTURE_AUDIT.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/README.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/STAGE_1_STEP_01_AI_EA_BUILDER_INPUTS.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/STAGE_1_STEP_02_PRE_ADD_BACKTEST.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/STAGE_1_STEP_03B_PREVIEW_BACKTEST_ZERO_TRADES_BUG.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/STAGE_1_STEP_03_REAL_EA_CREATION_E2E_TEST.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/STAGE_3_A_LIVE_TRADING_FOUNDATION.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/02_DEVELOPMENT_LOG/STAGE_3_B_AVL_EXECUTION_BRIDGE.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/03_PRODUCTION/COMMON_EXECUTION_BRIDGE.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/03_PRODUCTION/ENV_VARIABLES.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/03_PRODUCTION/EXECUTION_ENGINE.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/03_PRODUCTION/LIVE_TRADING.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/03_PRODUCTION/PAPER_TRADING.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/03_PRODUCTION/RISK_ENGINE.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/03_PRODUCTION/SAFETY.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/03_PRODUCTION/STRATEGY_RUNTIME.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/03_PRODUCTION/USER_MT5_REALTIME_ARCHITECTURE.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/04_WORKFLOW/EA_CREATION_FLOW.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/04_WORKFLOW/LIVE_DEPLOYMENT_FLOW.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/04_WORKFLOW/RESEARCH_PIPELINE.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/04_WORKFLOW/VALIDATION_FLOW.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/05_UI_UX/AI_EA_BUILDER.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/05_UI_UX/EA_COMMAND_CENTER.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/05_UI_UX/FINAL_UI.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/05_UI_UX/STRATEGY_DETAIL.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/06_RESEARCH_HISTORY/PHASE_5_RESULTS.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/06_RESEARCH_HISTORY/PHASE_6_RESULTS.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/06_RESEARCH_HISTORY/PHASE_7_RESULTS.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/06_RESEARCH_HISTORY/PHASE_8_RESULTS.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/06_RESEARCH_HISTORY/USER_MT5_MARKET_DATA_ARCHITECTURE_AUDIT.md
+UNKNOWN_REQUIRES_REVIEW(docs deleted locally only)	KEEP_IN_GIT(Owner decision)	AVLFXドキュメント/99_ARCHIVE/README.md
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/.gitignore
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/next.config.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/index.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/index.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/index.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/index.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/ZodError.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/benchmarks/datetime.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/benchmarks/discriminatedUnion.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/benchmarks/index.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/benchmarks/ipv4.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/benchmarks/object.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/benchmarks/primitives.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/benchmarks/realworld.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/benchmarks/string.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/benchmarks/union.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/errors.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/external.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/helpers/enumUtil.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/helpers/errorUtil.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/helpers/parseUtil.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/helpers/partialUtil.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/helpers/typeAliases.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/helpers/util.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/index.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/locales/en.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/standard-schema.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/Mocker.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/all-errors.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/anyunknown.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/array.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/async-parsing.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/async-refinements.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/base.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/bigint.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/branded.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/catch.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/coerce.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/complex.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/custom.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/date.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/deepmasking.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/default.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/description.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/discriminated-unions.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/enum.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/error.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/firstparty.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/firstpartyschematypes.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/function.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/generics.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/instanceof.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/intersection.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/language-server.source.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/language-server.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/literal.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/map.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/masking.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/mocker.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/nan.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/nativeEnum.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/nullable.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/number.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/object-augmentation.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/object-in-es5-env.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/object.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/optional.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/parseUtil.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/parser.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/partials.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/pickomit.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/pipeline.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/preprocess.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/primitive.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/promise.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/readonly.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/record.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/recursive.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/refine.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/safeparse.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/set.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/standard-schema.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/string.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/transformer.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/tuple.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/unions.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/validations.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/tests/void.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v3/types.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4-mini/index.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/checks.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/coerce.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/compat.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/errors.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/external.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/index.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/iso.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/parse.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/schemas.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/anyunknown.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/array.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/assignability.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/async-parsing.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/async-refinements.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/base.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/bigint.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/brand.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/catch.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/coalesce.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/coerce.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/continuability.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/custom.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/date.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/datetime.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/default.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/description.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/discriminated-unions.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/enum.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/error-utils.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/error.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/file.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/firstparty.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/function.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/generics.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/index.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/instanceof.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/intersection.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/json.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/lazy.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/literal.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/map.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/nan.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/nested-refine.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/nonoptional.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/nullable.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/number.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/object.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/optional.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/partial.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/pickomit.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/pipe.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/prefault.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/preprocess.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/primitive.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/promise.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/prototypes.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/readonly.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/record.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/recursive-types.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/refine.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/registries.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/set.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/standard-schema.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/string-formats.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/string.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/stringbool.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/template-literal.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/to-json-schema.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/transform.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/tuple.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/union.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/validations.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/classic/tests/void.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/api.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/checks.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/config.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/core.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/doc.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/errors.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/function.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/index.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/json-schema.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/parse.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/regexes.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/registries.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/schemas.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/standard-schema.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/tests/index.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/tests/locales/be.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/tests/locales/en.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/tests/locales/ru.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/tests/locales/tr.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/to-json-schema.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/util.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/versions.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/core/zsf.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/index.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ar.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/az.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/be.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ca.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/cs.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/de.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/en.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/eo.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/es.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/fa.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/fi.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/fr-CA.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/fr.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/he.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/hu.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/id.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/index.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/it.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ja.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/kh.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ko.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/mk.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ms.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/nl.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/no.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ota.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/pl.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ps.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/pt.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ru.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/sl.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/sv.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ta.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/th.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/tr.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ua.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/ur.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/vi.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/zh-CN.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/locales/zh-TW.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/checks.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/coerce.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/external.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/index.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/iso.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/parse.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/schemas.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/assignability.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/brand.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/checks.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/computed.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/error.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/functions.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/index.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/number.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/object.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/prototypes.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/recursive-types.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/src/v4/mini/tests/string.test.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/ZodError.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/ZodError.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/ZodError.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/ZodError.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/errors.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/errors.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/errors.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/errors.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/external.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/external.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/external.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/external.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/enumUtil.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/enumUtil.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/enumUtil.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/enumUtil.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/errorUtil.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/errorUtil.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/errorUtil.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/errorUtil.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/parseUtil.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/parseUtil.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/parseUtil.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/parseUtil.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/partialUtil.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/partialUtil.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/partialUtil.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/partialUtil.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/typeAliases.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/typeAliases.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/typeAliases.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/typeAliases.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/util.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/util.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/util.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/helpers/util.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/index.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/index.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/index.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/locales/en.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/locales/en.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/locales/en.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/locales/en.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/standard-schema.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/standard-schema.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/standard-schema.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/standard-schema.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/types.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/types.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/types.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v3/types.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4-mini/index.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4-mini/index.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4-mini/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4-mini/index.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/checks.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/checks.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/checks.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/checks.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/coerce.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/coerce.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/coerce.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/coerce.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/compat.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/compat.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/compat.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/compat.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/errors.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/errors.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/errors.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/errors.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/external.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/external.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/external.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/external.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/index.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/index.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/index.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/iso.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/iso.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/iso.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/iso.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/parse.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/parse.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/parse.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/parse.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/schemas.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/schemas.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/schemas.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/classic/schemas.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/api.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/api.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/api.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/api.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/checks.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/checks.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/checks.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/checks.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/core.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/core.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/core.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/core.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/doc.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/doc.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/doc.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/doc.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/errors.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/errors.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/errors.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/errors.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/function.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/function.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/function.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/function.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/index.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/index.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/index.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/json-schema.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/json-schema.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/json-schema.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/json-schema.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/parse.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/parse.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/parse.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/parse.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/regexes.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/regexes.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/regexes.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/regexes.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/registries.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/registries.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/registries.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/registries.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/schemas.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/schemas.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/schemas.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/schemas.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/standard-schema.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/standard-schema.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/standard-schema.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/standard-schema.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/to-json-schema.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/to-json-schema.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/to-json-schema.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/to-json-schema.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/util.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/util.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/util.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/util.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/versions.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/versions.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/versions.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/core/versions.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/index.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/index.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/index.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ar.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ar.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ar.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ar.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/az.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/az.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/az.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/az.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/be.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/be.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/be.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/be.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ca.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ca.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ca.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ca.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/cs.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/cs.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/cs.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/cs.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/de.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/de.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/de.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/de.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/en.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/en.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/en.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/en.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/eo.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/eo.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/eo.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/eo.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/es.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/es.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/es.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/es.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fa.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fa.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fa.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fa.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fi.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fi.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fi.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fi.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fr-CA.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fr-CA.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fr-CA.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fr-CA.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fr.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fr.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fr.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/fr.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/he.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/he.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/he.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/he.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/hu.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/hu.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/hu.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/hu.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/id.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/id.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/id.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/id.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/index.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/index.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/index.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/it.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/it.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/it.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/it.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ja.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ja.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ja.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ja.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/kh.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/kh.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/kh.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/kh.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ko.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ko.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ko.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ko.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/mk.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/mk.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/mk.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/mk.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ms.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ms.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ms.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ms.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/nl.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/nl.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/nl.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/nl.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/no.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/no.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/no.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/no.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ota.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ota.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ota.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ota.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/pl.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/pl.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/pl.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/pl.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ps.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ps.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ps.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ps.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/pt.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/pt.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/pt.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/pt.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ru.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ru.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ru.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ru.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/sl.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/sl.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/sl.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/sl.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/sv.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/sv.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/sv.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/sv.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ta.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ta.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ta.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ta.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/th.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/th.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/th.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/th.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/tr.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/tr.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/tr.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/tr.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ua.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ua.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ua.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ua.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ur.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ur.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ur.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/ur.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/vi.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/vi.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/vi.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/vi.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/zh-CN.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/zh-CN.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/zh-CN.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/zh-CN.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/zh-TW.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/zh-TW.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/zh-TW.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/locales/zh-TW.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/checks.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/checks.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/checks.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/checks.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/coerce.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/coerce.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/coerce.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/coerce.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/external.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/external.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/external.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/external.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/index.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/index.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/index.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/iso.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/iso.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/iso.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/iso.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/parse.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/parse.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/parse.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/parse.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/schemas.cjs
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/schemas.d.cts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/schemas.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	apps/console/node_modules/zod/v4/mini/schemas.js
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/package.json
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/postcss.config.mjs
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/(admin)/dashboard/page.tsx
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/(admin)/gateway/page.tsx
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/(admin)/historical/page.tsx
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/(admin)/layout.tsx
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/(admin)/market-data/page.tsx
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/(admin)/mt5/page.tsx
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/(admin)/system/page.tsx
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/api/auth/callback/route.ts
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/api/auth/logout/route.ts
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/globals.css
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/layout.tsx
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/login/page.tsx
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/app/page.tsx
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/lib/admin-auth.ts
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/src/middleware.ts
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/tsconfig.json
+INTENTIONAL(moved to separate AVL-FX console repo)	COMMIT_DELETION	apps/console/vercel.json
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/.vercel-deploy-trigger
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/components.json
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/eslint.config.mjs
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/next.config.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/package.json
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/postcss.config.mjs
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/public/ea/AVL_FX_Bridge.ex5
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/public/file.svg
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/public/globe.svg
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/public/next.svg
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/public/vercel.svg
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/public/window.svg
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/(auth)/callback/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/(auth)/forgot-password/page.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/(auth)/layout.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/(auth)/login/page.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/(auth)/signup/page.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/(auth)/verify-email/page.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/ai/page.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/agent-pipeline/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/analysis/full/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/analyze/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/autonomous-order/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/brain/decision/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/brain/migrate/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/brain/scan/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/brain/snapshot/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/brain/validate/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/chat/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/embeddings/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/embeddings/similar-trades/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/knowledge/init/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/knowledge/setup/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/knowledge/upload/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/realtime-session/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/strategy/build/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/strategy/chat/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/strategy/preview-backtest/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/ai/trade-scanner/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/backtest/job/[id]/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/backtest/run/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/contact/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/cron/cot-fetch/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/cron/evaluate-strategies/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/datafeed/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/economic-calendar/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/live/connection/account/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/live/connection/bars/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/live/connection/status/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/live/connection/ticks/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/live/connections/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/live/positions/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/live/strategies/[id]/runtime/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/market-data/gaps/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/market-data/health/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/market-data/history-sync/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/market-data/status/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/market/cot/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/market/economic-events/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/market/external/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/market/intelligence/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/market/news/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/market/web-search/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/mt5/bars/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/mt5/bars/simple/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/mt5/history/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/mt5/indicators/[symbol]/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/mt5/live/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/mt5/positions/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/mt5/tick/[symbol]/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/news/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/analyze/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/backtest/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/chat/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/improve/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/interpret/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/monte-carlo/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/optimize/[jobId]/apply/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/optimize/[jobId]/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/optimize/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/versions/[version]/restore/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/versions/[version]/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/versions/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/walk-forward/[jobId]/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/[id]/walk-forward/route.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/api/strategies/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/stripe/checkout/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/stripe/portal/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/stripe/webhook/route.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/api/user/mt5-setup/route.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/calendar/page.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/chart/page.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/ea/page.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/favicon.ico
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/globals.css
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/history/page.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/layout.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/legal/contact/page.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/legal/layout.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/legal/privacy/page.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/legal/terms/page.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/legal/tokushoho/page.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/logs/page.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/market-data/page.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/markets/page.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/mt5/page.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/news/page.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/page.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/positions/page.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/pricing/page.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/app/pricing/success/page.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/app/settings/page.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/app/watchlist/page.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/application/stores/aiOSStore.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/application/stores/analysisStore.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/application/stores/connectionStore.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/application/stores/indicatorStore.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/application/stores/marketStore.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/application/stores/priceStore.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/application/stores/settingsStore.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/badge.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/button.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/card.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/input.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/label.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/scroll-area.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/separator.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/sonner.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/switch.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/tabs.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/components/ui/tooltip.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/domain/entities/Bar.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/domain/entities/Instrument.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/domain/live-trading/__tests__/commandStateMachine.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/domain/live-trading/__tests__/schemas.test.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/domain/live-trading/commandStateMachine.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/domain/live-trading/schemas.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/domain/live-trading/types.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/domain/repositories/IEconomicCalendarRepository.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/domain/repositories/IPriceRepository.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/domain/trading/MarketSnapshot.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/domain/usecases/GetBarsUseCase.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/ai/knowledge/trading-knowledge.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/infrastructure/ai/market-context.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/ai/openai-client.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/analysis/candlestickPatterns.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/analysis/chartPatterns.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/analysis/correlationEngine.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/analysis/indicatorEngine.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/analysis/marketEnvironment.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/analysis/marketStructure.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/analysis/supportResistance.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/analysis/types.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/AccountSimulator.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/BacktestAnalyzer.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/BacktestEngine.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/BacktestReporter.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/BacktestService.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/ImprovementSchema.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/InterpretationEngine.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/InterpretationSchema.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/MonteCarloEngine.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/MonteCarloSchema.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/OptimizationEngine.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/PositionManager.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/StrategyImprover.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/VersionComparator.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/VersionSchema.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/WalkForwardEngine.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/WalkForwardSchema.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/analyzer.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/backtest.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/backtest_service_pagination.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/datasync.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/evaluator.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/improver.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/indicators.test.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/integration.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/interpretation.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/montecarlo.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/optimization.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/phase5a.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/phase5c.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/phase5c_helpers.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/phase5d.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/phase5e.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/phase6a.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/phase6b.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/reporter.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/version.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/__tests__/walkforward.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/analysisSchema.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/evaluator.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/indicators.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/phase6a/analysisHelpers.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/phase6a/evaluators.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/phase6b/rawAnalysis.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/spreadConfig.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/timeframe.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/backtest/types.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/connection/ConnectionManager.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/infrastructure/connection/GatewayClient 2.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/infrastructure/connection/GatewayClient.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/connection/types.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/datafeed/IDataProvider.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/datafeed/TVDatafeed.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/datafeed/providers/MT5DataProvider.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/datafeed/providers/MockDataProvider.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/datafeed/tv-types.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/__tests__/marketDataGapDetection.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/__tests__/marketDataHealth.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/__tests__/marketDataReadiness.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/__tests__/marketSchedule.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/__tests__/multiSymbol.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/__tests__/realtimePipeline.test.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/fetchAllBars.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/marketDataGapDetection.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/marketDataHealth.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/marketDataReadiness.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-data/marketSchedule.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-intelligence/MarketIntelligenceService.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-intelligence/providers/COTProvider.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-intelligence/providers/PublicPositioningProvider.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-intelligence/providers/SentimentProvider.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/market-intelligence/types.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/mt5/MT5PriceRepository.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/supabase/admin.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/supabase/client.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/supabase/repository.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/supabase/server.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/trading/CorrelationCache.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/trading/DataQualityChecker.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/trading/DynamicSLTP.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/trading/MarketSnapshotBuilder.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/trading/PositionSizer.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/trading/RiskEngine.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/trading/TradeAuditLogger.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/tradingview/TVDatafeed.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/infrastructure/websocket/MT5WebSocketClient.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/lib/constants/index.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/lib/plans.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/lib/strategySchema.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/lib/stripe/client.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/lib/ui-labels.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/lib/utils.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/middleware.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ai-brain/ActivityStream.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ai-brain/BrainParticleCore.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ai-brain/MarketScannerDisplay.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ai-brain/OpportunityRanker.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ai-brain/ReasoningChain.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ai-core/AVLAICore.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ai-panel/AiPanel.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/chart/AVLChart.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/chart/ChartPlaceholder.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/presentation/components/chart/TradingViewChart.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/command-center/CommandCenter.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/common/MT5Gate.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ea/AIEABuilder.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ea/EACommandCenter.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ea/StrategyDetailModal.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ea/StrategyResearchAssistant.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/presentation/components/ea/types.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/economic-calendar/CalendarView.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/economic-calendar/EconomicCalendarPanel.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/history/HistoryView.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/presentation/components/layout/BottomPanel.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/layout/DashboardShell 2.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/layout/DashboardShell.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/layout/Header.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/layout/Sidebar.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/logs/LogsView.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/market-data/MarketDataCoveragePanel.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/markets/MarketsView.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/mt5/MT5ConnectionPage.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/news/NewsView.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/AIBrainCommandCenter.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/AIBrainPanel.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/AICore3D.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/AVLAICore.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/AnalysisEngine.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/DashboardOS 2.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/DashboardOS 3.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/DashboardOS 4.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/DashboardOS.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/HolographicAICore.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/OrbitalParticleSystem.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/ParticleTorus.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/ScannerPanel.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/os/WorldMapParticles.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/positions/PositionsView.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/components/settings/SettingsPage 2.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/settings/SettingsPage.tsx
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/src/presentation/components/watchlist/WatchlistPanel.tsx
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/hooks/useAIBrain.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/hooks/useAgentPipeline.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/presentation/hooks/useAutoConnect.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/hooks/useBrainScanner.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/presentation/hooks/useMonitor.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/hooks/useRealtimeAgent 2.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/hooks/useRealtimeAgent.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/presentation/hooks/useUserMT5Connection.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/hooks/useVoiceChat.ts
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/presentation/hooks/useWatchlistData.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/presentation/providers/AppProviders 2.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/presentation/providers/AppProviders.tsx
+INTENTIONAL(flattened to root; root copy IDENTICAL)	COMMIT_DELETION	apps/trading-view/src/types/index.ts
+INTENTIONAL(flattened to root; root copy MISSING)	COMMIT_DELETION	apps/trading-view/src/types/r3f.d.ts
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/tsconfig.json
+INTENTIONAL(flattened to root; root copy DIFFERS)	COMMIT_DELETION	apps/trading-view/vercel.json
+INTENTIONAL(Data Manager EA belongs to Console)	COMMIT_DELETION	ea/AVL_DataManager_v2.mq5
+INTENTIONAL(Data Manager EA belongs to Console)	COMMIT_DELETION	mt5/data-manager/AVL_DataManager_v2.ex5
+INTENTIONAL(Data Manager EA belongs to Console)	COMMIT_DELETION	mt5/data-manager/AVL_DataManager_v2.mq5
+INTENTIONAL(Data Manager EA belongs to Console)	COMMIT_DELETION	mt5/data-manager/README.md
+INTENTIONAL(superseded by tracked gateway/)	COMMIT_DELETION	services/gateway/Dockerfile
+GENERATED/HISTORICAL_DEBT(dist)	COMMIT_DELETION	services/gateway/dist/index 2.js
+GENERATED/HISTORICAL_DEBT(dist)	COMMIT_DELETION	services/gateway/dist/index.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/body-parser/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/body-parser/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/body-parser/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/body-parser/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/cors/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/cors/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/cors/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/cors/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/express-serve-static-core/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/express-serve-static-core/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/express-serve-static-core/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/express-serve-static-core/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/express/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/express/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/express/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/express/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/http-errors/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/http-errors/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/http-errors/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/http-errors/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/mime/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/mime/Mime.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/mime/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/mime/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/mime/lite.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/mime/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/assert.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/assert/strict.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/async_hooks.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/buffer.buffer.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/buffer.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/cluster.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/compatibility/disposable.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/compatibility/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/compatibility/indexable.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/compatibility/iterators.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/console.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/constants.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/crypto.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/diagnostics_channel.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/dns.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/domain.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/events.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/fs.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/globals.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/http.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/http2.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/https.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/inspector.generated.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/os.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/path.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/perf_hooks.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/punycode.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/querystring.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/readline.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/readline/promises.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/repl.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/sea.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/stream.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/stream/consumers.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/stream/promises.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/stream/web.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/string_decoder.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/test.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/timers.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/timers/promises.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/tls.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/trace_events.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/tty.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/url.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/v8.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/vm.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/web-globals/abortcontroller.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/web-globals/domexception.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/web-globals/events.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/web-globals/fetch.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/node/worker_threads.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/qs/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/qs/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/qs/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/qs/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/range-parser/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/range-parser/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/range-parser/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/range-parser/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/serve-static/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/serve-static/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/serve-static/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/serve-static/node_modules/@types/send/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/serve-static/node_modules/@types/send/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/serve-static/node_modules/@types/send/index.d.ts
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/serve-static/node_modules/@types/send/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/@types/serve-static/package.json
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/destroy/LICENSE
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/destroy/README.md
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/destroy/index.js
+GENERATED/HISTORICAL_DEBT(node_modules)	COMMIT_DELETION	services/gateway/node_modules/destroy/package.json
+INTENTIONAL(superseded by tracked gateway/)	COMMIT_DELETION	services/gateway/package.json
+INTENTIONAL(superseded by tracked gateway/)	COMMIT_DELETION	services/gateway/src/barDataStore.ts
+INTENTIONAL(superseded by tracked gateway/)	COMMIT_DELETION	services/gateway/src/executionStore.ts
+INTENTIONAL(superseded by tracked gateway/)	COMMIT_DELETION	services/gateway/src/index 2.ts
+INTENTIONAL(superseded by tracked gateway/)	COMMIT_DELETION	services/gateway/src/index.ts
+INTENTIONAL(superseded by tracked gateway/)	COMMIT_DELETION	services/gateway/src/syncJobStore.ts
+INTENTIONAL(superseded by tracked gateway/)	COMMIT_DELETION	services/gateway/tsconfig.json

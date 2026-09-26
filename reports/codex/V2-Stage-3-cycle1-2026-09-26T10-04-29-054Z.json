@@ -1,0 +1,29 @@
+{
+  "stage": "V2-Stage-3",
+  "reviewed_commit": "ebe7474",
+  "review_cycle": 1,
+  "status": "FAIL",
+  "findings": {
+    "p0": [],
+    "p1": [
+      "Preserve the recovery boundary before the first successful batch — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:466-470",
+      "Schedule heartbeat retries using a clock that advances without ticks — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:216-219",
+      "Use actual bar boundaries for monthly recovery — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:470-471",
+      "Retry and periodically refresh symbol specifications — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:586-587"
+    ],
+    "p2": [
+      "Replace constant assertions with bridge integration tests — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/unified-bridge.test.ts:219-224",
+      "Apply exponential backoff to failed connection attempts — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:219-222"
+    ],
+    "p3": []
+  },
+  "checks": {},
+  "next_action": "FIX_AND_RESUBMIT",
+  "reviewer_notes": "Recovery can permanently skip historical bars, and connection scheduling and symbol-specification retries remain incomplete. Gateway typechecking and all 54 selected tests passed, but those tests do not establish the required bridge integration behavior; MT5 compilation was not verified.",
+  "_meta": {
+    "reviewed_at": "2026-09-26T10:06:16.830Z",
+    "codex_version": "0.155.1",
+    "repo_path": "/Users/tanakayoshiki/Desktop/AVL_FX　trading view",
+    "raw_output_len": 3720
+  }
+}

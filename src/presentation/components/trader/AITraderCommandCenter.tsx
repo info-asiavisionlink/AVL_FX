@@ -7,6 +7,7 @@ import { AITraderBuilder }   from "./AITraderBuilder";
 import { AITraderDetailModal } from "./AITraderDetailModal";
 import {
   PERSONALITY_LABELS, TRADING_STYLE_LABELS, RISK_PROFILE_LABELS,
+  WATCHER_STATE_LABELS,
   type AITrader,
 } from "@/lib/aiTraderSchema";
 
@@ -61,20 +62,34 @@ function TraderCard({
     setBusy(false);
   }
 
-  async function handleToggle(e: React.MouseEvent) {
+  const isActive    = trader.status === "ACTIVE";
+  const currentMode = trader.execution_mode ?? "STOPPED";
+
+  async function handleModeChange(e: React.MouseEvent, next: "MANUAL_APPROVAL" | "ANALYSIS_ONLY" | "DEMO_AUTONOMOUS") {
     e.stopPropagation();
+    if (next === currentMode) return;
+    if (next === "DEMO_AUTONOMOUS" && !confirm(
+      "デモ自動実行をONにします。\n本番口座では実行できません。\n\n続けますか？"
+    )) return;
     setBusy(true);
-    const newStatus = trader.status === "ACTIVE" ? "DRAFT" : "ACTIVE";
-    const res = await fetch(`/api/traders/${trader.id}/status`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
+    const res = await fetch(`/api/traders/${trader.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ execution_mode: next }),
     });
-    if (res.ok) { toast.success(newStatus === "ACTIVE" ? "有効化" : "停止"); window.location.reload(); }
-    else toast.error("変更に失敗しました");
+    if (res.ok) {
+      const labels: Record<string, string> = {
+        MANUAL_APPROVAL: "承認実行モードに切り替えました",
+        ANALYSIS_ONLY: "分析モードに切り替えました",
+        STOPPED: "停止しました",
+      };
+      toast.success(labels[next]);
+      window.location.reload();
+    } else {
+      toast.error("変更に失敗しました");
+    }
     setBusy(false);
   }
-
-  const isActive = trader.status === "ACTIVE";
 
   return (
     <div
@@ -91,13 +106,27 @@ function TraderCard({
       {/* 上部カラーバー */}
       <div className="h-0.5 w-full" style={{ background: `linear-gradient(90deg, ${pColor}, transparent)` }} />
 
-      {/* アクティブインジケーター */}
-      {isActive && (
-        <div className="absolute top-3 right-3 flex items-center gap-1">
-          <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#22c55e" }} />
-          <span className="text-[8px] font-mono" style={{ color: "#22c55e" }}>LIVE</span>
-        </div>
-      )}
+      {/* ウォッチャー状態インジケーター */}
+      {isActive && (() => {
+        const ws = (trader.watcher_state ?? "WATCHING") as keyof typeof WATCHER_STATE_LABELS;
+        const wsInfo = WATCHER_STATE_LABELS[ws] ?? WATCHER_STATE_LABELS.WATCHING;
+        return (
+          <div className="absolute top-3 right-3 flex items-center gap-1">
+            {wsInfo.pulse ? (
+              <div className="relative w-1.5 h-1.5">
+                <div className="absolute inset-0 rounded-full animate-ping opacity-70"
+                  style={{ background: wsInfo.color }} />
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: wsInfo.color }} />
+              </div>
+            ) : (
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: wsInfo.color }} />
+            )}
+            <span className="text-[8px] font-mono" style={{ color: wsInfo.color }}>
+              {wsInfo.label}
+            </span>
+          </div>
+        );
+      })()}
 
       <div className="p-4 flex flex-col gap-3">
         {/* ナンバー + 名前 */}
@@ -178,19 +207,59 @@ function TraderCard({
               {RISK_PROFILE_LABELS[profile?.risk_profile ?? ""] ?? "—"}
             </span>
           </div>
-          <div className="flex gap-1">
-            <button onClick={handleToggle} disabled={busy}
-              className="px-2 py-0.5 rounded text-[8px] font-mono border transition-all"
+          <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+            {/* 3択モードボタン */}
+            <button
+              onClick={e => handleModeChange(e, "MANUAL_APPROVAL")}
+              disabled={busy}
+              className="px-2.5 py-1 rounded-lg text-[9px] font-bold border transition-all flex items-center gap-1"
               style={{
-                background:  isActive ? "#f8fafc" : "#f0fdf4",
-                color:       isActive ? "#64748b" : "#16a34a",
-                borderColor: isActive ? "#e2e8f0" : "#bbf7d0",
+                background:  currentMode === "MANUAL_APPROVAL" ? "#dcfce7" : "#f8fafc",
+                color:       currentMode === "MANUAL_APPROVAL" ? "#16a34a" : "#94a3b8",
+                borderColor: currentMode === "MANUAL_APPROVAL" ? "#86efac" : "#e2e8f0",
               }}>
-              {isActive ? "停止" : "有効化"}
+              <span style={{
+                display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+                background: currentMode === "MANUAL_APPROVAL" ? "#22c55e" : "#cbd5e1",
+                boxShadow:  currentMode === "MANUAL_APPROVAL" ? "0 0 5px #22c55e" : "none",
+              }} />
+              承認実行
+            </button>
+            <button
+              onClick={e => handleModeChange(e, "ANALYSIS_ONLY")}
+              disabled={busy}
+              className="px-2.5 py-1 rounded-lg text-[9px] font-bold border transition-all flex items-center gap-1"
+              style={{
+                background:  currentMode === "ANALYSIS_ONLY" ? "#dbeafe" : "#f8fafc",
+                color:       currentMode === "ANALYSIS_ONLY" ? "#2563eb" : "#94a3b8",
+                borderColor: currentMode === "ANALYSIS_ONLY" ? "#93c5fd" : "#e2e8f0",
+              }}>
+              <span style={{
+                display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+                background: currentMode === "ANALYSIS_ONLY" ? "#3b82f6" : "#cbd5e1",
+                boxShadow:  currentMode === "ANALYSIS_ONLY" ? "0 0 5px #3b82f6" : "none",
+              }} />
+              分析のみ
+            </button>
+            <button
+              onClick={e => handleModeChange(e, "ANALYSIS_ONLY")}
+              disabled={busy}
+              className="px-2.5 py-1 rounded-lg text-[9px] font-bold border transition-all flex items-center gap-1"
+              style={{
+                background:  currentMode === "STOPPED" ? "#fee2e2" : "#f8fafc",
+                color:       currentMode === "STOPPED" ? "#dc2626" : "#94a3b8",
+                borderColor: currentMode === "STOPPED" ? "#fca5a5" : "#e2e8f0",
+              }}>
+              <span style={{
+                display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+                background: currentMode === "STOPPED" ? "#ef4444" : "#cbd5e1",
+                boxShadow:  currentMode === "STOPPED" ? "0 0 5px #ef4444" : "none",
+              }} />
+              停止
             </button>
             <button onClick={handleDelete} disabled={busy}
-              className="px-2 py-0.5 rounded text-[8px] font-mono border"
-              style={{ background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }}>
+              className="px-2 py-0.5 rounded text-[8px] font-mono border ml-1"
+              style={{ background: "#f8fafc", color: "#94a3b8", borderColor: "#e2e8f0" }}>
               削除
             </button>
           </div>

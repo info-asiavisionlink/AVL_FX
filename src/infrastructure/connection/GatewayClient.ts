@@ -152,7 +152,8 @@ type Unsubscribe      = () => void;
 export class GatewayClient {
   private readonly httpUrl:   string;
   private readonly wsBaseUrl: string;
-  private readonly secret:    string;
+  private requestedConnectionId: string | null = null;
+  private authorizedConnectionId: string | null = null;
 
   private ws:             WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -174,7 +175,6 @@ export class GatewayClient {
       .replace(/^https:\/\//, "wss://")
       .replace(/^http:\/\//, "ws://");
     this.wsBaseUrl = wsFixed.replace(/\/$/, "");
-    this.secret    = config.secret;
   }
 
   // ---------------------------------------------------------------
@@ -215,11 +215,12 @@ export class GatewayClient {
 
   async getLatestTick(symbol: string): Promise<MarketTick | null> {
     try {
-      const res = await fetch(`${this.httpUrl}/tick/${symbol.toUpperCase()}`, {
-        headers: this.authHeaders(), signal: AbortSignal.timeout(5000),
+      const res = await fetch(`/api/live/connection/ticks?symbol=${encodeURIComponent(symbol.toUpperCase())}`, {
+        signal: AbortSignal.timeout(5000),
       });
       if (!res.ok) return null;
-      return res.json() as Promise<MarketTick>;
+      const payload = await res.json() as { tick?: MarketTick };
+      return payload.tick ?? null;
     } catch { return null; }
   }
 
@@ -230,11 +231,8 @@ export class GatewayClient {
    */
   async getBars(symbol: string, timeframe: string, count = 500): Promise<MarketBar[]> {
     try {
-      const params = new URLSearchParams({ count: String(count) });
-      const url    = `${this.httpUrl}/bars/${symbol.toUpperCase()}/${timeframe}?${params}`;
-      const res    = await fetch(url, {
-        headers: this.authHeaders(), signal: AbortSignal.timeout(15000),
-      });
+      const url = `/api/live/connection/bars?symbol=${encodeURIComponent(symbol.toUpperCase())}&tf=${encodeURIComponent(timeframe)}&count=${encodeURIComponent(String(count))}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
       if (!res.ok) return [];
       return res.json() as Promise<MarketBar[]>;
     } catch { return []; }
@@ -242,21 +240,19 @@ export class GatewayClient {
 
   async getPositions(): Promise<MarketPosition[]> {
     try {
-      const res = await fetch(`${this.httpUrl}/positions`, {
-        headers: this.authHeaders(), signal: AbortSignal.timeout(5000),
-      });
+      const res = await fetch("/api/live/positions", { signal: AbortSignal.timeout(5000) });
       if (!res.ok) return [];
-      return res.json() as Promise<MarketPosition[]>;
+      const payload = await res.json() as { positions?: MarketPosition[] };
+      return payload.positions ?? [];
     } catch { return []; }
   }
 
   async getAccount(): Promise<MarketAccount | null> {
     try {
-      const res = await fetch(`${this.httpUrl}/account`, {
-        headers: this.authHeaders(), signal: AbortSignal.timeout(5000),
-      });
+      const res = await fetch("/api/live/connection/account", { signal: AbortSignal.timeout(5000) });
       if (!res.ok) return null;
-      return res.json() as Promise<MarketAccount>;
+      const payload = await res.json() as { account?: MarketAccount };
+      return payload.account ?? null;
     } catch { return null; }
   }
 
@@ -269,16 +265,24 @@ export class GatewayClient {
       if (this.ws?.readyState === WebSocket.OPEN) { resolve(); return; }
 
       this.destroyed = false;
-      const wsUrl    = `${this.wsBaseUrl}/ws`;
-      this.ws        = new WebSocket(wsUrl);
+      const connect = async () => {
+        const tokenRes = await fetch(`/api/live/connection/ws-token${this.requestedConnectionId ? `?connection_id=${encodeURIComponent(this.requestedConnectionId)}` : ""}`, { signal: AbortSignal.timeout(5000) });
+        if (!tokenRes.ok) throw new Error(`WS認証トークン取得失敗: ${tokenRes.status}`);
+        const token = await tokenRes.json() as { connectionId?: string; accessToken?: string };
+        if (!token.connectionId || !token.accessToken) throw new Error("WS認証トークン不正");
+        this.authorizedConnectionId = token.connectionId;
+        const wsUrl = `${this.wsBaseUrl}/ws?connectionId=${encodeURIComponent(token.connectionId)}&accessToken=${encodeURIComponent(token.accessToken)}`;
+        this.ws = new WebSocket(wsUrl);
 
-      const onOpen  = () => { this.reconnectCount = 0; this.notifyStatus("connected"); resolve(); console.log("[GatewayClient] WebSocket 接続確立"); };
-      const onError = (e: Event) => reject(new Error(`WS接続失敗: ${wsUrl} (${String(e)})`));
+        const onOpen  = () => { this.reconnectCount = 0; this.notifyStatus("connected"); resolve(); console.log("[GatewayClient] WebSocket 接続確立"); };
+        const onError = (e: Event) => reject(new Error(`WS接続失敗: ${wsUrl} (${String(e)})`));
 
-      this.ws.addEventListener("open",    onOpen,  { once: true });
-      this.ws.addEventListener("error",   onError, { once: true });
-      this.ws.addEventListener("message", this.handleMessage);
-      this.ws.addEventListener("close",   this.handleClose);
+        this.ws.addEventListener("open",    onOpen,  { once: true });
+        this.ws.addEventListener("error",   onError, { once: true });
+        this.ws.addEventListener("message", this.handleMessage);
+        this.ws.addEventListener("close",   this.handleClose);
+      };
+      connect().catch(reject);
     });
   }
 
@@ -287,6 +291,7 @@ export class GatewayClient {
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     this.ws?.close();
     this.ws = null;
+    this.authorizedConnectionId = null;
     this.notifyStatus("disconnected");
   }
 
@@ -298,16 +303,11 @@ export class GatewayClient {
    * これにより、そのconnection固有のTick/Bar/Accountのみ届く
    */
   subscribeConnection(connectionId: string): void {
-    const send = () => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: "SUBSCRIBE_CONNECTION", connectionId }));
-      }
-    };
-    send(); // 既に接続済みなら即時送信
-    // 再接続後も自動subscribe
-    this.onStatusChange((status) => {
-      if (status === "connected") send();
-    });
+    this.requestedConnectionId = connectionId;
+    if (this.authorizedConnectionId === connectionId && this.ws?.readyState === WebSocket.OPEN) return;
+    if (this.ws) this.disconnect();
+    this.notifyStatus("connecting");
+    this.connect().catch(() => {});
   }
 
   onTick(symbol: string, handler: TickHandler): Unsubscribe {
@@ -431,7 +431,4 @@ export class GatewayClient {
     this.statusHandlers.forEach((h) => h(status));
   }
 
-  private authHeaders(): Record<string, string> {
-    return this.secret ? { Authorization: `Bearer ${this.secret}` } : {};
-  }
 }

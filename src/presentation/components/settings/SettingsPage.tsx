@@ -138,6 +138,8 @@ export function SettingsPage() {
   const [userEmail, setUserEmail] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [acctLoading, setAcctLoading] = useState(false);
+  const [tokenIssuing, setTokenIssuing] = useState(false);
+  const [newToken, setNewToken]   = useState<{ connectionId: string; token: string } | null>(null);
 
   // 接続ステータスとユーザー情報を取得
   const fetchStatus = useCallback(async () => {
@@ -284,14 +286,67 @@ export function SettingsPage() {
               <InfoRow label="Connection ID" value={conn.connectionId} />
             )}
 
-            <div className="flex items-center justify-between py-2.5 border-b last:border-0"
-              style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-              <span className="text-[10px] font-bold w-32 shrink-0" style={{ color: "#9a9a9a" }}>
-                Connection Token
-              </span>
-              <span className="text-xs flex-1 mx-2" style={{ color: "#9a9a9a" }}>
-                セキュリティのため非表示（コンソールで再発行可能）
-              </span>
+            {/* Connection Token 発行 */}
+            <div className="py-3 border-b" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-bold w-32 shrink-0" style={{ color: "#9a9a9a" }}>
+                  Connection Token
+                </span>
+                <button
+                  onClick={async () => {
+                    if (!confirm("現在のトークンは無効になります。続行しますか？")) return;
+                    setTokenIssuing(true);
+                    setNewToken(null);
+                    try {
+                      const res = await fetch("/api/mt5/connections/token", { method: "POST" });
+                      const data = await res.json() as { ok?: boolean; connection_id?: string; token?: string; error?: string };
+                      if (data.ok && data.token && data.connection_id) {
+                        setNewToken({ connectionId: data.connection_id, token: data.token });
+                        fetchStatus();
+                      } else {
+                        alert(`エラー: ${data.error ?? "不明なエラー"}`);
+                      }
+                    } catch { alert("通信エラー"); }
+                    setTokenIssuing(false);
+                  }}
+                  disabled={tokenIssuing}
+                  style={{
+                    padding: "4px 12px", borderRadius: 8, fontSize: 10, fontWeight: 700,
+                    background: tokenIssuing ? "rgba(0,0,0,0.04)" : "rgba(249,115,22,0.08)",
+                    color: tokenIssuing ? "#9a9a9a" : "#f97316",
+                    border: `1px solid ${tokenIssuing ? "rgba(0,0,0,0.1)" : "rgba(249,115,22,0.2)"}`,
+                    cursor: tokenIssuing ? "not-allowed" : "pointer",
+                  }}>
+                  {tokenIssuing ? "発行中..." : "新しいトークンを発行"}
+                </button>
+              </div>
+
+              {newToken && (
+                <div className="rounded-xl p-3 space-y-2"
+                  style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.2)" }}>
+                  <p className="text-[10px] font-bold" style={{ color: "#f97316" }}>
+                    ⚠ このトークンは今後表示されません。必ずコピーしてEAに貼り付けてください。
+                  </p>
+                  <div>
+                    <p className="text-[9px] font-bold mb-1" style={{ color: "#9a9a9a" }}>Connection ID</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-mono break-all flex-1" style={{ color: "#1a1a1a" }}>{newToken.connectionId}</span>
+                      <CopyBtn value={newToken.connectionId} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold mb-1" style={{ color: "#9a9a9a" }}>Connection Token（InpConnectionToken に貼り付け）</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-mono break-all flex-1" style={{ color: "#1a1a1a" }}>{newToken.token}</span>
+                      <CopyBtn value={newToken.token} />
+                    </div>
+                  </div>
+                  <button onClick={() => setNewToken(null)}
+                    style={{ fontSize: 9, color: "#9a9a9a", background: "none", border: "none", cursor: "pointer" }}>
+                    閉じる（再表示不可）
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between py-2.5"

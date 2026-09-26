@@ -12,6 +12,7 @@ import {
   type TradeForPromotion,
 } from "@/infrastructure/backtest/BacktestService";
 import type { BacktestReport } from "@/infrastructure/backtest/BacktestReporter";
+import { registerToConsole } from "@/lib/console-registration";
 
 export const runtime = "nodejs";
 
@@ -22,28 +23,6 @@ function generateShareCode(): string {
   const first = String(Math.floor(Math.random() * 9) + 1);
   const rest  = Math.floor(Math.random() * 1e15).toString().padStart(15, "0");
   return first + rest;
-}
-
-async function registerToConsole(payload: {
-  share_code:     string;
-  tv_strategy_id: string;
-  tv_user_id:     string | null;
-  name:           string;
-  strategy_type:  string;
-  spec:           unknown;
-  backtest_result?: unknown;
-  raw_prompt?:    string | null;
-}): Promise<void> {
-  try {
-    await fetch(`${CONSOLE_URL}/api/ea-registry`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json", "x-ea-registry-secret": EA_REGISTRY_SECRET },
-      body:    JSON.stringify(payload),
-      signal:  AbortSignal.timeout(10_000),
-    });
-  } catch {
-    // Console 登録失敗でも TV 保存は成功とする
-  }
 }
 
 // ------------------------------------------------------------------
@@ -181,8 +160,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Console Supabase に EA を登録（非同期・失敗しても継続）
-    void registerToConsole({
+    // Console registration is part of the request contract: do not report success unless it succeeds.
+    const registration = await registerToConsole(CONSOLE_URL, EA_REGISTRY_SECRET, {
       share_code:     shareCode,
       tv_strategy_id: strategyId,
       tv_user_id:     userId,
@@ -192,6 +171,10 @@ export async function POST(req: NextRequest) {
       backtest_result: body.previewBacktestData?.report ?? null,
       raw_prompt:     body.raw_prompt ?? null,
     });
+    if (!registration.ok) {
+      console.warn("[POST /api/strategies] Console registration failed", registration.reason, registration.status ?? "");
+      return NextResponse.json({ error: "Console登録に失敗しました" }, { status: 502 });
+    }
 
     return NextResponse.json({ strategy: strategyRecord }, { status: 201 });
 

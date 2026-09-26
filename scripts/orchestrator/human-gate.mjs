@@ -20,8 +20,20 @@ export const HUMAN_GATE_OPERATIONS = [
   "Console admin role grant/revoke",
 ];
 
+// Migrations confirmed pending at each stage boundary.
+// Update this list when a stage is frozen and migration applied to Production.
 export const PRODUCTION_MIGRATIONS_PENDING = [
-  "035_customer_bar_data.sql — HUMAN GATE (apply to Production Supabase)",
+  "035_customer_bar_data.sql — HUMAN GATE (Stage 1 — apply to Production Supabase)",
+  // Stage 2 migration (036_customer_backfill_logs) — pending Stage 2 Codex PASS
+  // Stage 3: AVL_FX_Bridge.ex5 EA deployment — HUMAN GATE (deploy to customer MT5)
+  // Stage 4: 037_customer_knowledge.sql — HUMAN GATE (apply to Production Supabase)
+  // Stage 5: 038-040 ai_trader_*_profiles migrations — HUMAN GATE
+  // Stage 6: Risk Engine deployment — HUMAN GATE (affects all customer execution)
+  // Stage 7: Console deployment — HUMAN GATE
+  // Stage 8: 041-044 LINE notification migrations + LINE credentials — HUMAN GATE
+  // Stage 9: Runtime cutover (remove Console fallback) — HUMAN GATE (require 90-day verification)
+  // Stage 10: Integration verification — HUMAN GATE before Final Gate
+  // Final Gate: MANDATORY HUMAN GATE — DEMO-only, Owner approval each execution
 ];
 
 /**

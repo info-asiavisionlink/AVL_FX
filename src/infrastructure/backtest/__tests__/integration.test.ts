@@ -8,10 +8,12 @@
  *       SUPABASE_SERVICE_ROLE_KEY が .env.local に設定済みであること。
  */
 
-// Node.js 20 用 WebSocket ポリフィル
-import { WebSocket } from "ws";
-// @ts-expect-error polyfill for Node 20
-if (!globalThis.WebSocket) globalThis.WebSocket = WebSocket;
+// Node.js 20 用 WebSocket ポリフィル（Node 22+ では native WebSocket が存在する）
+import { WebSocket as WsType } from "ws";
+if (!globalThis.WebSocket) {
+  // @ts-expect-error WsType is structurally compatible with browser WebSocket for supabase-js
+  globalThis.WebSocket = WsType;
+}
 
 import { config } from "dotenv";
 config({ path: ".env.local" });

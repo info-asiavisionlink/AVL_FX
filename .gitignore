@@ -1,8 +1,11 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ==================================================
+# AVLFX Trading View — .gitignore
+# ==================================================
 
-# dependencies
-/node_modules
-/.pnp
+# Dependencies
+node_modules/
+**/node_modules/
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -10,47 +13,39 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js (all subdirectories)
+# Next.js
 .next/
+.next-stale-*/
+# Root-only: src/app/api/**/build/ are source route directories.
 /out/
+/build/
 
-# production
-/build
-**/node_modules/
+# Testing
+/coverage/
 
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files
+# Environment — NEVER commit secrets
+# Catch-all first, then re-allow only the two placeholder templates.
 .env
-.env.local
-.env.*.local
-# .env.example は意図的にコミット可能にする
+.env.*
+**/.env
+**/.env.*
+!/.env.example
+!/gateway/.env.example
 
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# MQL5 コンパイル済みバイナリ（ソースの .mq5 のみ管理）
-ea/*.ex5
-ea/*.ex4
-
-# 機密フォルダ
+# Keys / credentials
+*.pem
+*.key
+*.p12
+*.pfx
 "OPEN AI APIリストのコピー"/
 OPEN\ AI\ API*/
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
 
 # Gateway
 gateway/node_modules/
@@ -58,6 +53,32 @@ gateway/dist/
 gateway/data/
 gateway/.next/
 
-# ログ
+# MT5 compiled binaries (source .mq5 のみ管理)
+# public/ea/*.ex5 is a customer download served by the app and IS tracked.
+ea/*.ex5
+ea/*.ex4
+mt5/**/*.ex5
+mt5/**/*.ex4
+mt5/**/*.log
+
+# Claude Code local state
+.claude/settings.local.json
+.claude/worktrees/
+.claire/
+
+# Orchestrator runtime error dumps (local only)
+reports/orchestrator/review-error-*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Logs
+*.log
 /tmp/*.log
-.env*

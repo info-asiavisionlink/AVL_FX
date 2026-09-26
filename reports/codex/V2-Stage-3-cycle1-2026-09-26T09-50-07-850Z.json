@@ -1,0 +1,33 @@
+{
+  "stage": "V2-Stage-3",
+  "reviewed_commit": "c1d40b8",
+  "review_cycle": 1,
+  "status": "FAIL",
+  "findings": {
+    "p0": [],
+    "p1": [
+      "Convert the broker offset to hours before sending bars — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:345-346",
+      "Keep forming candles out of the confirmed-bar endpoint — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:335-336",
+      "URL-encode broker symbols in the last-bar query — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:388-391",
+      "Report the actual UTC interval in backfill completion — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:456-459",
+      "Restore symbol-specific order filling selection — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:144-146",
+      "Preserve broker-suffix resolution before selecting a symbol — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:781-783",
+      "Keep connection-scoped ticks out of the public legacy store — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/index.ts:1465-1467",
+      "Trigger historical recovery when connectivity returns — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:284-287"
+    ],
+    "p2": [
+      "Restore the configured initial deal-history window — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/ea/AVL_FX_Bridge.mq5:584-587",
+      "Exercise actual bridge behavior in integration tests — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/unified-bridge.test.ts:219-224"
+    ],
+    "p3": []
+  },
+  "checks": {},
+  "next_action": "FIX_AND_RESUBMIT",
+  "reviewer_notes": "The patch has blocking market-data correctness, customer-isolation, and broker execution compatibility defects. Gateway TypeScript checking passed, but the full test run did not complete successfully and no MT5 compilation was verified; the new tests do not establish the required integration guarantees.",
+  "_meta": {
+    "reviewed_at": "2026-09-26T09:52:09.361Z",
+    "codex_version": "0.155.1",
+    "repo_path": "/Users/tanakayoshiki/Desktop/AVL_FX　trading view",
+    "raw_output_len": 5645
+  }
+}

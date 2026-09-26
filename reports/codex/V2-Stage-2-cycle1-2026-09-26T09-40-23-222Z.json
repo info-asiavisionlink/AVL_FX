@@ -1,0 +1,26 @@
+{
+  "stage": "V2-Stage-2",
+  "reviewed_commit": "20df834",
+  "review_cycle": 1,
+  "status": "FAIL",
+  "findings": {
+    "p0": [],
+    "p1": [
+      "Represent skipped completeness verification as unknown — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/index.ts:1764-1766"
+    ],
+    "p2": [
+      "Validate completion counters against the database constraints — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/index.ts:1753-1760",
+      "Exercise production backfill behavior instead of copied logic — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/customer-backfill.test.ts:134-140"
+    ],
+    "p3": []
+  },
+  "checks": {},
+  "next_action": "FIX_AND_RESUBMIT",
+  "reviewer_notes": "Completeness can still be falsely reported when range boundaries are absent, and invalid counters can prevent audit persistence. Gateway typechecking and all 28 backfill tests passed; an emitting build was not run to respect the read-only restriction.",
+  "_meta": {
+    "reviewed_at": "2026-09-26T09:41:19.148Z",
+    "codex_version": "0.155.1",
+    "repo_path": "/Users/tanakayoshiki/Desktop/AVL_FX　trading view",
+    "raw_output_len": 2065
+  }
+}

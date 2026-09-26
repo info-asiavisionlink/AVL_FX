@@ -4,15 +4,30 @@ import { useState, useEffect, useCallback } from "react";
 import { toast }                             from "sonner";
 import {
   PERSONALITY_LABELS, TRADING_STYLE_LABELS, RISK_PROFILE_LABELS,
-  type AITrader,
+  WATCHER_STATE_LABELS,
+  type AITrader, type WatcherState,
 } from "@/lib/aiTraderSchema";
 
 const NG = "#f97316";
 
+interface RecheckTrigger {
+  type: string; low?: number; high?: number; value?: number;
+}
+
+interface ExperienceMemory {
+  id: string; title: string; insight: string; market_condition: string | null;
+  status: "HYPOTHESIS" | "TESTING" | "VALIDATED" | "REJECTED";
+  confidence: number | null; created_at: string;
+}
+
 interface Scenario {
   id: string; state: string; bias: string | null; scenario_text: string | null;
   watch_zone_low: number | null; watch_zone_high: number | null;
-  ai_reasoning: string | null; reference_price: number | null; created_at: string;
+  invalidate_below: number | null; invalidate_above: number | null;
+  ai_reasoning: string | null; reference_price: number | null;
+  recheck_triggers_v2: RecheckTrigger[] | null;
+  trigger_type: string | null;
+  created_at: string; updated_at: string;
 }
 
 interface Decision {
@@ -56,30 +71,64 @@ function BiasTag({ bias }: { bias: string | null }) {
 }
 
 export function AITraderDetailModal({ trader, onClose }: Props) {
-  const [scenario,   setScenario]   = useState<Scenario | null>(null);
-  const [decisions,  setDecisions]  = useState<Decision[]>([]);
-  const [analyzing,  setAnalyzing]  = useState(false);
-  const [loading,    setLoading]    = useState(true);
-  const [approving,  setApproving]  = useState<string | null>(null);
-  const [wfRunning,  setWfRunning]  = useState(false);
-  const [wfResult,   setWfResult]   = useState<Record<string, unknown> | null>(null);
-  const [importId,   setImportId]   = useState("");
-  const [importing,  setImporting]  = useState(false);
+  const [scenario,     setScenario]     = useState<Scenario | null>(null);
+  const [decisions,    setDecisions]    = useState<Decision[]>([]);
+  const [analyzing,    setAnalyzing]    = useState(false);
+  const [loading,      setLoading]      = useState(true);
+  const [approving,    setApproving]    = useState<string | null>(null);
+  const [wfRunning,    setWfRunning]    = useState(false);
+  const [wfResult,     setWfResult]     = useState<Record<string, unknown> | null>(null);
+  const [importId,     setImportId]     = useState("");
+  const [importing,    setImporting]    = useState(false);
+  const [watcherState,   setWatcherState]   = useState<WatcherState | null>(null);
+  const [memories,       setMemories]       = useState<ExperienceMemory[]>([]);
+  const [outcomeModal,   setOutcomeModal]   = useState<Decision | null>(null);
+  const [outcomeForm,    setOutcomeForm]    = useState({ outcome: "WIN", exit_price: "", note: "" });
+  const [recordingOutcome, setRecordingOutcome] = useState(false);
 
   const load = useCallback(async () => {
     if (!trader) return;
     setLoading(true);
-    const [sRes, dRes] = await Promise.all([
+    const [sRes, dRes, mRes] = await Promise.all([
       fetch(`/api/traders/${trader.id}/scenario`),
       fetch(`/api/traders/${trader.id}/decisions`),
+      fetch(`/api/traders/${trader.id}/memories`),
     ]);
-    const [sData, dData] = await Promise.all([sRes.json(), dRes.json()]) as [
-      { scenario?: Scenario }, { decisions?: Decision[] }
+    const [sData, dData, mData] = await Promise.all([sRes.json(), dRes.json(), mRes.json()]) as [
+      { scenario?: Scenario }, { decisions?: Decision[] }, { memories?: ExperienceMemory[] }
     ];
     setScenario(sData.scenario ?? null);
     setDecisions(dData.decisions ?? []);
+    setMemories(mData.memories ?? []);
+    setWatcherState((trader.watcher_state ?? "SLEEPING") as WatcherState);
     setLoading(false);
   }, [trader]);
+
+  // 取引結果を記録
+  const handleRecordOutcome = useCallback(async () => {
+    if (!trader || !outcomeModal) return;
+    const exitP = parseFloat(outcomeForm.exit_price);
+    if (isNaN(exitP) || exitP <= 0) { toast.error("決済価格を入力してください"); return; }
+    setRecordingOutcome(true);
+    try {
+      const res = await fetch(`/api/traders/${trader.id}/decisions/${outcomeModal.id}/outcome`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          outcome:    outcomeForm.outcome,
+          exit_price: exitP,
+          note:       outcomeForm.note || undefined,
+        }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (data.ok) {
+        toast.success("取引結果を記録しました。経験メモリーに仮説として登録されました。");
+        setOutcomeModal(null);
+        void load();
+      } else {
+        toast.error(data.error ?? "記録に失敗しました");
+      }
+    } finally { setRecordingOutcome(false); }
+  }, [trader, outcomeModal, outcomeForm, load]);
 
   useEffect(() => { if (trader) void load(); }, [trader, load]);
 
@@ -128,6 +177,7 @@ export function AITraderDetailModal({ trader, onClose }: Props) {
   const pendingDecisions = decisions.filter(d => d.status === "PENDING");
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-6 pb-4 overflow-y-auto"
       style={{ background: "rgba(0,0,0,0.4)" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
@@ -174,15 +224,51 @@ export function AITraderDetailModal({ trader, onClose }: Props) {
             </div>
           ) : (
             <>
-              {/* アクションボタン */}
+              {/* 自律監視ステータスバナー */}
+              {trader.status === "ACTIVE" && (() => {
+                const ws = watcherState ?? "SLEEPING";
+                const wsInfo = WATCHER_STATE_LABELS[ws] ?? WATCHER_STATE_LABELS.SLEEPING;
+                return (
+                  <div className="rounded-xl px-4 py-3 flex items-center gap-3"
+                    style={{ background: wsInfo.bg, border: `1px solid ${wsInfo.color}30` }}>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {wsInfo.pulse ? (
+                        <div className="relative w-2 h-2">
+                          <div className="absolute inset-0 rounded-full animate-ping opacity-60"
+                            style={{ background: wsInfo.color }} />
+                          <div className="w-2 h-2 rounded-full" style={{ background: wsInfo.color }} />
+                        </div>
+                      ) : (
+                        <div className="w-2 h-2 rounded-full" style={{ background: wsInfo.color }} />
+                      )}
+                      <span className="text-xs font-bold" style={{ color: wsInfo.color }}>
+                        {wsInfo.label}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs" style={{ color: "#64748b" }}>
+                        GOLD市場を自動監視中 — M5確定ごとにトリガー評価
+                      </p>
+                      {trader.last_analysis_at && (
+                        <p className="text-[10px]" style={{ color: "#94a3b8" }}>
+                          最終AI分析: {new Date(trader.last_analysis_at).toLocaleString("ja-JP")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* アクションボタン: 今すぐ再分析（補助機能） */}
               <div className="flex gap-2">
                 <button onClick={handleAnalyze} disabled={analyzing}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all"
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all"
                   style={{
-                    background: analyzing ? "#94a3b8" : "linear-gradient(135deg, #f97316, #ea580c)",
-                    boxShadow: analyzing ? "none" : "0 2px 8px rgba(249,115,22,0.3)",
+                    background:  analyzing ? "#f1f5f9" : "#fff",
+                    color:       analyzing ? "#94a3b8" : NG,
+                    borderColor: analyzing ? "#e2e8f0" : "#fed7aa",
                   }}>
-                  {analyzing ? "🔍 AI分析中..." : "🔍 今の相場を分析する"}
+                  {analyzing ? "⚡ AI分析中..." : "⚡ 今すぐ再分析"}
                 </button>
                 <button onClick={handleWalkForward} disabled={wfRunning}
                   className="px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all"
@@ -193,6 +279,9 @@ export function AITraderDetailModal({ trader, onClose }: Props) {
                   {wfRunning ? "📊 検証中..." : "📊 検証する"}
                 </button>
               </div>
+              <p className="text-[10px] text-center -mt-2" style={{ color: "#94a3b8" }}>
+                通常は自動で分析されます。手動で強制的に再分析したい場合のみ使用してください
+              </p>
 
               {/* 保留中の判断 */}
               {pendingDecisions.length > 0 && (
@@ -305,17 +394,183 @@ export function AITraderDetailModal({ trader, onClose }: Props) {
                         </p>
                       </div>
                     )}
+                    {/* 次回トリガー条件 */}
+                    {scenario.recheck_triggers_v2 && scenario.recheck_triggers_v2.length > 0 && (
+                      <div className="rounded-lg p-3 mt-1"
+                        style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                        <p className="text-[10px] font-bold mb-1.5" style={{ color: "#15803d" }}>
+                          🔔 次回AI起動条件（Market Watcherが監視中）
+                        </p>
+                        <div className="flex flex-col gap-1">
+                          {scenario.recheck_triggers_v2.map((t, i) => (
+                            <span key={i} className="text-[11px] font-mono"
+                              style={{ color: "#166534" }}>
+                              {t.type === "PRICE_ENTERS_ZONE" && t.low !== undefined && t.high !== undefined
+                                ? `📍 価格が ${t.low.toFixed(2)}〜${t.high.toFixed(2)} に入ったとき`
+                                : t.type === "PRICE_BELOW" && t.value !== undefined
+                                ? `📉 価格が ${t.value.toFixed(2)} を下回ったとき`
+                                : t.type === "PRICE_ABOVE" && t.value !== undefined
+                                ? `📈 価格が ${t.value.toFixed(2)} を上回ったとき`
+                                : t.type === "VOLATILITY_SPIKE"
+                                ? `⚡ ボラティリティ急増時（ATR急上昇）`
+                                : `• ${t.type}`}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <p className="text-[10px]" style={{ color: "#94a3b8" }}>
                       {new Date(scenario.created_at).toLocaleString("ja-JP")}
                     </p>
                   </div>
                 ) : (
                   <div className="text-center py-5">
-                    <p className="text-sm" style={{ color: "#94a3b8" }}>まだ相場分析が行われていません</p>
-                    <p className="text-xs mt-1" style={{ color: "#cbd5e1" }}>「今の相場を分析する」を押してください</p>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center mx-auto mb-2"
+                      style={{ background: "#f1f5f9" }}>
+                      <span style={{ fontSize: 16 }}>🔍</span>
+                    </div>
+                    <p className="text-sm font-semibold" style={{ color: "#4a4a4a" }}>初回分析を待機中</p>
+                    <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
+                      次のM5確定時に自動で最初の分析が始まります
+                    </p>
                   </div>
                 )}
               </div>
+
+              {/* LONG_SETUP / SHORT_SETUP — セットアップ候補表示 */}
+              {scenario && (scenario.state === "CONSIDERING") && (scenario.bias === "LONG" || scenario.bias === "SHORT") && (
+                <div className="rounded-xl p-4"
+                  style={{
+                    background: scenario.bias === "LONG" ? "#f0fdf4" : "#fff1f2",
+                    border: `2px dashed ${scenario.bias === "LONG" ? "#86efac" : "#fca5a5"}`,
+                  }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-base">{scenario.bias === "LONG" ? "📈" : "📉"}</span>
+                    <p className="text-sm font-bold"
+                      style={{ color: scenario.bias === "LONG" ? "#15803d" : "#dc2626" }}>
+                      {scenario.bias === "LONG" ? "ロング（BUY）セットアップ候補" : "ショート（SELL）セットアップ候補"}
+                    </p>
+                  </div>
+                  <p className="text-xs leading-relaxed mb-3" style={{ color: "#374151" }}>
+                    {scenario.scenario_text}
+                  </p>
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    {scenario.watch_zone_low !== null && scenario.watch_zone_high !== null && (
+                      <span className="font-mono px-2 py-1 rounded"
+                        style={{ background: "rgba(255,255,255,0.7)", color: "#374151" }}>
+                        エントリー候補: {scenario.watch_zone_low.toFixed(2)}〜{scenario.watch_zone_high.toFixed(2)}
+                      </span>
+                    )}
+                    {scenario.invalidate_below && (
+                      <span className="font-mono px-2 py-1 rounded"
+                        style={{ background: "rgba(255,255,255,0.7)", color: "#dc2626" }}>
+                        シナリオ無効: {scenario.invalidate_below.toFixed(2)} を下回ると
+                      </span>
+                    )}
+                    {scenario.invalidate_above && (
+                      <span className="font-mono px-2 py-1 rounded"
+                        style={{ background: "rgba(255,255,255,0.7)", color: "#dc2626" }}>
+                        シナリオ無効: {scenario.invalidate_above.toFixed(2)} を上回ると
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] mt-2" style={{ color: "#9ca3af" }}>
+                    ※ Market Watcherが監視中。エントリーゾーン到達時にAIが自動再分析します。
+                  </p>
+                </div>
+              )}
+
+              {/* 承認済み判断 — 結果記録ボタン付き */}
+              {decisions.filter(d => d.status === "APPROVED").length > 0 && (
+                <div className="rounded-xl p-4"
+                  style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                  <h3 className="text-sm font-bold mb-3" style={{ color: "#15803d" }}>
+                    ✓ 承認済み判断（取引結果を記録できます）
+                  </h3>
+                  <div className="flex flex-col gap-2">
+                    {decisions.filter(d => d.status === "APPROVED").slice(0, 3).map(d => (
+                      <div key={d.id} className="flex items-center gap-3 p-2 rounded-lg"
+                        style={{ background: "rgba(255,255,255,0.7)" }}>
+                        <span className="text-xs font-bold w-12"
+                          style={{ color: d.decision === "BUY" ? "#16a34a" : "#dc2626" }}>
+                          {d.decision}
+                        </span>
+                        {d.reference_price && (
+                          <span className="text-xs font-mono" style={{ color: "#374151" }}>
+                            @{d.reference_price.toFixed(2)}
+                          </span>
+                        )}
+                        <span className="text-[10px] flex-1" style={{ color: "#64748b" }}>
+                          {new Date(d.created_at).toLocaleDateString("ja-JP")}
+                        </span>
+                        <button
+                          onClick={() => { setOutcomeModal(d); setOutcomeForm({ outcome: "WIN", exit_price: "", note: "" }); }}
+                          className="px-2 py-1 rounded text-[10px] font-bold text-white"
+                          style={{ background: "#16a34a" }}>
+                          結果を記録
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 経験メモリー */}
+              {memories.length > 0 && (
+                <div className="rounded-xl p-4"
+                  style={{ background: "#f8f7f4", border: "1px solid rgba(0,0,0,0.06)" }}>
+                  <h3 className="text-sm font-bold mb-3" style={{ color: "#1a1a1a" }}>
+                    🧠 経験メモリー（{memories.length}件）
+                  </h3>
+                  <div className="flex flex-col gap-2">
+                    {memories.slice(0, 5).map(m => {
+                      const statusColors: Record<string, { bg: string; color: string }> = {
+                        HYPOTHESIS: { bg: "#fff7ed", color: "#ea580c" },
+                        TESTING:    { bg: "#eff6ff", color: "#2563eb" },
+                        VALIDATED:  { bg: "#f0fdf4", color: "#16a34a" },
+                        REJECTED:   { bg: "#fef2f2", color: "#dc2626" },
+                      };
+                      const sc = statusColors[m.status] ?? statusColors.HYPOTHESIS;
+                      const statusLabels: Record<string, string> = {
+                        HYPOTHESIS: "仮説", TESTING: "検証中", VALIDATED: "検証済", REJECTED: "棄却"
+                      };
+                      return (
+                        <div key={m.id} className="flex flex-col gap-1 p-2 rounded-lg"
+                          style={{ background: "rgba(255,255,255,0.8)", border: "1px solid rgba(0,0,0,0.05)" }}>
+                          <div className="flex items-center gap-2">
+                            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                              style={{ background: sc.bg, color: sc.color }}>
+                              {statusLabels[m.status]}
+                            </span>
+                            <span className="text-xs font-semibold flex-1 truncate" style={{ color: "#1a1a1a" }}>
+                              {m.title}
+                            </span>
+                          </div>
+                          <p className="text-[11px] leading-relaxed pl-1" style={{ color: "#64748b" }}>
+                            {m.insight}
+                          </p>
+                          {m.status === "HYPOTHESIS" && (
+                            <button
+                              onClick={async () => {
+                                const res = await fetch(`/api/traders/${trader!.id}/memories`, {
+                                  method: "PATCH", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ memory_id: m.id, status: "VALIDATED" }),
+                                });
+                                if (res.ok) { toast.success("検証済みに昇格しました"); void load(); }
+                                else toast.error("昇格に失敗しました");
+                              }}
+                              className="self-start px-2 py-0.5 rounded text-[9px] font-bold border"
+                              style={{ color: "#16a34a", borderColor: "#bbf7d0", background: "#f0fdf4" }}>
+                              → 検証済みに昇格
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Walk Forward結果 */}
               {wfResult && (
@@ -426,5 +681,98 @@ export function AITraderDetailModal({ trader, onClose }: Props) {
         </div>
       </div>
     </div>
+
+    {/* 取引結果記録モーダル */}
+    {outcomeModal && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center"
+        style={{ background: "rgba(0,0,0,0.5)" }}
+        onClick={e => { if (e.target === e.currentTarget) setOutcomeModal(null); }}>
+        <div className="w-full max-w-sm rounded-2xl p-5 flex flex-col gap-4"
+          style={{ background: "#fff", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold" style={{ color: "#1a1a1a" }}>
+              取引結果を記録
+            </h3>
+            <button onClick={() => setOutcomeModal(null)}
+              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100"
+              style={{ color: "#94a3b8" }}>✕</button>
+          </div>
+
+          <div className="rounded-lg p-3" style={{ background: "#f8f7f4" }}>
+            <p className="text-xs" style={{ color: "#64748b" }}>
+              {outcomeModal.decision} @{outcomeModal.reference_price?.toFixed(2) ?? "—"}
+            </p>
+          </div>
+
+          {/* 結果 */}
+          <div>
+            <p className="text-xs font-semibold mb-2" style={{ color: "#4a4a4a" }}>結果</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(["WIN", "LOSS", "BREAKEVEN"] as const).map(o => (
+                <button key={o} onClick={() => setOutcomeForm(f => ({ ...f, outcome: o }))}
+                  className="py-2 rounded-lg text-sm font-bold border transition-all"
+                  style={{
+                    background: outcomeForm.outcome === o
+                      ? o === "WIN" ? "#16a34a" : o === "LOSS" ? "#dc2626" : "#d97706"
+                      : "#fff",
+                    color: outcomeForm.outcome === o ? "#fff"
+                      : o === "WIN" ? "#16a34a" : o === "LOSS" ? "#dc2626" : "#d97706",
+                    borderColor: o === "WIN" ? "#bbf7d0" : o === "LOSS" ? "#fecaca" : "#fde68a",
+                  }}>
+                  {o === "WIN" ? "勝" : o === "LOSS" ? "負" : "BE"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 決済価格 */}
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: "#4a4a4a" }}>
+              決済価格
+            </label>
+            <input
+              type="number" step="0.01"
+              value={outcomeForm.exit_price}
+              onChange={e => setOutcomeForm(f => ({ ...f, exit_price: e.target.value }))}
+              placeholder="例: 3255.50"
+              style={{
+                width: "100%", padding: "8px 12px", borderRadius: 8, fontSize: 13,
+                border: "1px solid #e2e8f0", background: "#fff", color: "#1a1a1a", outline: "none",
+              }}
+            />
+          </div>
+
+          {/* メモ */}
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: "#4a4a4a" }}>
+              メモ（任意）
+            </label>
+            <input
+              value={outcomeForm.note}
+              onChange={e => setOutcomeForm(f => ({ ...f, note: e.target.value }))}
+              placeholder="気づいたことを記録..."
+              style={{
+                width: "100%", padding: "8px 12px", borderRadius: 8, fontSize: 13,
+                border: "1px solid #e2e8f0", background: "#fff", color: "#1a1a1a", outline: "none",
+              }}
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={() => setOutcomeModal(null)}
+              className="flex-1 py-2 rounded-lg text-sm border"
+              style={{ color: "#64748b", borderColor: "#e2e8f0" }}>
+              キャンセル
+            </button>
+            <button onClick={handleRecordOutcome} disabled={recordingOutcome}
+              className="flex-1 py-2 rounded-lg text-sm font-bold text-white"
+              style={{ background: recordingOutcome ? "#94a3b8" : "linear-gradient(135deg, #f97316, #ea580c)" }}>
+              {recordingOutcome ? "記録中..." : "記録する"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

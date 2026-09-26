@@ -10,7 +10,8 @@
 import { NextRequest, NextResponse }  from "next/server";
 import { getOpenAIClient, MODELS }    from "@/infrastructure/ai/openai-client";
 import {
-  AITraderProfileSchema,
+  AITraderBuilderOutputSchema,
+  normalizeAndValidateBuilderProfile,
   PERSONALITIES,
   TRADING_STYLES,
   RISK_PROFILES,
@@ -18,7 +19,6 @@ import {
   NEWS_SENSITIVITIES,
   VOLATILITY_PREFS,
 } from "@/lib/aiTraderSchema";
-import { z } from "zod";
 
 export const runtime   = "nodejs";
 export const maxDuration = 120;
@@ -55,20 +55,21 @@ Respond with ONLY valid JSON:
   "name": string (2-50 chars, Japanese OK, concise trader name),
   "description": string (1-2 sentences describing the trader's philosophy),
   "reasoning": string (explain why you chose these settings, in Japanese),
-  "profile": {
+    "profile": {
     "personality": "${PERSONALITIES.join('" | "')}",
     "trading_style": "${TRADING_STYLES.join('" | "')}",
     "risk_profile": "${RISK_PROFILES.join('" | "')}",
     "entry_patience": "${ENTRY_PATIENCES.join('" | "')}",
     "news_sensitivity": "${NEWS_SENSITIVITIES.join('" | "')}",
     "volatility_preference": "${VOLATILITY_PREFS.join('" | "')}",
-    "timeframes": string[] (e.g. ["H4", "H1", "M5"]),
+    "timeframes": string[] (supported values: M1, M5, M15, M30, H1, H4, D1, W1),
     "minimum_rr": number (e.g. 2.0),
     "max_risk_per_trade": number (0.5-2.0),
     "max_positions": integer (1-3),
-    "instructions": string (key behavioral rules for this trader, in Japanese, max 500 chars)
+    "instructions": string (key behavioral rules for this trader, in Japanese, max 2000 chars)
   },
   "suggested_knowledge_ids": string[] (IDs from available knowledge that match this trader)
+  "execution_mode": "ANALYSIS_ONLY"
 }
 
 ## RULES
@@ -87,14 +88,6 @@ Respond with ONLY valid JSON:
 - Do NOT guarantee or imply profit
 - Do NOT set personality/risk inconsistently`;
 }
-
-const OutputSchema = z.object({
-  name:                    z.string().min(2).max(50),
-  description:             z.string().max(500).optional(),
-  reasoning:               z.string().max(1000).optional(),
-  profile:                 AITraderProfileSchema,
-  suggested_knowledge_ids: z.array(z.string()).default([]),
-});
 
 export async function POST(req: NextRequest) {
   try {
@@ -143,35 +136,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const validation = OutputSchema.safeParse(rawData);
+    const validation = AITraderBuilderOutputSchema.safeParse(rawData);
     if (!validation.success) {
-      // Try partial recovery
-      const raw = rawData as Record<string, unknown>;
-      const profileValidation = AITraderProfileSchema.safeParse(raw.profile);
-      if (profileValidation.success) {
-        return NextResponse.json({
-          success: true,
-          name:                    typeof raw.name === "string" ? raw.name : "AI Trader",
-          description:             typeof raw.description === "string" ? raw.description : undefined,
-          reasoning:               typeof raw.reasoning === "string" ? raw.reasoning : undefined,
-          profile:                 profileValidation.data,
-          suggested_knowledge_ids: Array.isArray(raw.suggested_knowledge_ids) ? raw.suggested_knowledge_ids : [],
-        });
-      }
       return NextResponse.json(
-        { success: false, error: "プロフィールの生成に失敗しました。再試行してください。" },
+        { success: false, error: "AIプロフィールの形式または必須項目が不正です。再試行してください。" },
         { status: 422 }
       );
     }
 
+    let profile;
+    try {
+      profile = normalizeAndValidateBuilderProfile(validation.data.profile);
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "AIプロフィールの市場・時間足・リスク設定が不正です。再試行してください。" },
+        { status: 422 }
+      );
+    }
     const out = validation.data;
     return NextResponse.json({
       success:                 true,
       name:                    out.name,
       description:             out.description,
       reasoning:               out.reasoning,
-      profile:                 out.profile,
+      profile,
       suggested_knowledge_ids: out.suggested_knowledge_ids,
+      execution_mode:          out.execution_mode,
     });
 
   } catch (e) {

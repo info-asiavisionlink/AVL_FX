@@ -21,9 +21,16 @@ interface Indicators {
 interface Tick { symbol: string; bid: number; ask: number; spread: number; time: number; }
 interface Bar  { time: number; open: number; high: number; low: number; close: number; volume: number; }
 
-async function fetchJSON<T>(path: string): Promise<T | null> {
+async function fetchJSON<T>(path: string, connectionId?: string): Promise<T | null> {
   try {
-    const res = await fetch(`${GATEWAY}${path}`, { signal: AbortSignal.timeout(5000) });
+    const headers: Record<string, string> = {};
+    const secret = process.env.MT5_GATEWAY_SECRET;
+    if (connectionId && secret) {
+      headers.Authorization = `Bearer ${secret}`;
+      headers["x-internal-service-auth"] = secret;
+      headers["x-connection-id"] = connectionId;
+    }
+    const res = await fetch(`${GATEWAY}${path}`, { headers, signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     return res.json() as Promise<T>;
   } catch { return null; }
@@ -61,8 +68,9 @@ const CORRELATED_MARKETS: Record<string, string[]> = {
 };
 
 /** シンボルの全市場データを収集して AI コンテキスト文字列を生成 */
-export async function buildMarketContext(symbol: string): Promise<string> {
+export async function buildMarketContext(symbol: string, connectionId: string): Promise<string> {
   const sym = symbol.toUpperCase();
+  const scoped = (path: string) => `/connections/${encodeURIComponent(connectionId)}${path}`;
 
   // 通貨ペアからベース/クォート通貨を抽出（例: EURUSD → ["EUR","USD"]）
   const currencies = sym.length === 6
@@ -70,11 +78,11 @@ export async function buildMarketContext(symbol: string): Promise<string> {
     : ["USD"];
 
   const [tick, indicators, barsH1, barsH4, barsD1, tradeStats, upcomingEvents, recentNews] = await Promise.all([
-    fetchJSON<Tick>(`/tick/${sym}`),
+    fetchJSON<Tick>(scoped(`/tick/${sym}`), connectionId),
     fetchJSON<Indicators>(`/indicators/${sym}`),
-    fetchJSON<Bar[]>(`/bars/${sym}/H1?count=20`),
-    fetchJSON<Bar[]>(`/bars/${sym}/H4?count=10`),
-    fetchJSON<Bar[]>(`/bars/${sym}/D1?count=5`),
+    fetchJSON<Bar[]>(scoped(`/bars/${sym}/H1?count=20`), connectionId),
+    fetchJSON<Bar[]>(scoped(`/bars/${sym}/H4?count=10`), connectionId),
+    fetchJSON<Bar[]>(scoped(`/bars/${sym}/D1?count=5`), connectionId),
     getTradeStats(30).catch(() => null),
     getUpcomingEvents(currencies, 24).catch(() => []),
     getRecentNews(sym, 5).catch(() => []),
@@ -157,7 +165,7 @@ export async function buildMarketContext(symbol: string): Promise<string> {
   if (correlatedSyms.length > 0) {
     const corrData = await Promise.all(
       correlatedSyms.map(async (cs) => {
-        const t = await fetchJSON<Tick>(`/tick/${cs}`);
+        const t = await fetchJSON<Tick>(scoped(`/tick/${cs}`), connectionId);
         return t ? { sym: cs, bid: t.bid } : null;
       })
     );

@@ -1,0 +1,25 @@
+{
+  "stage": "V2-Stage-1",
+  "reviewed_commit": "e45f2e1",
+  "review_cycle": 1,
+  "status": "FAIL",
+  "findings": {
+    "p0": [],
+    "p1": [
+      "Migrate tick readers before removing their backing store updates — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/index.ts:638-640"
+    ],
+    "p2": [
+      "Fetch restore history independently for each connection — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/index.ts:2090-2094"
+    ],
+    "p3": []
+  },
+  "checks": {},
+  "next_action": "FIX_AND_RESUBMIT",
+  "reviewer_notes": "The cumulative patch breaks existing tick retrieval and does not reliably restore each customer's history. The 28 customer-bar unit tests and gateway typecheck passed; an emitting build was not run to respect the read-only requirement.",
+  "_meta": {
+    "reviewed_at": "2026-09-26T05:04:54.307Z",
+    "codex_version": "0.155.1",
+    "repo_path": "/Users/tanakayoshiki/Desktop/AVL_FX　trading view",
+    "raw_output_len": 1471
+  }
+}

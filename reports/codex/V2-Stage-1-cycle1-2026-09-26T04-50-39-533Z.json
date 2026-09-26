@@ -1,0 +1,21 @@
+{
+  "stage": "V2-Stage-1",
+  "reviewed_commit": "562f270",
+  "review_cycle": 1,
+  "status": "PASS",
+  "findings": {
+    "p0": [],
+    "p1": [],
+    "p2": [],
+    "p3": []
+  },
+  "checks": {},
+  "next_action": "PROCEED_TO_NEXT_STAGE",
+  "reviewer_notes": "The supplied commit does not match the review target: 562f270 adds migrations 006 and 024–034, with no changes to any of the five specified files. The requested Stage-1 implementation and checks therefore remain unverified; provide the intended commit or authorize reviewing the cumulative Stage-1 changes.",
+  "_meta": {
+    "reviewed_at": "2026-09-26T04:51:04.984Z",
+    "codex_version": "0.155.1",
+    "repo_path": "/Users/tanakayoshiki/Desktop/AVL_FX　trading view",
+    "raw_output_len": 306
+  }
+}

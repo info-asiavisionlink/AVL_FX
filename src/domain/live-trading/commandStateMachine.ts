@@ -80,7 +80,8 @@ export function transition(
 // -----------------------------------------------------------------
 
 export function isExpired(expiresAt: string): boolean {
-  return new Date(expiresAt) <= new Date();
+  const expiryMs = Date.parse(expiresAt);
+  return !Number.isFinite(expiryMs) || Date.now() >= expiryMs;
 }
 
 // -----------------------------------------------------------------

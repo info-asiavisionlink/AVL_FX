@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import type { FullAnalysisResult } from "@/infrastructure/analysis/types";
 
 export const runtime = "nodejs";
@@ -10,12 +12,12 @@ const DEFAULT_PAIRS = [
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
-async function analyzePair(symbol: string): Promise<FullAnalysisResult | null> {
+async function analyzePair(symbol: string, connectionId: string): Promise<FullAnalysisResult | null> {
   try {
     const res = await fetch(`${BASE_URL}/api/ai/analysis/full`, {
       method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ symbol }),
+      headers: { "Content-Type": "application/json", "x-internal-service-auth": process.env.MT5_GATEWAY_SECRET ?? "" },
+      body:    JSON.stringify({ symbol, connection_id: connectionId }),
       signal:  AbortSignal.timeout(12000),
     });
     if (!res.ok) return null;
@@ -28,9 +30,16 @@ export async function POST(req: NextRequest) {
     await req.json().catch(() => ({})) as { pairs?: string[]; minConfidence?: number };
 
   const targetPairs = pairs ?? DEFAULT_PAIRS;
+  const cookieStore = await cookies();
+  const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } });
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { data: connection, error: connectionError } = await supabase.from("mt5_connections").select("id").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1).single();
+  if (connectionError) return NextResponse.json({ error: "Connection ownership unavailable" }, { status: 503 });
+  if (!connection) return NextResponse.json({ error: "MT5 connection unavailable" }, { status: 404 });
 
   // Run all analyses in parallel (results are cached for 5 min in analysis route)
-  const results = await Promise.all(targetPairs.map(p => analyzePair(p)));
+  const results = await Promise.all(targetPairs.map(p => analyzePair(p, connection.id)));
 
   const opportunities = results
     .filter((r): r is FullAnalysisResult =>
