@@ -6,7 +6,17 @@
  *
  * 前提: 005_backtest.sql が Supabase に適用済みであること。
  *       SUPABASE_SERVICE_ROLE_KEY が .env.local に設定済みであること。
+ *
+ * ⚠️ WRITES to the Supabase project in .env.local (backtest_jobs / _results /
+ * _trades rows, strategy_registry.backtest_status). Never point it at
+ * Production. It is skipped unless explicitly enabled:
+ *   AVL_ALLOW_LIVE_DB_INTEGRATION=1 npx tsx src/infrastructure/backtest/__tests__/integration.test.ts
  */
+
+if (process.env.AVL_ALLOW_LIVE_DB_INTEGRATION !== "1") {
+  console.log("SKIP backtest integration: writes to a real Supabase; set AVL_ALLOW_LIVE_DB_INTEGRATION=1 against a non-production project.");
+  process.exit(0);
+}
 
 // Node.js 20 用 WebSocket ポリフィル（Node 22+ では native WebSocket が存在する）
 import { WebSocket as WsType } from "ws";
@@ -16,7 +26,7 @@ if (!globalThis.WebSocket) {
 }
 
 import { config } from "dotenv";
-config({ path: ".env.local" });
+if (process.env.AVL_ALLOW_LIVE_DB_INTEGRATION === "1") config({ path: ".env.local" });
 
 import { createAdminClient }  from "@/infrastructure/supabase/admin";
 import { runBacktestJob }     from "@/infrastructure/backtest/BacktestService";
