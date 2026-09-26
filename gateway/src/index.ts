@@ -1440,6 +1440,35 @@ app.post("/bridge/deals", auth, async (req, res) => {
 // V2 Customer Market Data — EA → Gateway → customer_bar_data
 // -----------------------------------------------------------------
 
+/** V2 Stage 3: Unified Bridge EA tick submission (connection-scoped) */
+app.post("/market-data/tick", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"]    as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+  if (!connectionId || !connectionToken) {
+    res.status(401).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+
+  const tick = req.body as Tick;
+  if (!tick || typeof tick.symbol !== "string") {
+    res.status(400).json({ error: "tick body with symbol is required" });
+    return;
+  }
+
+  // Update connection-scoped store
+  connectionMarketStore.setTick(connectionId, tick);
+  // Legacy tickStore kept in sync for GET /tick/:symbol backward compat (removed Stage 9)
+  tickStore.set(tick.symbol.toUpperCase(), tick);
+  lastTickTs = Date.now();
+  broadcastToConnection(connectionId, { type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
+  res.json({ ok: true });
+});
+
 interface MarketDataBarPayload {
   symbol:           string;   // broker symbol (e.g., GOLD#, XAUUSD)
   timeframe:        string;
