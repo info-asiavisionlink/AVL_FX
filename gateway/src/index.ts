@@ -1759,15 +1759,22 @@ app.post("/market-data/backfill/complete", auth, async (req, res) => {
   const barsSent     = body.bars_sent ?? 0;
   const barsAccepted = typeof body.bars_accepted === "number" ? body.bars_accepted : barsSent;
 
-  // Completeness verification: count actual bars in DB for the reported range
+  // Completeness verification: count actual bars in DB for the reported range.
+  // If verification fails, return a retryable error — do NOT report success without evidence.
   let barsVerified: number | undefined;
   let gapRemaining = false;
   if (body.from_utc && body.to_utc) {
     const countResult = await countCustomerBarsInRange(connectionId, canonical, body.timeframe, body.from_utc, body.to_utc);
-    if (!countResult.error) {
-      barsVerified = countResult.count;
-      gapRemaining = countResult.count < barsSent;
+    if (countResult.error) {
+      res.status(503).json({
+        ok:    false,
+        error: `completeness verification failed: ${countResult.error}`,
+        note:  "Retry after database is available; backfill data was not lost",
+      });
+      return;
     }
+    barsVerified  = countResult.count;
+    gapRemaining  = countResult.count < barsSent;
   }
 
   const summary: BackfillSummary = {
@@ -1784,10 +1791,20 @@ app.post("/market-data/backfill/complete", auth, async (req, res) => {
     source:           "bridge_recovery",
   };
 
-  await logCustomerBackfill(summary);
+  const logResult = await logCustomerBackfill(summary);
+  if (logResult.error) {
+    console.warn(`[backfill/complete] audit log failed: ${logResult.error}`);
+  }
 
-  console.log(`[backfill/complete] ${connectionId} ${canonical}:${body.timeframe} sent=${barsSent} accepted=${barsAccepted} verified=${barsVerified ?? "?"} gap=${gapRemaining}`);
-  res.json({ ok: true, bars_sent: barsSent, bars_accepted: barsAccepted, bars_verified: barsVerified, gap_remaining: gapRemaining });
+  console.log(`[backfill/complete] ${connectionId} ${canonical}:${body.timeframe} sent=${barsSent} accepted=${barsAccepted} verified=${barsVerified ?? "?"} gap=${gapRemaining} log_ok=${!logResult.error}`);
+  res.json({
+    ok:            true,
+    bars_sent:     barsSent,
+    bars_accepted: barsAccepted,
+    bars_verified: barsVerified,
+    gap_remaining: gapRemaining,
+    log_warning:   logResult.error ?? null,
+  });
 });
 
 // -----------------------------------------------------------------
