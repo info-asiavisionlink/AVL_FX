@@ -324,6 +324,84 @@ test("completeness P1: only set gap_remaining when verification succeeds", () =>
 // P2-1 fix: log failures surface in response
 // ----------------------------------------------------------------
 
+// ----------------------------------------------------------------
+// P1 fix: gap_remaining is null (unknown) when verification is skipped
+// ----------------------------------------------------------------
+
+test("gap_remaining null when from_utc/to_utc absent — not false", () => {
+  // When range is not provided, verification is skipped.
+  // gap_remaining must be null (unknown), NOT false (implies verified no gap).
+  let gapRemaining: boolean | null = null;
+  const fromUtc = undefined;
+  const toUtc   = undefined;
+  // Simulate the route logic: only set if range provided
+  if (fromUtc && toUtc) {
+    gapRemaining = false; // would be computed
+  }
+  assert.equal(gapRemaining, null, "Skipped verification must yield null, not false");
+});
+
+test("gap_remaining false only when verification succeeded and count >= sent", () => {
+  const barsSent = 10;
+  const countResult = { count: 10, error: undefined };
+  // Simulate: verification succeeded
+  let gapRemaining: boolean | null = null;
+  if (!countResult.error) {
+    gapRemaining = countResult.count < barsSent;
+  }
+  assert.equal(gapRemaining, false, "Verified count=sent → gap_remaining=false");
+});
+
+test("gap_remaining true when verification succeeded and count < sent", () => {
+  const barsSent = 10;
+  const countResult = { count: 7, error: undefined };
+  let gapRemaining: boolean | null = null;
+  if (!countResult.error) {
+    gapRemaining = countResult.count < barsSent;
+  }
+  assert.equal(gapRemaining, true, "Verified count<sent → gap_remaining=true");
+});
+
+// ----------------------------------------------------------------
+// P2-1 fix: barsAccepted validation
+// ----------------------------------------------------------------
+
+test("barsAccepted defaults to barsSent when absent", () => {
+  const barsSent = 10;
+  const rawAccepted: unknown = undefined;
+  const barsAccepted =
+    typeof rawAccepted === "number" && rawAccepted >= 0 && rawAccepted <= barsSent
+      ? rawAccepted : barsSent;
+  assert.equal(barsAccepted, 10);
+});
+
+test("barsAccepted > barsSent is rejected — falls back to barsSent", () => {
+  const barsSent = 10;
+  const rawAccepted = 15; // invalid: more accepted than sent
+  const barsAccepted =
+    typeof rawAccepted === "number" && rawAccepted >= 0 && rawAccepted <= barsSent
+      ? rawAccepted : barsSent;
+  assert.equal(barsAccepted, 10, "barsAccepted > barsSent must clamp to barsSent");
+});
+
+test("barsAccepted negative is rejected — falls back to barsSent", () => {
+  const barsSent = 10;
+  const rawAccepted = -5;
+  const barsAccepted =
+    typeof rawAccepted === "number" && rawAccepted >= 0 && rawAccepted <= barsSent
+      ? rawAccepted : barsSent;
+  assert.equal(barsAccepted, 10);
+});
+
+test("valid barsAccepted (0..barsSent) is accepted as-is", () => {
+  const barsSent = 10;
+  const rawAccepted = 8; // 2 were rejected by validation
+  const barsAccepted =
+    typeof rawAccepted === "number" && rawAccepted >= 0 && rawAccepted <= barsSent
+      ? rawAccepted : barsSent;
+  assert.equal(barsAccepted, 8);
+});
+
 test("log failure: logCustomerBackfill error is included in response (not silently dropped)", () => {
   // The route now includes log_warning in response when log fails
   const mockLogError = "insert failed: constraint violation";

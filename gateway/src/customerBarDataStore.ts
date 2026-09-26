@@ -272,7 +272,7 @@ export interface BackfillSummary {
   bars_sent:        number;
   bars_accepted:    number;
   bars_verified?:   number;
-  gap_remaining:    boolean;
+  gap_remaining:    boolean | null;  // null = verification skipped (range not provided)
   source:           "bridge_recovery" | "bridge_backfill";
 }
 
@@ -292,7 +292,7 @@ export async function logCustomerBackfill(summary: BackfillSummary): Promise<{ e
       bars_sent:        summary.bars_sent,
       bars_accepted:    summary.bars_accepted,
       bars_verified:    summary.bars_verified ?? null,
-      gap_remaining:    summary.gap_remaining,
+      gap_remaining:    summary.gap_remaining ?? false,  // DB NOT NULL — null→false (unverified)
       source:           summary.source,
     });
 

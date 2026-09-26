@@ -1755,14 +1755,21 @@ app.post("/market-data/backfill/complete", auth, async (req, res) => {
     return;
   }
 
-  const canonical    = canonicalizeSymbol(body.symbol);
-  const barsSent     = body.bars_sent ?? 0;
-  const barsAccepted = typeof body.bars_accepted === "number" ? body.bars_accepted : barsSent;
+  const canonical = canonicalizeSymbol(body.symbol);
+  const barsSent  = body.bars_sent ?? 0;
+
+  // Validate barsAccepted: must be 0..barsSent; default to barsSent if absent/invalid
+  const rawAccepted = body.bars_accepted;
+  const barsAccepted =
+    typeof rawAccepted === "number" && rawAccepted >= 0 && rawAccepted <= barsSent
+      ? rawAccepted
+      : barsSent;
 
   // Completeness verification: count actual bars in DB for the reported range.
+  // null = verification skipped (from_utc/to_utc absent); false ≠ "verified no gap".
   // If verification fails, return a retryable error — do NOT report success without evidence.
   let barsVerified: number | undefined;
-  let gapRemaining = false;
+  let gapRemaining: boolean | null = null;  // null = unknown (not verified)
   if (body.from_utc && body.to_utc) {
     const countResult = await countCustomerBarsInRange(connectionId, canonical, body.timeframe, body.from_utc, body.to_utc);
     if (countResult.error) {
