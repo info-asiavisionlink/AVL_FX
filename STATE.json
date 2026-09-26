@@ -132,7 +132,7 @@
       "038_customer_ai_trader_profile"
     ]
   },
-  "updated_at": "2026-09-27T03:30:00+09:00",
+  "updated_at": "2026-09-27T02:25:00+09:00",
   "human_gate_action": "APPLY_MIGRATION_038_PRODUCTION",
   "human_gate_risk": "HIGH — schema change on Customer Supabase; deploy ordering dependency",
   "remediation_window": null,
@@ -169,7 +169,7 @@
   "remediation_statuses": {
     "REPOSITORY_RECOVERY": "COMPLETE",
     "INCIDENT_DATA_REMEDIATION": "COMPLETE",
-    "SERVICE_ROLE_ROTATION": "ROTATION_PENDING_HUMAN_ACTION — consumers mapped (Vercel avl-fx, Vercel avl-fx-console x3 envs, Railway gateway); compatibility proven for current code pattern; new sb_secret key must be created in Supabase Dashboard (PAT 401); runbook reports/security/AVL-FX-service-role-rotation-runbook-2026-09-27.md",
+    "SERVICE_ROLE_ROTATION": "CUTOVER_COMPLETE — Railway fdc53900, Vercel TV dpl_8To1goeSZsYTYCo9oS7b3L1iXBbu, Console dpl_DmTVKboeJ9tkzdsp7Sb5mVvw8GYw on new sb_secret key; health PASS; LEGACY JWT STILL ACTIVE — Owner to disable in Supabase Dashboard",
     "CRON_ROTATION": "PENDING — bundled with service_role window (Vercel redeploy + Railway restart)",
     "WATCHER_ROTATION": "PENDING — bundled with service_role window",
     "OTHER_CREDENTIAL_ROTATION": "PENDING_HUMAN — OpenAI, Google, Resend, TwelveData (dashboard); EA_REGISTRY bundled; SUPABASE_PAT already 401",
@@ -178,6 +178,6 @@
     "DEPLOYMENT_READINESS": "NOT READY"
   },
   "open_p1": [
-    "Production service_role key exposed in AI session transcripts and still active — ROTATION_PENDING_HUMAN_ACTION (Supabase Dashboard key creation, then runbook)"
+    "Exposed legacy service_role JWT still ACTIVE until Owner disables JWT-based API keys (all consumers already migrated)"
   ]
 }

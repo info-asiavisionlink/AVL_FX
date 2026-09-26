@@ -122,3 +122,20 @@ Zero-downtime plan:
 5. Promote NEXT → `MT5_GATEWAY_SECRET`, remove NEXT and deploy. Verify the old value returns 401.
 
 Status: MT5_GATEWAY_ROTATION = PLANNED / NOT STARTED (no zero-downtime deploy path exists today without shipping unrelated Gateway code).
+
+## E. Cutover log — 2026-09-27 (Owner Decision A approved; CRON/WATCHER unchanged)
+
+The new `sb_secret_` key was read from `.env.local` `CANDIDATE_SUPABASE_SECRET_KEY` and piped via stdin. It was never printed. Its compatibility was proven first: 5/5 access patterns passed.
+
+| Phase | Change | Deployment | Verification |
+|---|---|---|---|
+| 1 Railway | `SUPABASE_SERVICE_KEY` (production, `remarkable-cooperation`) → new key; the other variables are untouched. Value equality was confirmed in-process. | redeploy `fdc53900-…` (same source; previous `c2ecae2a-…`) SUCCESS 2026-09-26T17:11:53Z | `/health` ok (uptime reset, eaConnected). Logs: `executionStore Supabase接続 OK`, bar_data restore 20/50/100 rows, 0 auth errors. MT5 connection `a7bb2d9b` heartbeat refreshed after the restart (written by the Gateway via Supabase). `[M5Restore] Node 20 WebSocket` message is pre-existing (present in `c2ecae2a`). |
+| 2 Vercel `avl-fx` | Production `SUPABASE_SERVICE_ROLE_KEY` → new key (updatedAt 17:14:03Z). The unused `TV_SUPABASE_SERVICE_ROLE_KEY` was left as is (not in scope). | `vercel redeploy dpl_HEr6xs…` → **`dpl_8To1goeSZsYTYCo9oS7b3L1iXBbu`**, aliased `avl-fx.vercel.app` | health 7/7. Real customer `GET /api/traders` 200 (auth user, then `createAdminClient()` reads `ai_traders`). Gateway → `/api/watcher/m5-close` 200. 0 Supabase/auth error logs. |
+| 3 Vercel `avl-fx-console` | `TV_SUPABASE_SERVICE_ROLE_KEY` → new key in Production/Preview (sensitive) and Development (encrypted), same entries (3), no new variables. The Development value was verified equal. | `vercel redeploy dpl_7ZcwF2eY…` → **`dpl_DmTVKboeJ9tkzdsp7Sb5mVvw8GYw`**, aliased `avl-fx-console.vercel.app` | `/login` 200, 0 error logs. The TV-Supabase paths (customer page, setup) require an admin session, so runtime use is verified by the key probe (Auth admin + table reads) plus config. **An Owner click-through is recommended before disabling legacy.** |
+
+- The legacy service_role JWT is **still active** (not disabled; Owner action).
+- No MT5 order or execution test; `execution_commands` created in the window: 0. No DB writes by the operator. CRON/WATCHER/MT5/OpenAI/other credentials unchanged. No migration, no EA change, no push.
+
+Rollback (until legacy is disabled):
+- Railway: set `SUPABASE_SERVICE_KEY` back from `.env.local` `SUPABASE_SERVICE_ROLE_KEY` via stdin, then redeploy.
+- Vercel: promote `dpl_HEr6xs…` (TV) / `dpl_7ZcwF2eY…` (Console); they carry the old env.
