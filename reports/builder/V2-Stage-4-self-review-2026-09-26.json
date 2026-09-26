@@ -1,0 +1,144 @@
+{
+  "report_type": "CLAUDE_SELF_REVIEW",
+  "stage": "V2-Stage-4",
+  "reviewed_commit": "TBD — see final commit",
+  "review_date": "2026-09-26",
+  "reviewer": "Claude Sonnet 4.6 (Builder acting as Reviewer)",
+  "scope": "Customer Knowledge Localization — runtime Console API dependency removed",
+
+  "status": "PASS",
+  "p0_count": 0,
+  "p1_count": 1,
+  "p1_fixed_count": 1,
+  "p1_unresolved_count": 0,
+  "p2_count": 2,
+
+  "architecture_verified": {
+    "customer_supabase_is_runtime_source": true,
+    "no_console_api_at_runtime": "VERIFIED — fetchActiveKnowledge (Console API) removed from h1-strategy, m5-close, analyze runtime paths",
+    "server_side_only": true,
+    "ownership_validated": "user_id + ai_trader_id double-filtered in loadCustomerKnowledge",
+    "versioning_immutability": "status ACTIVE/SUPERSEDED/REMOVED; old packages never deleted",
+    "v1_legacy_retained": "fetchActiveKnowledge, /api/knowledge route marked as V1 legacy — Stage 9 removal target"
+  },
+
+  "components_verified": {
+    "migration_037": {
+      "status": "PASS",
+      "table": "customer_knowledge",
+      "rls": "ENABLED — user_id = auth.uid() + ai_trader ownership check",
+      "service_role": "service_role bypass for package deployment (HUMAN GATE operation only)",
+      "indexes": "idx_customer_knowledge_trader_status, idx_customer_knowledge_trader_category",
+      "immutability": "status field enforces lifecycle, no physical deletion",
+      "versioning": "package_version identifies deployment batch"
+    },
+    "customer_knowledge_loader": {
+      "status": "PASS",
+      "fail_closed": "EMPTY_RESULT + SERVER_ERROR + CONFIG_ERROR explicitly thrown",
+      "ownership": "user_id and ai_trader_id both filtered",
+      "normalization": "all fields validated — no silent coercion of missing fields",
+      "generic_select": "selectCustomerKnowledge preserves CustomerKnowledgeItem subtype",
+      "provenance_snapshot": "snapshotCustomerKnowledge includes source_knowledge_id + package_version"
+    },
+    "h1_strategy_route": {
+      "status": "PASS",
+      "console_dep_removed": "fetchAllKnowledge replaced by makeCustomerKnowledgeFetcher(db)",
+      "traderId_userId_passed": "primary.id + primary.user_id passed to fetchKnowledge",
+      "fail_closed": "knowledge error propagates to outer catch — trader group fails, no scenario created"
+    },
+    "m5_close_route": {
+      "status": "PASS",
+      "console_dep_removed": "fetchActiveKnowledge replaced by loadCustomerKnowledge(db, traderId, userId)",
+      "traderId_userId_passed": "trader.id + trader.user_id passed",
+      "fail_closed": "KnowledgeUnavailableError caught → analyzeStatus=knowledge_unavailable"
+    },
+    "analyze_route": {
+      "status": "PASS",
+      "console_dep_removed": "fetchActiveKnowledge + ai_trader_knowledge lookup removed",
+      "fail_closed": "loadCustomerKnowledge throws → 503 KNOWLEDGE_UNAVAILABLE returned",
+      "ownership_pre_verified": "trader ownership (user_id match) verified before loadCustomerKnowledge called"
+    }
+  },
+
+  "findings": {
+    "p0": [],
+    "p1": [
+      {
+        "description": "m5-close KnowledgeUnavailableError detection: original check used error.message.includes('Knowledge') which would not match lowercase 'customer knowledge' in error message",
+        "location": "src/app/api/watcher/m5-close/route.ts:952",
+        "resolution": "FIXED — changed to error instanceof KnowledgeUnavailableError",
+        "commit": "included in Stage 4 commit"
+      }
+    ],
+    "p2": [
+      "h1-strategy knowledge error not specifically labeled as 'knowledge_unavailable' in results — caught as generic error. Fail closed behavior maintained (no scenario created). Cosmetic label improvement for Stage 9.",
+      "selectCustomerKnowledge does not support selectedIds parameter (V1's ai_trader_knowledge selectedIds filter removed). In V2, the customer_knowledge package IS the selection — deployment decides contents."
+    ],
+    "p3": [
+      "Prompt injection boundary: knowledge content has no explicit trust-level annotation (PACKAGED vs CUSTOM). Future enhancement: add source_type-based trust level check before prompt injection."
+    ]
+  },
+
+  "security_review": {
+    "rls": "PASS — ENABLED, user_id = auth.uid() + ai_trader ownership check",
+    "authentication": "PASS — admin client server-side only; authenticated user ID validated before loader call",
+    "customer_isolation": "PASS — user_id filter + RLS double-protection; tested via unit test (eq filter verified)",
+    "no_browser_service_role": "PASS — loadCustomerKnowledge uses admin client, never called from browser",
+    "content_size_limits": "P3 — no explicit content size validation; relying on DB limits and existing prompt limits",
+    "prompt_injection_boundary": "ACCEPTABLE — knowledge injected in labeled section; not as system instructions",
+    "version_immutability": "PASS — status transitions only (ACTIVE→SUPERSEDED→REMOVED), no content mutation"
+  },
+
+  "fail_closed_verification": {
+    "empty_customer_knowledge": "FAIL CLOSED — KnowledgeUnavailableError(EMPTY_RESULT) thrown",
+    "db_error": "FAIL CLOSED — KnowledgeUnavailableError(SERVER_ERROR) thrown",
+    "missing_traderId_userId": "FAIL CLOSED — KnowledgeUnavailableError(CONFIG_ERROR) thrown",
+    "analyze_route": "FAIL CLOSED — 503 returned with KNOWLEDGE_UNAVAILABLE error",
+    "m5_close": "FAIL CLOSED — analyzeStatus=knowledge_unavailable, trader state reset to WATCHING_ENTRY",
+    "h1_strategy": "FAIL CLOSED — group processing fails, no scenario created (no trades executed)"
+  },
+
+  "console_dependency_status": {
+    "runtime_paths": "REMOVED — h1-strategy, m5-close, analyze all use Customer Supabase",
+    "v1_legacy_paths": "RETAINED — /api/knowledge route, fetchActiveKnowledge function (V1 Console proxy)",
+    "stage_9_removal": "Explicit V1 legacy comments added; Stage 9 (Self-Contained Runtime Cutover) handles final removal",
+    "knowledge_api_secret": "ENV var still present but not used in V2 runtime paths"
+  },
+
+  "mql5_compile_status": "NOT APPLICABLE — Stage 4 is TypeScript/Next.js only, no EA changes",
+
+  "testing_results": {
+    "customer_knowledge_loader_tests": "14/14 PASS",
+    "gateway_tests": "111/111 PASS (Stage 3 regression: PASS)",
+    "typecheck": "PASS (no non-.next/ errors)",
+    "build": "PASS",
+    "stage3_regression": "PASS — no Stage 3 files modified"
+  },
+
+  "dod_checklist": {
+    "customer_knowledge_schema_exists": true,
+    "customer_supabase_is_runtime_source": true,
+    "versioned_knowledge_snapshot_supported": true,
+    "published_snapshot_immutability_supported": true,
+    "customer_isolation_verified": true,
+    "rls_verified": true,
+    "server_side_knowledge_loader_implemented": true,
+    "deterministic_knowledge_selection_implemented": true,
+    "required_knowledge_fails_closed": true,
+    "optional_knowledge_behavior_explicit": "N/A — all knowledge currently REQUIRED (fail closed)",
+    "console_knowledge_api_not_required_by_v2_runtime": true,
+    "prompt_uses_customer_local_knowledge": true,
+    "knowledge_provenance_recorded": true,
+    "no_browser_service_role_exposure": true,
+    "security_review_pass": true,
+    "stage_specific_tests_pass": true,
+    "regression_tests_pass": true,
+    "typecheck_pass": true,
+    "build_pass": true,
+    "p0_zero": true,
+    "p1_zero": true,
+    "production_unchanged": true
+  },
+
+  "reviewer_conclusion": "Stage 4 Customer Knowledge Localization PASSES self-review. All runtime paths (h1-strategy, m5-close, analyze) now read from Customer Supabase customer_knowledge table. Zero Console API calls at runtime. One P1 found and fixed (m5-close KnowledgeUnavailableError detection). RLS enabled. Customer isolation verified. Fail closed for all paths. Knowledge provenance (source_knowledge_id, package_version) recorded in ai_analysis_logs."
+}

@@ -23,7 +23,7 @@ import { createProductionRuntimeService } from "@/lib/ai-trader/runtime-service"
 import { runCommonRiskCheck, createEntryExecutionCommand, buildDefaultRiskEngineProfile } from "@/lib/ai-trader/execution-service";
 import type { RiskEngineTrader } from "@/lib/ai-trader/risk-engine";
 import { validateBarsForEntry, validateTickForEntry } from "@/lib/ai-trader/market-data-validator";
-import { loadCustomerKnowledge, selectCustomerKnowledge, snapshotCustomerKnowledge, type CustomerKnowledgeItem } from "@/lib/knowledge/customer-knowledge-loader";
+import { loadCustomerKnowledge, selectCustomerKnowledge, snapshotCustomerKnowledge, KnowledgeUnavailableError, type CustomerKnowledgeItem } from "@/lib/knowledge/customer-knowledge-loader";
 import { handleManagePositions } from "@/lib/ai-trader/position-review-runtime";
 
 export const runtime    = "nodejs";
@@ -950,7 +950,7 @@ export async function handleM5CloseRequest(
         const recheck = await runtime.entryRecheck({ userId: trader.user_id as string, traderId: trader.id as string, traderVersionId: String(version?.id ?? trader.current_version ?? ""), scenario: runtimeScenario, trigger: reason, m5BarTime: dedupBarTime, hardSl: Number(sc?.suggested_sl ?? 0), knowledgeSnapshot, side: entrySide === "SHORT" ? "SELL" : "BUY" });
         analyzeStatus = recheck.commandId ? "command_created" : `entry_${recheck.decision.toLowerCase()}`;
       } catch (error) {
-        analyzeStatus = error instanceof Error && error.message.includes("Knowledge") ? "knowledge_unavailable" : "entry_failed";
+        analyzeStatus = error instanceof KnowledgeUnavailableError ? "knowledge_unavailable" : "entry_failed";
         await db.from("ai_traders").update({ watcher_state: "WATCHING_ENTRY" }).eq("id", trader.id);
       }
 
