@@ -910,34 +910,46 @@ export async function handleM5CloseRequest(
       }
 
       // Production cutover: invoke RuntimeService.entryRecheck directly.
-      // V2 Stage 5: load canonical config via config loader, then fall back to
-      // direct version query for the risk fields (backward-compat while tests migrate).
-      let traderConfig: CustomerAITraderRuntimeConfig | null = null;
+      // V2 Stage 5: the canonical config loader is the only source of the
+      // version / risk limits.  Any load failure stops this trader (fail closed).
+      let traderConfig: CustomerAITraderRuntimeConfig;
       try {
         traderConfig = await m5Deps.loadTraderConfig(trader.id as string, trader.user_id as string);
       } catch (cfgErr) {
         const code = cfgErr instanceof TraderConfigError ? cfgErr.code : "SERVER_ERROR";
         console.error(`[m5-close] Config load failed trader=${trader.id} code=${code}`, cfgErr);
-        results.push({ trader: trader.name as string, reason, status: `config_error:${code}` });
+        const status = `config_error:${code}`;
+        if (dedupBarTime > 0) {
+          await db.from("watcher_events")
+            .update({ analysis_dispatched: true, analysis_result: status })
+            .eq("trader_id", trader.id)
+            .eq("m5_bar_time", dedupBarTime)
+            .eq("trigger_type", reason);
+        }
+        results.push({ trader: trader.name as string, reason, status });
         continue;
       }
-      // version alias from config for risk engine (replaces direct DB query)
-      const version = traderConfig
-        ? {
-            id:                         traderConfig.version.id,
-            magic_number:               traderConfig.version.magicNumber,
-            max_daily_trades:           traderConfig.version.maxDailyTrades,
-            max_daily_loss_usd:         traderConfig.version.maxDailyLossUsd,
-            max_consecutive_losses:     traderConfig.version.maxConsecutiveLosses,
-            max_total_exposure_lots:    traderConfig.version.maxTotalExposureLots,
-            account_data_max_age_seconds: traderConfig.version.accountDataMaxAgeSeconds,
-            tick_data_max_age_seconds:  traderConfig.version.tickDataMaxAgeSeconds,
-            max_spread_points:          traderConfig.version.maxSpreadPoints,
-            max_risk_per_trade:         traderConfig.version.maxRiskPerTrade,
-            minimum_rr:                 traderConfig.version.minimumRR,
-            max_positions:              traderConfig.version.maxPositions,
-          }
-        : null;
+      // The candidate list may be stale: re-check status on the canonical config.
+      if (traderConfig.trader.status !== "ACTIVE") {
+        results.push({ trader: trader.name as string, reason, status: `config_error:NOT_ACTIVE` });
+        continue;
+      }
+      // DB-shaped risk fields for the Risk Engine profile builder.
+      const cv = traderConfig.version;
+      const version = {
+        id:                           cv.id,
+        magic_number:                 cv.magicNumber,
+        max_daily_trades:             cv.maxDailyTrades,
+        max_daily_loss_usd:           cv.maxDailyLossUsd,
+        max_consecutive_losses:       cv.maxConsecutiveLosses,
+        max_total_exposure_lots:      cv.maxTotalExposureLots,
+        account_data_max_age_seconds: cv.accountDataMaxAgeSeconds,
+        tick_data_max_age_seconds:    cv.tickDataMaxAgeSeconds,
+        max_spread_points:            cv.maxSpreadPoints,
+        max_risk_per_trade:           cv.maxRiskPerTrade,
+        minimum_rr:                   cv.minimumRR,
+        max_positions:                cv.maxPositions,
+      };
       let analyzeStatus = "entry_failed";
       try {
         const knowledgeItems = await m5Deps.fetchKnowledge(trader.id as string, trader.user_id as string);
@@ -961,20 +973,20 @@ export async function handleM5CloseRequest(
           },
           risk: {
             entry: async ({ decision, hardSl }) => {
-              if (!version || version.magic_number === null || version.magic_number === undefined || !conn) return { approved: false, reason: "RISK_INPUT_MISSING" };
-              const riskTrader: RiskEngineTrader = { id: trader.id as string, user_id: trader.user_id as string, execution_mode: String(trader.execution_mode ?? "STOPPED"), kill_switch: Boolean(trader.kill_switch), kill_switch_reason: (trader.kill_switch_reason as string | null) ?? null, daily_stats_date: (trader.daily_stats_date as string | null) ?? null, daily_trade_count: Number(trader.daily_trade_count ?? 0), daily_loss_usd: Number(trader.daily_loss_usd ?? 0), daily_consecutive_losses: Number(trader.daily_consecutive_losses ?? 0) };
+              if (version.magic_number === null || version.magic_number === undefined || !conn) return { approved: false, reason: "RISK_INPUT_MISSING" };
+              const riskTrader: RiskEngineTrader = { id: trader.id as string, user_id: trader.user_id as string, execution_mode: traderConfig.trader.executionMode, kill_switch: traderConfig.trader.killSwitch, kill_switch_reason: (trader.kill_switch_reason as string | null) ?? null, daily_stats_date: (trader.daily_stats_date as string | null) ?? null, daily_trade_count: Number(trader.daily_trade_count ?? 0), daily_loss_usd: Number(trader.daily_loss_usd ?? 0), daily_consecutive_losses: Number(trader.daily_consecutive_losses ?? 0) };
               const profile = buildDefaultRiskEngineProfile(version.id as string, Number(version.magic_number), version as Record<string, unknown>);
               latestRisk = await runCommonRiskCheck({ trader: riskTrader, profile, connectionId: conn.id as string, symbol, decision, suggestedSl: hardSl, suggestedTp: sc?.suggested_tp ?? null, openPositionCount: 0, totalExposureLots: 0, marketBars: marketData.m5Bars as unknown as Parameters<typeof runCommonRiskCheck>[0]["marketBars"], marketTimeframe: "M5", enforceProfileLimits: true, requireMarginValidation: true }, db, GATEWAY_URL, GATEWAY_SECRET);
               return { approved: latestRisk.riskResult.approved, reason: latestRisk.riskResult.deniedReason };
             },
           },
           createEntryCommand: async ({ idempotencyKey, action }) => {
-            if (!latestRisk?.riskResult.approved || !version || !conn) throw new Error("Risk approval missing");
+            if (!latestRisk?.riskResult.approved || !conn) throw new Error("Risk approval missing");
             const command = await createEntryExecutionCommand({ userId: trader.user_id as string, connectionId: conn.id as string, symbol, riskResult: latestRisk.riskResult, magicNumber: Number(version.magic_number), aiTraderId: trader.id as string, metadata: { source: "m5_runtime_entry_recheck", trigger: reason, idempotency_key: idempotencyKey, action } }, db);
             return { id: command.commandDbId };
           },
         });
-        const recheck = await runtime.entryRecheck({ userId: trader.user_id as string, traderId: trader.id as string, traderVersionId: String(version?.id ?? trader.current_version ?? ""), scenario: runtimeScenario, trigger: reason, m5BarTime: dedupBarTime, hardSl: Number(sc?.suggested_sl ?? 0), knowledgeSnapshot, side: entrySide === "SHORT" ? "SELL" : "BUY" });
+        const recheck = await runtime.entryRecheck({ userId: trader.user_id as string, traderId: trader.id as string, traderVersionId: version.id, scenario: runtimeScenario, trigger: reason, m5BarTime: dedupBarTime, hardSl: Number(sc?.suggested_sl ?? 0), knowledgeSnapshot, side: entrySide === "SHORT" ? "SELL" : "BUY" });
         analyzeStatus = recheck.commandId ? "command_created" : `entry_${recheck.decision.toLowerCase()}`;
       } catch (error) {
         analyzeStatus = error instanceof KnowledgeUnavailableError ? "knowledge_unavailable" : "entry_failed";

@@ -12,11 +12,6 @@ const NG = "#f97316";
 
 const TIMEFRAME_OPTIONS = ["M1","M5","M15","M30","H1","H4","D1","W1"];
 
-interface KnowledgeItem {
-  id: string; title: string; category: string;
-  summary: string | null; ai_usage: string | null; version: number;
-}
-
 // ── プロフィール項目の行表示 ──────────────────────────────────────
 function ProfileRow({ label, value }: { label: string; value: string }) {
   return (
@@ -49,43 +44,22 @@ export function AITraderBuilder({ open, onClose, onSaved }: Props) {
   const [profile,      setProfile]      = useState<AITraderProfile | null>(null);
   const [reasoning,    setReasoning]    = useState("");
   const [error,        setError]        = useState("");
-  const [knowledgeList, setKnowledgeList] = useState<KnowledgeItem[]>([]);
-  const [selectedKids, setSelectedKids] = useState<Set<string>>(new Set());
-  const [knowledgeLoaded, setKnowledgeLoaded] = useState(false);
-
-  const loadKnowledge = useCallback(async () => {
-    if (knowledgeLoaded) return;
-    try {
-      const res  = await fetch("/api/knowledge");
-      const data = await res.json() as { items?: KnowledgeItem[] };
-      setKnowledgeList(data.items ?? []);
-    } catch { setKnowledgeList([]); }
-    setKnowledgeLoaded(true);
-  }, [knowledgeLoaded]);
 
   const handleGenerate = useCallback(async () => {
     setError("");
     setStep("generating");
 
-    let hints: { id: string; title: string; category: string }[] = [];
-    try {
-      const res  = await fetch("/api/knowledge");
-      const data = await res.json() as { items?: KnowledgeItem[] };
-      const items = data.items ?? [];
-      setKnowledgeList(items);
-      setKnowledgeLoaded(true);
-      hints = items.map(k => ({ id: k.id, title: k.title, category: k.category }));
-    } catch { /* knowledge unavailable */ }
-
+    // V2 Stage 5: the Builder does not read Console Knowledge.  Knowledge is
+    // delivered to Customer Supabase as a package (Stage 4) and bound at runtime.
     try {
       const res = await fetch("/api/ai/trader/build", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, knowledge_list: hints }),
+        body: JSON.stringify({ description, knowledge_list: [] }),
       });
       const data = await res.json() as {
         success: boolean; error?: string;
         name?: string; description?: string; reasoning?: string;
-        profile?: AITraderProfile; suggested_knowledge_ids?: string[];
+        profile?: AITraderProfile;
       };
 
       if (!data.success || !data.profile) {
@@ -98,7 +72,6 @@ export function AITraderBuilder({ open, onClose, onSaved }: Props) {
       setName(data.name ?? "AI Trader");
       setTraderDesc(data.description ?? "");
       setReasoning(data.reasoning ?? "");
-      setSelectedKids(new Set(data.suggested_knowledge_ids ?? []));
       setStep("confirm");
     } catch {
       setError("通信エラーが発生しました。再試行してください。");
@@ -115,7 +88,7 @@ export function AITraderBuilder({ open, onClose, onSaved }: Props) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name, description: traderDesc || undefined, market: "GOLD",
-          profile, knowledge_ids: Array.from(selectedKids), raw_prompt: description,
+          profile, raw_prompt: description,
         }),
       });
       const data = await res.json() as { trader?: AITrader; error?: string };
@@ -127,11 +100,11 @@ export function AITraderBuilder({ open, onClose, onSaved }: Props) {
       setError(e instanceof Error ? e.message : "エラーが発生しました");
       setStep("confirm");
     }
-  }, [profile, name, traderDesc, description, selectedKids, onSaved]);
+  }, [profile, name, traderDesc, description, onSaved]);
 
   function handleClose() {
     setStep("input"); setDescription(""); setProfile(null);
-    setError(""); setSelectedKids(new Set()); onClose();
+    setError(""); onClose();
   }
 
   if (!open) return null;
@@ -279,64 +252,13 @@ export function AITraderBuilder({ open, onClose, onSaved }: Props) {
                 </div>
               )}
 
-              {/* Knowledge選択 */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-semibold" style={{ color: "#4a4a4a" }}>使用する分析知識</label>
-                  <button onClick={loadKnowledge}
-                    className="text-[11px] px-2 py-0.5 rounded border"
-                    style={{ color: NG, borderColor: "#fed7aa", background: "#fff7ed" }}>更新</button>
-                </div>
-                {knowledgeList.length === 0 ? (
-                  <div className="rounded-xl p-4 text-center"
-                    style={{ background: "#f8fafc", border: "1px dashed #e2e8f0" }}>
-                    <p className="text-xs" style={{ color: "#94a3b8" }}>
-                      Knowledgeがまだ登録されていません
-                    </p>
-                    <p className="text-[10px] mt-1" style={{ color: "#cbd5e1" }}>
-                      Console → AIトレード知識 から登録できます
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {knowledgeList.map(k => (
-                      <label key={k.id}
-                        className="flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-all"
-                        style={{
-                          background:  selectedKids.has(k.id) ? "#fff7ed" : "#f8f7f4",
-                          border:      `1px solid ${selectedKids.has(k.id) ? "#fed7aa" : "rgba(0,0,0,0.05)"}`,
-                        }}>
-                        <input type="checkbox" checked={selectedKids.has(k.id)}
-                          className="mt-0.5"
-                          style={{ accentColor: NG }}
-                          onChange={e => {
-                            const next = new Set(selectedKids);
-                            if (e.target.checked) next.add(k.id);
-                            else next.delete(k.id);
-                            setSelectedKids(next);
-                          }} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-semibold" style={{ color: "#1a1a1a" }}>{k.title}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full"
-                              style={{ background: "#fff7ed", color: NG }}>{k.category}</span>
-                            <span className="text-[10px]" style={{ color: "#94a3b8" }}>v{k.version}</span>
-                          </div>
-                          {k.ai_usage && (
-                            <p className="text-[11px] mt-0.5 font-medium" style={{ color: "#d97706" }}>
-                              🤖 {k.ai_usage}
-                            </p>
-                          )}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                )}
-                {selectedKids.size > 0 && (
-                  <p className="text-[11px] mt-1.5" style={{ color: "#94a3b8" }}>
-                    {selectedKids.size}件のKnowledgeを選択中
-                  </p>
-                )}
+              {/* Knowledge — V2 Stage 5: bound at runtime from Customer Knowledge */}
+              <div className="rounded-xl p-3"
+                style={{ background: "#f8fafc", border: "1px dashed #e2e8f0" }}>
+                <p className="text-xs font-semibold" style={{ color: "#4a4a4a" }}>分析知識</p>
+                <p className="text-[11px] mt-1" style={{ color: "#94a3b8" }}>
+                  分析知識はお客様環境に配信された Knowledge パッケージから実行時に自動で読み込まれます。
+                </p>
               </div>
 
               {error && (

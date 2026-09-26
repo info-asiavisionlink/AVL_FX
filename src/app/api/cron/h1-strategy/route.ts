@@ -45,6 +45,8 @@ const APP_URL              = process.env.NEXT_PUBLIC_APP_URL  ?? process.env.APP
 
 interface Bar { time: number; open: number; high: number; low: number; close: number; volume: number; }
 
+const TF_ORDER_DESC = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5", "M1"] as const;
+
 export interface H1StrategyDependencies {
   db: ReturnType<typeof createAdminClient>;
   aiClientFactory: typeof getOpenAIClient;
@@ -258,6 +260,21 @@ async function fetchNews(symbol: string): Promise<string> {
 // Retained here to avoid breaking any V1 Console admin paths that may import this module.
 // Will be removed at Stage 9 (Customer Self-Contained Runtime Cutover).
 
+// DB-shaped (snake_case) view of the canonical config for the prompt builder.
+function toPromptProfile(config: CustomerAITraderRuntimeConfig): Record<string, unknown> {
+  const v = config.version;
+  return {
+    id:                 v.id,
+    personality:        v.personality,
+    trading_style:      v.tradingStyle,
+    risk_profile:       v.riskProfile,
+    max_risk_per_trade: v.maxRiskPerTrade,
+    minimum_rr:         v.minimumRR,
+    news_sensitivity:   v.newsSensitivity,
+    instructions:       v.instructions,
+  };
+}
+
 // ── H1 戦略プロンプト構築 ────────────────────────────────────────
 function buildStrategyPrompt(
   profile: Record<string, unknown>,
@@ -393,8 +410,9 @@ export async function handleH1StrategyRequest(
     const primary = group[0];
 
     try {
-      await h1Deps.runtimeFactory(h1Deps.db).transitionState(primary.id, ["FLAT", "ANALYZING", "WATCHING_ENTRY"], "ANALYZING");
-      // V2 Stage 5: canonical runtime config (timeframe profile + version + risk config).
+      // V2 Stage 5: canonical runtime config (timeframe profile + version + risk
+      // config).  Loaded before any state transition so a broken config stops
+      // this trader without touching its runtime state.
       let traderConfig: CustomerAITraderRuntimeConfig;
       try {
         traderConfig = await h1Deps.loadTraderConfig(primary.id as string, primary.user_id as string);
@@ -404,7 +422,13 @@ export async function handleH1StrategyRequest(
         group.forEach(t => results.push({ traderId: t.id, name: t.name, status: `config_error:${code}` }));
         continue;
       }
-      const profile = traderConfig.version;  // backward-compat alias
+      // The candidate list may be stale: re-check status / kill switch on the canonical config.
+      if (traderConfig.trader.status !== "ACTIVE" || traderConfig.trader.killSwitch) {
+        group.forEach(t => results.push({ traderId: t.id, name: t.name, status: "config_error:NOT_ACTIVE" }));
+        continue;
+      }
+      await h1Deps.runtimeFactory(h1Deps.db).transitionState(primary.id, ["FLAT", "ANALYZING", "WATCHING_ENTRY"], "ANALYZING");
+      const profile = toPromptProfile(traderConfig);
 
       // MT5接続確認（代表のユーザーのみ）
       const { data: conn } = await db
@@ -444,15 +468,13 @@ export async function handleH1StrategyRequest(
       const symbol = primary.market === "GOLD" ? "GOLD#" : (primary.market as string);
 
       // ── バーデータ取得 — profile-driven timeframes ───────────────
-      // V2 Stage 5: use trend_context + setup timeframes from the trader's
-      // timeframe profile (instead of hardcoded H4/H1/M30/M15).
-      // Default DAY_TRADING profile: [H4, H1] + [M15, M5] matches V1 behaviour.
+      // V2 Stage 5: trend_context + setup timeframes from the trader's profile
+      // (replaces the V1 hardcoded H4/H1/M30/M15).  H1 is always fetched: this
+      // runtime is H1-cadenced and the latest closed H1 bar anchors the
+      // scenario (h1_bar_time idempotency), even when the profile omits H1.
       const { trend_context_timeframes, setup_timeframes } = traderConfig.timeframeProfile;
-      const analysisTimeframes = [...new Set([...trend_context_timeframes, ...setup_timeframes])];
-      const tfConfigs: { tf: string; count: number }[] = analysisTimeframes.map(tf => ({
-        tf,
-        count: tf.startsWith("H") || tf.startsWith("D") || tf.startsWith("W") || tf.startsWith("M") && tf.length > 2 ? 500 : 500,
-      }));
+      const analysisTimeframes = [...new Set([...trend_context_timeframes, ...setup_timeframes, "H1"])];
+      const tfConfigs: { tf: string; count: number }[] = analysisTimeframes.map(tf => ({ tf, count: 500 }));
       const barSummaries: string[] = [];
       let latestClosedH1Ms = 0;
       await Promise.all(tfConfigs.map(async ({ tf, count }) => {
@@ -472,13 +494,11 @@ export async function handleH1StrategyRequest(
           console.error(`[h1-strategy] ${tf} バーデータエラー:`, barErr);
         }
       }));
-      // TF順に並び替え（H4→H1→M30→M15）
-      const tfOrder = ["H4", "H1", "M30", "M15"];
-      barSummaries.sort((a, b) => {
-        const ai = tfOrder.findIndex(tf => a.includes(`【${tf}`));
-        const bi = tfOrder.findIndex(tf => b.includes(`【${tf}`));
-        return ai - bi;
-      });
+      // TF順に並び替え（上位足→下位足）。Header is "【<TF> — ", so match the
+      // exact TF token (a bare prefix would confuse M1 with M15).
+      const tfRank = (summary: string) =>
+        TF_ORDER_DESC.findIndex(tf => summary.includes(`【${tf} — `));
+      barSummaries.sort((a, b) => tfRank(a) - tfRank(b));
 
       console.log(`[h1-strategy] barSummaries count=${barSummaries.length}`);
 
@@ -509,7 +529,7 @@ export async function handleH1StrategyRequest(
 
       // ── AI 呼び出し（市場グループにつき1回のみ） ────────────────
       const prompt = buildStrategyPrompt(
-        profile as Record<string, unknown>,
+        profile,
         barSummaries,
         knowledge,
         economicEvents,
@@ -594,7 +614,7 @@ export async function handleH1StrategyRequest(
       const runtimeScenario = await handleH1Strategy({
         userId: primary.user_id,
         traderId: primary.id,
-        traderVersionId: profile.id,
+        traderVersionId: traderConfig.version.id,
         h1BarTime: Math.floor(latestClosedH1Ms / 1000),
         scenarioPayload,
         knowledgeSnapshot,

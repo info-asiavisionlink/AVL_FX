@@ -124,15 +124,16 @@ export const AITraderBuilderOutputSchema = z.object({
 
 // V2 Timeframe Profile schema — stored in ai_trader_timeframe_profiles table.
 // At least one trend_context and one entry timeframe required.
-const tfArray = () =>
-  z.array(z.enum(SUPPORTED_TIMEFRAMES)).min(0).max(5);
+const tfArray = (min = 0) =>
+  z.array(z.enum(SUPPORTED_TIMEFRAMES)).min(min).max(5)
+    .refine(arr => new Set(arr).size === arr.length, "duplicate timeframe");
 
 export const AITraderTimeframeProfileSchema = z.object({
   timeframe_style:          z.enum(TIMEFRAME_STYLES).default("DAY_TRADING"),
   macro_context_timeframes: tfArray().default([]),
-  trend_context_timeframes: tfArray().min(1),
+  trend_context_timeframes: tfArray(1),
   setup_timeframes:         tfArray().default([]),
-  entry_timeframes:         tfArray().min(1),
+  entry_timeframes:         tfArray(1),
   management_timeframes:    tfArray().default([]),
   monitor_interval_minutes: z.number().int().min(1).max(60).default(5),
 }).strict();

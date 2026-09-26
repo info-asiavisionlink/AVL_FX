@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient }          from "@/infrastructure/supabase/admin";
 import { createClient }               from "@/infrastructure/supabase/server";
-import { generateTraderPublicId }     from "@/lib/aiTraderSchema";
+import { generateTraderPublicId, normalizeAndValidateTimeframeProfile } from "@/lib/aiTraderSchema";
 
 export const runtime = "nodejs";
 
@@ -71,6 +71,13 @@ export async function POST(req: NextRequest) {
 
   if (tErr) return NextResponse.json({ error: "保存に失敗しました" }, { status: 500 });
 
+  // Compensate on any later failure so no trader is left without a runnable
+  // version + timeframe profile (versions/profiles cascade on trader delete).
+  const rollbackTrader = async () => {
+    const { error } = await db.from("ai_traders").delete().eq("id", newTrader.id).eq("user_id", user.id);
+    if (error) console.error("[POST /api/traders/import-by-id] rollback failed", error);
+  };
+
   // バージョンをコピー
   const { data: newVersion, error: vErr } = await db
     .from("ai_trader_versions")
@@ -94,7 +101,34 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (vErr) return NextResponse.json({ error: "バージョンのコピーに失敗しました" }, { status: 500 });
+  if (vErr) {
+    await rollbackTrader();
+    return NextResponse.json({ error: "バージョンのコピーに失敗しました" }, { status: 500 });
+  }
+
+  // V2 Stage 5: copy the source version's timeframe profile.  The runtime
+  // config loader fails closed without one, so a copy without it is useless.
+  const { data: sourceTf, error: sourceTfErr } = await db
+    .from("ai_trader_timeframe_profiles")
+    .select("timeframe_style, macro_context_timeframes, trend_context_timeframes, setup_timeframes, entry_timeframes, management_timeframes, monitor_interval_minutes")
+    .eq("ai_trader_version_id", profile.id as string)
+    .maybeSingle();
+  let tfProfile;
+  try {
+    if (sourceTfErr || !sourceTf) throw new Error("source timeframe profile missing");
+    tfProfile = normalizeAndValidateTimeframeProfile(sourceTf);
+  } catch {
+    await rollbackTrader();
+    return NextResponse.json({ error: "時間足プロファイルのコピーに失敗しました" }, { status: 500 });
+  }
+  const { error: tfErr } = await db.from("ai_trader_timeframe_profiles").insert({
+    ai_trader_version_id: newVersion.id,
+    ...tfProfile,
+  });
+  if (tfErr) {
+    await rollbackTrader();
+    return NextResponse.json({ error: "時間足プロファイルのコピーに失敗しました" }, { status: 500 });
+  }
 
   // Knowledge もコピー（元バージョンのものを引き継ぎ）
   const { data: sourceKnowledge } = await db

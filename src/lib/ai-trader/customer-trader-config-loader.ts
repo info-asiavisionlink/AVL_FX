@@ -10,8 +10,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  DEFAULT_DAY_TRADING_TIMEFRAME_PROFILE,
   SUPPORTED_TIMEFRAMES,
+  TRADER_STATUSES,
   type AITraderTimeframeProfile,
   type TimeframeStyle,
 } from "@/lib/aiTraderSchema";
@@ -25,7 +25,8 @@ export type TraderConfigErrorCode =
   | "NOT_FOUND"         // trader does not exist
   | "OWNER_MISMATCH"    // trader exists but belongs to a different user
   | "NO_ACTIVE_VERSION" // ai_traders.current_version has no matching ai_trader_versions row
-  | "INVALID_PROFILE"   // version or timeframe data failed normalisation
+  | "NO_TIMEFRAME_PROFILE" // active version has no ai_trader_timeframe_profiles row
+  | "INVALID_PROFILE"   // version, risk or timeframe data failed validation
   | "SERVER_ERROR";     // Supabase query error
 
 export class TraderConfigError extends Error {
@@ -114,6 +115,10 @@ export async function loadCustomerAITraderConfig(
   if (t.user_id !== userId) {
     throw new TraderConfigError("OWNER_MISMATCH", `Trader ${traderId} does not belong to user ${userId}`);
   }
+  const currentVersion = Number(t.current_version);
+  if (!Number.isInteger(currentVersion) || currentVersion < 1) {
+    throw new TraderConfigError("NO_ACTIVE_VERSION", `Trader ${traderId} has invalid current_version: ${String(t.current_version)}`);
+  }
 
   // ── 2. Load active version ──────────────────────────────────────────────────
   const { data: version, error: versionErr } = await db
@@ -128,11 +133,11 @@ export async function loadCustomerAITraderConfig(
       "max_spread_points, knowledge_package_version",
     )
     .eq("ai_trader_id", traderId)
-    .eq("version", Number(t.current_version))
+    .eq("version", currentVersion)
     .maybeSingle();
 
   if (versionErr) throw new TraderConfigError("SERVER_ERROR", `ai_trader_versions query failed: ${versionErr.message}`);
-  if (!version)   throw new TraderConfigError("NO_ACTIVE_VERSION", `No version ${t.current_version} for trader ${traderId}`);
+  if (!version)   throw new TraderConfigError("NO_ACTIVE_VERSION", `No version ${currentVersion} for trader ${traderId}`);
 
   const v = version as unknown as Record<string, unknown>;
 
@@ -148,31 +153,45 @@ export async function loadCustomerAITraderConfig(
 
   if (tfErr) throw new TraderConfigError("SERVER_ERROR", `ai_trader_timeframe_profiles query failed: ${tfErr.message}`);
 
-  // Validate timeframe profile. Fall back to DEFAULT_DAY_TRADING only if the table row
-  // is absent (pre-migration trader). Fail closed on invalid data (bad DB content).
-  const rawTfProfile = tfProfile as Record<string, unknown> | null;
+  // Fail closed: every active version must have an explicit profile row.
+  // Migration 038 backfills existing versions; POST /api/traders and
+  // import-by-id create one alongside each new version.
+  if (!tfProfile) {
+    throw new TraderConfigError("NO_TIMEFRAME_PROFILE", `No timeframe profile for version ${String(v.id)}`);
+  }
   let resolvedTfProfile: AITraderTimeframeProfile;
-  if (!rawTfProfile) {
-    // No profile row: use default (safe backward-compat fallback for pre-Stage-5 traders)
-    resolvedTfProfile = DEFAULT_DAY_TRADING_TIMEFRAME_PROFILE;
-  } else {
-    try {
-      resolvedTfProfile = normalizeTimeframeProfileRow(rawTfProfile);
-    } catch (e) {
-      throw new TraderConfigError("INVALID_PROFILE", `Timeframe profile invalid: ${(e as Error).message}`);
-    }
+  try {
+    resolvedTfProfile = normalizeTimeframeProfileRow(tfProfile as unknown as Record<string, unknown>);
+  } catch (e) {
+    throw new TraderConfigError("INVALID_PROFILE", `Timeframe profile invalid: ${(e as Error).message}`);
   }
 
-  // ── 4. Validate execution mode ──────────────────────────────────────────────
-  const executionMode = String(t.execution_mode ?? "ANALYSIS_ONLY");
+  // Risk limits are safety-critical: no silent defaults.  A NULL / non-finite /
+  // out-of-range value means the stored config is broken, so stop here.
+  let risk: RiskLimits;
+  try {
+    risk = normalizeRiskLimits(v);
+  } catch (e) {
+    throw new TraderConfigError("INVALID_PROFILE", `Risk config invalid: ${(e as Error).message}`);
+  }
+
+  // ── 4. Validate execution mode / status ─────────────────────────────────────
+  // No default: a missing mode is broken config, never an implicit permission.
+  const executionMode = String(t.execution_mode);
   const ALLOWED_MODES = ["ANALYSIS_ONLY", "MANUAL_APPROVAL", "DEMO_AUTONOMOUS"] as const;
   if (!(ALLOWED_MODES as readonly string[]).includes(executionMode)) {
     throw new TraderConfigError("INVALID_PROFILE", `Unknown execution_mode: ${executionMode}`);
   }
+  const status = String(t.status);
+  if (!(TRADER_STATUSES as readonly string[]).includes(status)) {
+    throw new TraderConfigError("INVALID_PROFILE", `Unknown status: ${status}`);
+  }
 
   // ── 5. Validate market ──────────────────────────────────────────────────────
-  const market = String(t.market ?? "");
-  if (!market) throw new TraderConfigError("INVALID_PROFILE", "market is empty");
+  const market = typeof t.market === "string" ? t.market.trim() : "";
+  if (!/^[A-Z0-9][A-Z0-9#._]{0,19}$/.test(market)) {
+    throw new TraderConfigError("INVALID_PROFILE", `Malformed market: ${String(t.market)}`);
+  }
 
   // ── 6. Assemble config ──────────────────────────────────────────────────────
   return {
@@ -181,10 +200,11 @@ export async function loadCustomerAITraderConfig(
       userId:         String(t.user_id),
       name:           String(t.name ?? ""),
       market,
-      status:         (t.status as CustomerAITraderRuntimeConfig["trader"]["status"]) ?? "DRAFT",
+      status:         status as CustomerAITraderRuntimeConfig["trader"]["status"],
       executionMode:  executionMode as CustomerAITraderRuntimeConfig["trader"]["executionMode"],
-      killSwitch:     Boolean(t.kill_switch),
-      currentVersion: Number(t.current_version),
+      // Anything other than an explicit false is treated as engaged.
+      killSwitch:     t.kill_switch !== false,
+      currentVersion,
     },
     version: {
       id:                   String(v.id),
@@ -198,16 +218,7 @@ export async function loadCustomerAITraderConfig(
       timeframes:           Array.isArray(v.timeframes) ? (v.timeframes as string[]) : ["H1"],
       instructions:         typeof v.instructions === "string" ? v.instructions : null,
       magicNumber:          typeof v.magic_number === "number" ? v.magic_number : null,
-      minimumRR:                    Number(v.minimum_rr ?? 1.5),
-      maxRiskPerTrade:              Number(v.max_risk_per_trade ?? 1.0),
-      maxPositions:                 Number(v.max_positions ?? 1),
-      maxDailyTrades:               Number(v.max_daily_trades ?? 5),
-      maxDailyLossUsd:              Number(v.max_daily_loss_usd ?? 100),
-      maxConsecutiveLosses:         Number(v.max_consecutive_losses ?? 3),
-      maxTotalExposureLots:         Number(v.max_total_exposure_lots ?? 0.2),
-      accountDataMaxAgeSeconds:     Number(v.account_data_max_age_seconds ?? 30),
-      tickDataMaxAgeSeconds:        Number(v.tick_data_max_age_seconds ?? 30),
-      maxSpreadPoints:              Number(v.max_spread_points ?? 0),
+      ...risk,
       knowledgePackageVersion:      typeof v.knowledge_package_version === "string" ? v.knowledge_package_version : null,
     },
     timeframeProfile: resolvedTfProfile,
@@ -219,17 +230,54 @@ export async function loadCustomerAITraderConfig(
 const VALID_TIMEFRAMES = new Set(["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"]);
 const VALID_TF_STYLES  = new Set(["SCALPING", "DAY_TRADING", "SWING"]);
 
+type RiskLimits = Pick<CustomerAITraderRuntimeConfig["version"],
+  | "minimumRR" | "maxRiskPerTrade" | "maxPositions" | "maxDailyTrades" | "maxDailyLossUsd"
+  | "maxConsecutiveLosses" | "maxTotalExposureLots" | "accountDataMaxAgeSeconds"
+  | "tickDataMaxAgeSeconds" | "maxSpreadPoints">;
+
+// Ranges mirror the DB CHECK constraints (021/025/038) and the Builder schema.
+function num(row: Record<string, unknown>, field: string, min: number, max: number, integer = false): number {
+  const raw = row[field];
+  // Postgres NUMERIC may arrive as a string via PostgREST; null/undefined never defaults.
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+  if (!Number.isFinite(n) || n < min || n > max || (integer && !Number.isInteger(n))) {
+    throw new Error(`${field} invalid: ${String(raw)}`);
+  }
+  return n;
+}
+
+function normalizeRiskLimits(v: Record<string, unknown>): RiskLimits {
+  const maxRiskPerTrade = num(v, "max_risk_per_trade", 0, 10);
+  const maxTotalExposureLots = num(v, "max_total_exposure_lots", 0, 100);
+  const minimumRR = num(v, "minimum_rr", 0, 10);
+  if (maxRiskPerTrade <= 0) throw new Error("max_risk_per_trade must be > 0");
+  if (maxTotalExposureLots <= 0) throw new Error("max_total_exposure_lots must be > 0");
+  if (minimumRR <= 0) throw new Error("minimum_rr must be > 0");
+  return {
+    minimumRR,
+    maxRiskPerTrade,
+    maxPositions:             num(v, "max_positions", 1, 10, true),
+    maxDailyTrades:           num(v, "max_daily_trades", 0, 1000, true),
+    maxDailyLossUsd:          num(v, "max_daily_loss_usd", 0, 1e9),
+    maxConsecutiveLosses:     num(v, "max_consecutive_losses", 0, 1000, true),
+    maxTotalExposureLots,
+    accountDataMaxAgeSeconds: num(v, "account_data_max_age_seconds", 1, 3600, true),
+    tickDataMaxAgeSeconds:    num(v, "tick_data_max_age_seconds", 1, 3600, true),
+    maxSpreadPoints:          num(v, "max_spread_points", 0, 1e6, true),
+  };
+}
+
 function validateTfArray(arr: unknown, field: string): SupportedTf[] {
-  if (!Array.isArray(arr)) return [];
-  const result = (arr as unknown[]).filter(x => typeof x === "string") as string[];
-  if (result.some(tf => !VALID_TIMEFRAMES.has(tf))) {
+  if (!Array.isArray(arr)) throw new Error(`${field} is not an array`);
+  if (arr.some(tf => typeof tf !== "string" || !VALID_TIMEFRAMES.has(tf))) {
     throw new Error(`${field} contains unsupported timeframe`);
   }
-  return result as SupportedTf[];
+  if (new Set(arr).size !== arr.length) throw new Error(`${field} contains duplicates`);
+  return arr as SupportedTf[];
 }
 
 function normalizeTimeframeProfileRow(row: Record<string, unknown>): AITraderTimeframeProfile {
-  const style = String(row.timeframe_style ?? "DAY_TRADING");
+  const style = String(row.timeframe_style);
   if (!VALID_TF_STYLES.has(style)) throw new Error(`Unknown timeframe_style: ${style}`);
 
   const trendCtx = validateTfArray(row.trend_context_timeframes, "trend_context_timeframes");
@@ -238,7 +286,7 @@ function normalizeTimeframeProfileRow(row: Record<string, unknown>): AITraderTim
   if (trendCtx.length === 0) throw new Error("trend_context_timeframes must not be empty");
   if (entry.length === 0)    throw new Error("entry_timeframes must not be empty");
 
-  const interval = Number(row.monitor_interval_minutes ?? 5);
+  const interval = Number(row.monitor_interval_minutes);
   if (!Number.isInteger(interval) || interval < 1 || interval > 60) {
     throw new Error(`monitor_interval_minutes out of range: ${interval}`);
   }
