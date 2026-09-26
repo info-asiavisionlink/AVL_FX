@@ -667,6 +667,9 @@ app.post("/bar", auth, async (req, res) => {
     dedupAndSort([...connectionBars, normalizeBar(bar)]),
     MAX_BARS,
   );
+  // Legacy barStore kept in sync for GET /bars/:sym/:tf backward compat (removed Stage 9)
+  const legKey = storeKey(bar.symbol, bar.timeframe);
+  barStore.set(legKey, dedupAndSort([...(barStore.get(legKey) ?? []), normalizeBar(bar)]).slice(-MAX_BARS));
   broadcastToConnection(connectionId, { type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
 
   // ── M5確定検知 ──────────────────────────────────────────────────
@@ -773,6 +776,9 @@ app.post("/bridge/bars", auth, async (req, res) => {
     dedupAndSort([...existing, normalizeBar(bar)]),
     MAX_BARS,
   );
+  // Legacy barStore kept in sync for GET /bars/:sym/:tf backward compat (removed Stage 9)
+  const legBarKey = storeKey(bar.symbol, bar.timeframe);
+  barStore.set(legBarKey, dedupAndSort([...(barStore.get(legBarKey) ?? []), normalizeBar(bar)]).slice(-MAX_BARS));
   broadcastToConnection(connectionId, { type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
   res.json({ ok: true });
 });
@@ -2094,7 +2100,14 @@ async function restoreFromSupabase(): Promise<void> {
         byConnection.set(row.connection_id, bars);
       }
       for (const [connectionId, bars] of byConnection) {
-        connectionMarketStore.upsertBars(connectionId, sym, tf, bars.reverse(), count);
+        // Merge with any bars already received during async startup rather than replacing.
+        // bars is in desc order from DB; reverse to asc for merging.
+        const restored_asc = bars.reverse();
+        const current = connectionMarketStore.getBars(connectionId, sym, tf);
+        const merged = current.length > 0
+          ? dedupAndSort([...restored_asc, ...current]).slice(-count)
+          : restored_asc.slice(-count);
+        connectionMarketStore.upsertBars(connectionId, sym, tf, merged, count);
         restored += bars.length;
         console.log(`[Restore] ${connectionId}:${sym}:${tf} → ${bars.length}本復元`);
       }
