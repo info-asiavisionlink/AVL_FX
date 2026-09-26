@@ -201,14 +201,20 @@ export async function upsertCustomerBars(bars: BarIngestionInput[]): Promise<Ups
     updated_at:       new Date().toISOString(),
   }));
 
+  // Conflict resolution strategy:
+  //   realtime source  → ignoreDuplicates: false (allow updating forming bars with same timestamp)
+  //   recovery/backfill → ignoreDuplicates: true  (never overwrite higher-quality realtime data)
+  const allRealtime = deduped.every((b) => b.source === "bridge_realtime");
+  const ignoreDups  = !allRealtime; // recovery/backfill: skip on conflict
+
   // Batch upsert
   for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
     const batch = rows.slice(i, i + UPSERT_BATCH_SIZE);
     const { error } = await client
       .from("customer_bar_data")
       .upsert(batch, {
-        onConflict: "connection_id,canonical_symbol,timeframe,time_utc",
-        ignoreDuplicates: false,
+        onConflict:       "connection_id,canonical_symbol,timeframe,time_utc",
+        ignoreDuplicates: ignoreDups,
       });
 
     if (error) {
@@ -220,6 +226,81 @@ export async function upsertCustomerBars(bars: BarIngestionInput[]): Promise<Ups
   }
 
   return result;
+}
+
+// ----------------------------------------------------------------
+// Count bars in a time range (completeness verification)
+// ----------------------------------------------------------------
+
+export async function countCustomerBarsInRange(
+  connectionId:    string,
+  canonicalSymbol: string,
+  timeframe:       string,
+  fromUtc:         string,
+  toUtc:           string,
+): Promise<{ count: number; error?: string }> {
+  const client = getClient();
+  if (!client) return { count: 0, error: "store disabled" };
+
+  const { count, error } = await client
+    .from("customer_bar_data")
+    .select("*", { count: "exact", head: true })
+    .eq("connection_id",    connectionId)
+    .eq("canonical_symbol", canonicalSymbol)
+    .eq("timeframe",        timeframe)
+    .gte("time_utc",        fromUtc)
+    .lte("time_utc",        toUtc);
+
+  if (error) {
+    console.error("[customerBarData] countBarsInRange error:", error.message);
+    return { count: 0, error: error.message };
+  }
+  return { count: count ?? 0 };
+}
+
+// ----------------------------------------------------------------
+// BackfillSummary type and logger
+// ----------------------------------------------------------------
+
+export interface BackfillSummary {
+  connection_id:    string;
+  user_id:          string;
+  canonical_symbol: string;
+  timeframe:        string;
+  from_utc?:        string;
+  to_utc?:          string;
+  bars_sent:        number;
+  bars_accepted:    number;
+  bars_verified?:   number;
+  gap_remaining:    boolean;
+  source:           "bridge_recovery" | "bridge_backfill";
+}
+
+export async function logCustomerBackfill(summary: BackfillSummary): Promise<{ error?: string }> {
+  const client = getClient();
+  if (!client) return {};  // non-fatal: logging is fire-and-forget
+
+  const { error } = await client
+    .from("customer_backfill_logs")
+    .insert({
+      connection_id:    summary.connection_id,
+      user_id:          summary.user_id,
+      canonical_symbol: summary.canonical_symbol,
+      timeframe:        summary.timeframe,
+      from_utc:         summary.from_utc ?? null,
+      to_utc:           summary.to_utc ?? null,
+      bars_sent:        summary.bars_sent,
+      bars_accepted:    summary.bars_accepted,
+      bars_verified:    summary.bars_verified ?? null,
+      gap_remaining:    summary.gap_remaining,
+      source:           summary.source,
+    });
+
+  if (error) {
+    console.warn("[customerBarData] backfill log failed:", error.message);
+    return { error: error.message };
+  }
+  return {};
 }
 
 // ----------------------------------------------------------------

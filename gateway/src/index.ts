@@ -79,10 +79,13 @@ import {
 import {
   upsertCustomerBars,
   getLastCustomerBar,
+  countCustomerBarsInRange,
+  logCustomerBackfill,
   canonicalizeSymbol,
   SUPPORTED_TIMEFRAMES as CUSTOMER_BAR_TFS,
   type BarIngestionInput,
   type BarSource,
+  type BackfillSummary,
 } from "./customerBarDataStore";
 
 void SYNC_JOB_STALE_MS; // suppress unused warning
@@ -1661,6 +1664,130 @@ app.get("/market-data/last-bar", auth, async (req, res) => {
     return;
   }
   res.json({ ok: true, connection_id: connectionId, symbol: canonical, timeframe, last_bar_utc: result.time_utc });
+});
+
+/** V2 Stage 2: Bar count in a range (completeness verification after backfill) */
+app.get("/market-data/bar-count", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"]    as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+  if (!connectionId || !connectionToken) {
+    res.status(401).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+  if (!isExecutionEnabled()) {
+    res.status(503).json({ error: "Supabase未設定" });
+    return;
+  }
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+
+  const rawSymbol = req.query["symbol"];
+  const rawTf     = req.query["timeframe"];
+  const rawFrom   = req.query["from"];
+  const rawTo     = req.query["to"];
+
+  if (typeof rawSymbol !== "string" || !rawSymbol) {
+    res.status(400).json({ error: "symbol must be a non-empty string" });
+    return;
+  }
+  if (typeof rawTf !== "string" || !rawTf || !CUSTOMER_BAR_TFS.has(rawTf)) {
+    res.status(400).json({ error: `timeframe must be one of: ${[...CUSTOMER_BAR_TFS].join(",")}` });
+    return;
+  }
+  if (typeof rawFrom !== "string" || isNaN(new Date(rawFrom).getTime())) {
+    res.status(400).json({ error: "from must be a valid ISO 8601 timestamp" });
+    return;
+  }
+  if (typeof rawTo !== "string" || isNaN(new Date(rawTo).getTime())) {
+    res.status(400).json({ error: "to must be a valid ISO 8601 timestamp" });
+    return;
+  }
+
+  const canonical = canonicalizeSymbol(rawSymbol);
+  const result    = await countCustomerBarsInRange(connectionId, canonical, rawTf, rawFrom, rawTo);
+  if (result.error) {
+    res.status(503).json({ ok: false, error: result.error });
+    return;
+  }
+  res.json({ ok: true, connection_id: connectionId, symbol: canonical, timeframe: rawTf, from: rawFrom, to: rawTo, bar_count: result.count });
+});
+
+/** V2 Stage 2: Backfill completion notification + summary log */
+app.post("/market-data/backfill/complete", auth, async (req, res) => {
+  const connectionId    = req.headers["x-connection-id"]    as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+  if (!connectionId || !connectionToken) {
+    res.status(401).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+  if (!isExecutionEnabled()) {
+    res.status(503).json({ error: "Supabase未設定" });
+    return;
+  }
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
+
+  const body = req.body as {
+    symbol:      string;
+    timeframe:   string;
+    from_utc?:   string;
+    to_utc?:     string;
+    bars_sent:   number;
+    bars_accepted: number;
+  };
+
+  if (typeof body.symbol !== "string" || !body.symbol) {
+    res.status(400).json({ error: "symbol is required" });
+    return;
+  }
+  if (typeof body.timeframe !== "string" || !CUSTOMER_BAR_TFS.has(body.timeframe)) {
+    res.status(400).json({ error: "valid timeframe is required" });
+    return;
+  }
+  if (typeof body.bars_sent !== "number" || body.bars_sent < 0) {
+    res.status(400).json({ error: "bars_sent must be a non-negative number" });
+    return;
+  }
+
+  const canonical    = canonicalizeSymbol(body.symbol);
+  const barsSent     = body.bars_sent ?? 0;
+  const barsAccepted = typeof body.bars_accepted === "number" ? body.bars_accepted : barsSent;
+
+  // Completeness verification: count actual bars in DB for the reported range
+  let barsVerified: number | undefined;
+  let gapRemaining = false;
+  if (body.from_utc && body.to_utc) {
+    const countResult = await countCustomerBarsInRange(connectionId, canonical, body.timeframe, body.from_utc, body.to_utc);
+    if (!countResult.error) {
+      barsVerified = countResult.count;
+      gapRemaining = countResult.count < barsSent;
+    }
+  }
+
+  const summary: BackfillSummary = {
+    connection_id:    connectionId,
+    user_id:          flags.userId,
+    canonical_symbol: canonical,
+    timeframe:        body.timeframe,
+    from_utc:         body.from_utc,
+    to_utc:           body.to_utc,
+    bars_sent:        barsSent,
+    bars_accepted:    barsAccepted,
+    bars_verified:    barsVerified,
+    gap_remaining:    gapRemaining,
+    source:           "bridge_recovery",
+  };
+
+  await logCustomerBackfill(summary);
+
+  console.log(`[backfill/complete] ${connectionId} ${canonical}:${body.timeframe} sent=${barsSent} accepted=${barsAccepted} verified=${barsVerified ?? "?"} gap=${gapRemaining}`);
+  res.json({ ok: true, bars_sent: barsSent, bars_accepted: barsAccepted, bars_verified: barsVerified, gap_remaining: gapRemaining });
 });
 
 // -----------------------------------------------------------------
