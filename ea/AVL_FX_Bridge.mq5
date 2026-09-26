@@ -293,10 +293,21 @@ void OnTimer()
    }
 
    // [C] Backfill: bounded — process ONE timeframe per timer tick.
+   // P1-1: Use separate backfill elapsed clock, NOT elapsedHb (which resets every 15s)
    if(InpOHLCEnabled) {
-      bool periodicBackfill = (elapsedHb >= (uint)(InpBackfillSec * 1000) ||
-                               g_LastBackfillTick == 0);
-      if(g_BackfillNeeded || periodicBackfill) {
+      uint elapsedBackfill = nowMs - g_LastBackfillTick;
+      bool periodicBackfill = (g_LastBackfillTick == 0 ||
+                               elapsedBackfill >= (uint)(InpBackfillSec * 1000));
+      // Keep running while cursors are non-zero (unfinished recovery batches)
+      bool hasActiveCursor = false;
+      int tfLen = ArraySize(g_TfList);
+      for(int ci = 0; ci < tfLen; ci++) {
+         if(ci < ArraySize(g_RecoveryCursor) && g_RecoveryCursor[ci] != 0) {
+            hasActiveCursor = true;
+            break;
+         }
+      }
+      if(g_BackfillNeeded || periodicBackfill || hasActiveCursor) {
          int tfTotal = ArraySize(g_TfList);
          // Process one TF this tick; next tick processes the next TF
          int idx = g_BackfillTFIndex % tfTotal;
@@ -477,17 +488,23 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
    datetime now         = TimeCurrent();
 
    bool gapExists = (!hasLastBar || (now > lastBarSec + tfPeriodSec));
-   if(!gapExists) {
-      Print("[Bridge][C] No gap detected: ", g_Symbol, ":", tfStr);
-      if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) g_RecoveryCursor[tfIdx] = 0;
+
+   // P1-3: An active cursor means recovery is still in progress.
+   // Do NOT declare recovery complete just because the DB watermark advanced
+   // (realtime Module_B may have written bars that skip an older gap).
+   datetime cursor = (tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor))
+      ? g_RecoveryCursor[tfIdx] : 0;
+   bool cursorActive = (cursor > 0);
+
+   if(!gapExists && !cursorActive) {
+      Print("[Bridge][C] No gap and no active cursor: ", g_Symbol, ":", tfStr);
       return;
    }
 
-   // P1-1: Set recovery cursor to gap start IMMEDIATELY on gap detection.
-   // This ensures realtime Module_B writes can't advance lastBarSec past the cursor
-   // before the first POST succeeds. Cursor starts at lastBarSec (or 0 if no history).
-   if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor) && g_RecoveryCursor[tfIdx] == 0) {
+   // P1-1: Set recovery cursor to gap start on FIRST detection (before any POST).
+   if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor) && !cursorActive) {
       g_RecoveryCursor[tfIdx] = hasLastBar ? lastBarSec : 0;
+      cursor = g_RecoveryCursor[tfIdx];
    }
 
    // Step 3: Calculate how many bars to fetch
@@ -511,16 +528,17 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
       // P1-1: Use recovery cursor independently of DB watermark.
       // Once a recovery session is started (cursor != 0), use cursor ONLY — never the DB
       // watermark (lastBarSec) which advances when realtime bars are written by Module_B.
-      datetime recoveryCursor = (tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor))
-         ? g_RecoveryCursor[tfIdx] : 0;
-      datetime startFrom = (recoveryCursor > 0) ? recoveryCursor : lastBarSec;
-      // P1-3: Use startFrom + 1 second so CopyRates uses MT5-native bar boundaries.
-      // Adding tfPeriodSec fails for MN1 (calendar months aren't fixed-duration).
-      // CopyRates time-range form returns bars whose open >= fromTime, respecting actual boundaries.
-      datetime fromTime = startFrom + 1;  // 1 second past cursor = start of next bar
-      datetime toTime   = now - 60;        // exclude any currently forming bar (conservatively 60s)
+      datetime startFrom = (cursor > 0) ? cursor : lastBarSec;
+      datetime fromTime = startFrom + 1;  // 1 second past cursor — CopyRates uses actual bar boundaries
+
+      // P1-2: Exclude forming candle using its actual opening time, not a fixed offset.
+      // iTime(sym, tf, 0) = opening time of the currently forming bar.
+      // Any bar with open time < forming bar open time is confirmed.
+      datetime formingOpen = iTime(g_Symbol, tf, 0);
+      datetime toTime = (formingOpen > 0) ? formingOpen - 1 : now - (datetime)tfPeriodSec;
       if(fromTime >= toTime) {
-         Print("[Bridge][C] Recovery complete or no gap: ", g_Symbol, ":", tfStr);
+         // Recovery is complete: cursor has reached confirmed bars
+         Print("[Bridge][C] Recovery complete: ", g_Symbol, ":", tfStr);
          if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) g_RecoveryCursor[tfIdx] = 0;
          return;
       }
@@ -1248,7 +1266,8 @@ datetime ParseISO(const string iso)
                     + StringSubstr(datePart, 5, 2) + "."
                     + StringSubstr(datePart, 8, 2) + " "
                     + timePart;
-   int gmtOffset = (int)(TimeCurrent() - TimeGMT());
+   // P1-4: Use TimeTradeServer() for GMT offset — TimeCurrent() is stale during weekends/outages.
+   int gmtOffset = (int)(TimeTradeServer() - TimeGMT());
    return StringToTime(converted) + gmtOffset;
 }
 
