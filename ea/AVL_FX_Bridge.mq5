@@ -169,6 +169,13 @@ int OnInit()
    ArrayResize(g_RecoveryCursor, ArraySize(g_TfList));
    ArrayInitialize(g_RecoveryCursor, 0);
 
+   // Pre-set cursors from DB BEFORE EventSetTimer (before OnTick can write).
+   // This anchors recovery boundaries at EA-startup watermarks, preventing
+   // realtime OnTick writes from advancing the DB past the pre-gap boundary.
+   if(InpOHLCEnabled) {
+      Module_C_PreInitCursors();
+   }
+
    Print("==============================================");
    Print("  AVL Bridge V2 (Unified) v", BRIDGE_VERSION);
    Print("  Symbol      : ", g_Symbol);
@@ -449,6 +456,37 @@ void Module_B_SendBar(ENUM_TIMEFRAMES tf, int shift)
 //  MODULE C: Historical Data — Backfill / Recovery (V2 Stage 2) //
 //=================================================================//
 
+// Pre-initialize recovery cursors from DB watermarks AT STARTUP.
+// Called from OnInit BEFORE EventSetTimer — guarantees no OnTick writes can
+// advance the DB watermark before the cursor is anchored.
+// Non-blocking: failed queries leave cursor at 0 (fallback to periodic recovery).
+void Module_C_PreInitCursors()
+{
+   string encodedSymbol = g_Symbol;
+   StringReplace(encodedSymbol, "#", "%23");
+   int tfCount = ArraySize(g_TfList);
+   for(int i = 0; i < tfCount; i++) {
+      string tfStr = TF_ToString(g_TfList[i]);
+      char   req[], res[];
+      string headers = BuildHeaders();
+      string resHdr;
+      string url = InpGatewayURL
+         + "/market-data/last-bar?symbol=" + encodedSymbol
+         + "&timeframe=" + tfStr;
+      int code = WebRequest("GET", url, headers, 5000, req, res, resHdr);
+      if(code == 200 && ArraySize(res) > 0) {
+         string resp     = CharArrayToString(res);
+         string lastUtc  = JsonGetStr(resp, "last_bar_utc");
+         if(StringLen(lastUtc) > 5) {
+            g_RecoveryCursor[i] = ParseISO(lastUtc);
+            Print("[Bridge][C] Startup cursor[", tfStr, "]=", TimeToString(g_RecoveryCursor[i]));
+         }
+      }
+      Sleep(20);
+   }
+   g_BackfillNeeded = true;
+}
+
 // Module_C_BackfillAll is no longer called directly from OnTimer.
 // Processing is done one TF per timer tick via Module_C_BackfillTF(tf, idx).
 
@@ -492,12 +530,12 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
       ? g_RecoveryCursor[tfIdx] : 0;
    bool cursorActive = (cursor > 0);
 
-   // P1-1: IMMEDIATELY anchor the cursor to lastBarSec (current DB watermark).
-   // Do this BEFORE gap detection so that realtime writes after this point
-   // cannot shift the cursor to a post-gap value.
+   // cursor was pre-set in Module_C_PreInitCursors (OnInit, before any OnTick write).
+   // Do NOT re-initialize from DB here — that would expose the race condition.
+   // If cursor == 0 (DB query failed in OnInit), fall back to DB watermark as approximation.
    if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor) && !cursorActive && hasLastBar) {
-      g_RecoveryCursor[tfIdx] = lastBarSec;
-      cursor      = lastBarSec;
+      g_RecoveryCursor[tfIdx] = lastBarSec;  // fallback only (OnInit DB query failed)
+      cursor       = lastBarSec;
       cursorActive = (cursor > 0);
    }
 
@@ -549,10 +587,16 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
       // No history: get most recent N confirmed bars using shift=1 (skip forming)
       n = CopyRates(g_Symbol, tf, 1, barsToFetch, rates);
    }
-   if(n <= 0) {
-      // P1-2: No bars available in range — recovery is complete for this TF.
-      // Clear cursor to prevent infinite backfill cycling every timer tick.
-      Print("[Bridge][C] CopyRates: no bars in recovery range (complete): ", g_Symbol, ":", tfStr);
+   if(n < 0) {
+      // CopyRates error (-1): history unavailable or still downloading.
+      // Retain cursor for retry — do NOT clear (gap still unresolved).
+      Print("[Bridge][C] CopyRates error (history unavailable?), retrying: ", g_Symbol, ":", tfStr);
+      return;
+   }
+   if(n == 0) {
+      // Confirmed empty range: no bars in fromTime..toTime.
+      // Recovery complete for this TF — clear cursor.
+      Print("[Bridge][C] Recovery complete (no more bars in range): ", g_Symbol, ":", tfStr);
       if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) g_RecoveryCursor[tfIdx] = 0;
       return;
    }
