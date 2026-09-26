@@ -726,6 +726,9 @@ app.post("/bars/bulk", auth, async (req, res) => {
   if (!existing || bars.length >= existing.length) {
     const sorted = dedupAndSort(normalized);
     connectionMarketStore.upsertBars(connId, symbol, timeframe, sorted, MAX_BARS);
+    // Legacy barStore kept in sync for GET /bars/:sym/:tf and persistSave() (removed Stage 9)
+    const legBarsKey = storeKey(symbol, timeframe);
+    barStore.set(legBarsKey, sorted.slice(-MAX_BARS));
     console.log(`[Bulk] ${key}: ${sorted.length}本`);
     persistSave(); // Bulk受信は重要データなので即座に保存
   }
@@ -802,6 +805,9 @@ app.post("/bridge/bars/bulk", auth, async (req, res) => {
   if (!existing || bars.length >= existing.length) {
     const sorted = dedupAndSort(normalized);
     connectionMarketStore.upsertBars(connectionId, symbol, timeframe, sorted, MAX_BARS);
+    // Legacy barStore kept in sync for GET /bars/:sym/:tf and persistSave() (removed Stage 9)
+    const legBulkKey = storeKey(symbol, timeframe);
+    barStore.set(legBulkKey, sorted.slice(-MAX_BARS));
     console.log(`[Bridge/Bulk] ${key}: ${sorted.length}本`);
     persistSave();
   }
@@ -2104,10 +2110,12 @@ async function restoreFromSupabase(): Promise<void> {
         // bars is in desc order from DB; reverse to asc for merging.
         const restored_asc = bars.reverse();
         const current = connectionMarketStore.getBars(connectionId, sym, tf);
+        // Merge: keep all live data, add restored history that fills gaps.
+        // Use MAX_BARS as retention limit (not `count`) to avoid truncating live history.
         const merged = current.length > 0
-          ? dedupAndSort([...restored_asc, ...current]).slice(-count)
-          : restored_asc.slice(-count);
-        connectionMarketStore.upsertBars(connectionId, sym, tf, merged, count);
+          ? dedupAndSort([...restored_asc, ...current]).slice(-MAX_BARS)
+          : restored_asc.slice(-MAX_BARS);
+        connectionMarketStore.upsertBars(connectionId, sym, tf, merged, MAX_BARS);
         restored += bars.length;
         console.log(`[Restore] ${connectionId}:${sym}:${tf} → ${bars.length}本復元`);
       }
