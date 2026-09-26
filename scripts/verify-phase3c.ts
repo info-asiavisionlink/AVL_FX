@@ -5,6 +5,7 @@
  *   npx tsx scripts/verify-phase3c.ts
  */
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 import {
   getNextVersion,
   isValidTransition,

@@ -1,6 +1,7 @@
 /**
  * add_curated_eas_v4.ts — H4ベース + 一目/AO特化追加候補
  */
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 export {};
 
 import type { Bar }          from "@/infrastructure/analysis/types";

@@ -47,8 +47,9 @@ Git now reproduces the tree: a clean `git worktree` of `eae59d8` passes `npm ci`
 build, gateway ci/build/test (111/111) and all 51 test files, with no env and no copied files.
 Commits: `9bfcc21` (recovery), `eae59d8` (live-DB test opt-in guard).
 
-Open P1 for the Owner: a backtest integration test was run once against the `.env.local` Supabase
-(possibly Production) and wrote 53 test rows + 1 strategy update. Details, row ids and Owner
+Open P1 for the Owner: a backtest integration test was run once against the `.env.local` Supabase —
+**proven Production** (`bsmofroshpmomjwfxigh`, same as avl-fx.vercel.app) — and wrote 53 test rows + 1 strategy update.
+Incident + proposed (unexecuted) cleanup: `reports/security/`. Mutating scripts now need `AVL_ALLOW_LIVE_SCRIPT=1`. Details, row ids and Owner
 decisions: `reports/repository/AVL-FX-git-reproducibility-final-2026-09-27.md`.
 
 Also for the Owner: move the repo out of iCloud-synced `~/Desktop` (creates `* 2.*` copies),

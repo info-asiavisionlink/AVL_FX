@@ -132,7 +132,7 @@
       "038_customer_ai_trader_profile"
     ]
   },
-  "updated_at": "2026-09-27T01:00:00+09:00",
+  "updated_at": "2026-09-27T01:45:00+09:00",
   "human_gate_action": "APPLY_MIGRATION_038_PRODUCTION",
   "human_gate_risk": "HIGH — schema change on Customer Supabase; deploy ordering dependency",
   "remediation_window": null,
@@ -142,7 +142,7 @@
   "self_review_status": "PASS",
   "repository_recovery": {
     "status": "IN_PROGRESS",
-    "reason": "Technically reproducible (clean checkout PASS at eae59d8); blocked on P1 incident: live-DB test write to the .env.local Supabase project (possibly Production) — Owner review required",
+    "reason": "Clean checkout PASS; P1 incident: test wrote 53 rows + 1 strategy_registry update to PRODUCTION Supabase bsmofroshpmomjwfxigh (proven). Cleanup (Decision B) and credential rotation (Decision C) await Owner Human Gate.",
     "base_commit": "2520b68",
     "recovery_commit": "9bfcc21",
     "safety_commit": "eae59d8",
@@ -154,10 +154,16 @@
       "job_id": "e007b9f3-67ff-4d96-aa0f-3ae3d4e759a2",
       "strategy_id": "4582c579-8990-4790-a000-e33b2f68acbb",
       "rows": "backtest_jobs 1, backtest_results 1, backtest_trades 51, strategy_registry 1 updated",
-      "at": "2026-09-26T15:27:46Z"
+      "at": "2026-09-26T15:27:46Z",
+      "project": "PRODUCTION (bsmofroshpmomjwfxigh)",
+      "report": "reports/security/AVL-FX-supabase-test-write-incident-2026-09-27.md",
+      "cleanup_sql": "reports/security/AVL-FX-incident-cleanup-PROPOSED-NOT-EXECUTED-2026-09-27.sql (NOT EXECUTED)"
     },
-    "security_follow_up": "ROTATE service-role credential previously exposed in dev output (Owner Human Gate)",
+    "security_follow_up": "SERVICE_ROLE_ROTATION_REQUIRED=YES (current Production key appears in 12 prior Claude session transcripts); also SUPABASE_PAT, OpenAI, CRON/WATCHER/MT5_GATEWAY/EA_REGISTRY secrets — Owner Human Gate",
     "report": "reports/repository/AVL-FX-git-reproducibility-final-2026-09-27.md",
-    "reviewer": "Claude Opus 5.5"
+    "reviewer": "Claude Opus 5.5",
+    "safety_guards": "integration test opt-in (eae59d8); scripts/lib/live-guard.ts on 23 mutating scripts (AVL_ALLOW_LIVE_SCRIPT=1); test helpers force test secrets",
+    "production_deploy_note": "avl-fx.vercel.app production deployment was created via Vercel CLI 2026-09-26 04:17 JST; no git commit recorded",
+    "ea_binary": "public/ea/AVL_FX_Bridge.ex5 == 2026-09-11 build (v4 era); ea/AVL_FX_Bridge.mq5 is v5.0 (2026-09-26) — rebuild required; MQL5 compile NOT VERIFIED"
   }
 }

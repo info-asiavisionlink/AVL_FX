@@ -17,6 +17,7 @@
  * Usage: npx tsx --env-file=.env.local scripts/phase5e_run_backtest.ts
  */
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 import type { Bar }          from "@/infrastructure/analysis/types";
 import type { StrategySpec } from "@/lib/strategySchema";
 import { runBacktest }       from "@/infrastructure/backtest/BacktestEngine";

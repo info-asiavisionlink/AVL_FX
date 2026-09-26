@@ -8,6 +8,7 @@
 //       既存スクリプト同様、Supabase REST API を直接 fetch する
 // ============================================================
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 export {};
 
 import type { Bar }          from "@/infrastructure/analysis/types";

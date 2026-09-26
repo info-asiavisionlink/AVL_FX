@@ -2,6 +2,7 @@
  * GOLD EAのバックテストをローカルエンジンで実行してDBに直接保存
  * トレードデータ (backtest_trades) も保存
  */
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 export {};
 
 import type { Bar }         from "@/infrastructure/analysis/types";

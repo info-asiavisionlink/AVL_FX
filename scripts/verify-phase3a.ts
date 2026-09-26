@@ -7,6 +7,7 @@
  * supabase-js を使わず直接 fetch で Supabase REST API を呼び出す (Node.js 20 対応)
  */
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 import OpenAI from "openai";
 import {
   buildAnalysisContext,

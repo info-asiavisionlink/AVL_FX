@@ -25,6 +25,7 @@
  *     [--expiry-sec  300]
  */
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 import { createClient } from "@supabase/supabase-js";
 import { createHash, randomUUID } from "crypto";
 

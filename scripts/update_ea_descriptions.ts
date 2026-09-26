@@ -2,6 +2,7 @@
  * update_ea_descriptions.ts — 全EAのdescriptionに事実確認レポートを記録
  * Usage: npx tsx --env-file=.env.local scripts/update_ea_descriptions.ts
  */
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 export {};
 
 import type { Bar }          from "@/infrastructure/analysis/types";

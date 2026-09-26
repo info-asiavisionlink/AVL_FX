@@ -15,6 +15,7 @@
  *   npx tsx --env-file=.env.local scripts/add_curated_eas.ts
  */
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 export {};
 
 import type { Bar }          from "@/infrastructure/analysis/types";

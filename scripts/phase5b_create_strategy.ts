@@ -1,6 +1,7 @@
 // scripts/phase5b_create_strategy.ts
 // Usage: npx tsx --env-file=.env.local scripts/phase5b_create_strategy.ts
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 export {};
 
 async function main() {

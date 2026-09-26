@@ -10,6 +10,7 @@
  *   npx tsx --env-file=.env.local scripts/phase8a_cross_asset_audit.ts
  */
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 export {};
 
 // ── Config ─────────────────────────────────────────────────────────────

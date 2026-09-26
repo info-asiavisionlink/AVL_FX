@@ -32,7 +32,7 @@ ENV_DEPENDENT_TEST: Stage 4 smoke #1/#3 need the local throwaway Postgres on `12
 
 ## Incident (P1, open — Owner Human Gate)
 
-While comparing a clean-checkout failure, `src/infrastructure/backtest/__tests__/integration.test.ts` was run once in the original directory **without first reading it**. It loads `.env.local` and runs a real backtest with the service-role key against that Supabase project (the one the app's `.env.local` uses; it may be Production — not verifiable from here).
+While comparing a clean-checkout failure, `src/infrastructure/backtest/__tests__/integration.test.ts` was run once in the original directory **without first reading it**. It loads `.env.local` and runs a real backtest with the service-role key against that Supabase project (the one the app's `.env.local` uses; **proven Production** in `reports/security/AVL-FX-supabase-test-write-incident-2026-09-27.md`).
 
 Rows written at 2026-09-26T15:27:46–48Z (= 2026-09-27 00:27 JST), identified by read-only queries:
 
@@ -58,7 +58,7 @@ Owner decisions: (1) confirm whether this project is Production; (2) whether to 
 - Staged/added/modified files: no findings (JWT, OpenAI/Stripe/GitHub/Slack keys, private keys, DB URLs with passwords, `sb_secret_`, `*_SECRET/_KEY/_TOKEN=` values). `.env.example` files contain placeholders only.
 - Tracked tree at `eae59d8`: no findings. No `.env*` other than the two templates, no `node_modules`/`.next`/`dist`.
 - History: two pattern hits, both false positives (zod test-fixture JWT in `apps/console/node_modules`, supabase-js `startsWith("sb_secret_")` literal in `.next` chunks) — no real credential in git history.
-- Local ignored files hold live credentials: `.env.local` (service_role JWT, OpenAI key) and `gateway/.env` (service_role JWT of a second project). Correctly ignored.
+- Local ignored files hold live credentials: `.env.local` (service_role JWT, OpenAI key) and `gateway/.env` (service_role JWT of the **same** Production project — corrected 2026-09-27; the earlier "second project" came from mixing in the Console repo's env). Correctly ignored.
 - **SECURITY FOLLOW-UP REQUIRED — ROTATE CREDENTIAL**: a Supabase service-role JWT was previously exposed in development output; which project it belonged to is not known here. Rotate under Owner Human Gate. Nothing was rotated.
 
 ## Remaining in the original working directory

@@ -2,6 +2,7 @@
  * 新規登録EA全42本のバックテストを本番APIで実行してDB保存
  * Usage: npx tsx --env-file=.env.local scripts/run_backtest_all_new_eas.ts
  */
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 export {};
 
 const SB_URL  = process.env.NEXT_PUBLIC_SUPABASE_URL!;

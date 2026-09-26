@@ -9,6 +9,7 @@
  *   - SELL戦略は諦め、BUY特化で高精度を狙う
  */
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 export {};
 
 import type { Bar }          from "@/infrastructure/analysis/types";

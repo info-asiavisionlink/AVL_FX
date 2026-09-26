@@ -2,6 +2,7 @@
 // Supabase Management API でマイグレーションを実行する
 // Usage: npx tsx --env-file=.env.local scripts/apply-migration.ts
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 import { readFileSync } from "fs";
 import { resolve } from "path";
 

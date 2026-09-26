@@ -6,6 +6,7 @@
  *   npx tsx --env-file=.env.local scripts/run_backtest_for_new_eas.ts
  */
 
+import "./lib/live-guard"; // refuses unless AVL_ALLOW_LIVE_SCRIPT=1
 export {};
 
 const BASE_URL = "https://avl-fx.vercel.app";  // 本番URL
