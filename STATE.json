@@ -132,7 +132,7 @@
       "038_customer_ai_trader_profile"
     ]
   },
-  "updated_at": "2026-09-27T02:35:00+09:00",
+  "updated_at": "2026-09-27T02:50:00+09:00",
   "human_gate_action": "APPLY_MIGRATION_038_PRODUCTION",
   "human_gate_risk": "HIGH — schema change on Customer Supabase; deploy ordering dependency",
   "remediation_window": null,
@@ -169,14 +169,16 @@
   "remediation_statuses": {
     "REPOSITORY_RECOVERY": "COMPLETE",
     "INCIDENT_DATA_REMEDIATION": "COMPLETE",
-    "SERVICE_ROLE_ROTATION": "COMPLETE — legacy JWT keys disabled on bsmofroshpmomjwfxigh (old key 401 since 2026-09-26T17:28:06Z); all consumers on sb_secret key; health PASS",
+    "SERVICE_ROLE_ROTATION": "COMPLETE — TV legacy JWT disabled; old key 401; all consumers on sb_secret",
     "CRON_ROTATION": "PENDING — bundled with service_role window (Vercel redeploy + Railway restart)",
     "WATCHER_ROTATION": "PENDING — bundled with service_role window",
     "OTHER_CREDENTIAL_ROTATION": "PENDING_HUMAN — OpenAI, Google, Resend, TwelveData (dashboard); EA_REGISTRY bundled; SUPABASE_PAT already 401",
     "MT5_GATEWAY_ROTATION": "PLANNED — dual-secret Gateway deploy required; customer EAs use per-connection tokens (unaffected)",
     "EA_BINARY_READINESS": "BUILT_AND_VERIFIED v5.00 in ea/dist; distribution pending V2 deployment",
     "DEPLOYMENT_READINESS": "NOT READY",
-    "CREDENTIAL_ROTATION": "PARTIAL — service_role COMPLETE; CRON/WATCHER/MT5_GATEWAY/OpenAI/Google/EA_REGISTRY/Resend/TwelveData pending (Owner-deferred)"
+    "CREDENTIAL_ROTATION": "PARTIAL — service_role COMPLETE; CRON/WATCHER/MT5_GATEWAY/OpenAI/Google/EA_REGISTRY/Resend/TwelveData deferred by Owner",
+    "LOCAL_ENV_CLEANUP": "COMPLETE — .env.local/gateway .env: dead legacy key, candidate key, PATs removed; ENV2 deleted; no Production privileged Supabase credential on local disk in TV repo",
+    "GIT_PUSH_READY": "YES (Trading View repo) — not pushed"
   },
   "open_p1": [],
   "open_p2": [
@@ -186,5 +188,8 @@
     "EA v5 distribution pending V2 deployment",
     "Production deployed via CLI (no git commit linkage)",
     "Console project still on legacy JWT keys (separate rotation)"
+  ],
+  "external_findings": [
+    "AVL-FX console repo (separate project): scripts/migrate-bar-data.ts (commit cfd1316, on origin/main) hardcodes the Console project ACTIVE service_role JWT (DST_KEY) and the now-disabled TV legacy key (SRC_KEY) — Console P1, handle in Console repo"
   ]
 }

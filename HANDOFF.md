@@ -41,19 +41,20 @@ Migration `038_customer_ai_trader_profile.sql`: **IMPLEMENTED / VERIFIED LOCALLY
 2. Only then deploy the Stage 5 application code. Deploying code first makes every trader fail closed with `config_error` (safe, but analysis stops).
 3. Update `STATE.json` `production_state.db_migration_applied`.
 
-## Repository recovery / incident remediation (2026-09-27)
+## Repository recovery / incident remediation (2026-09-27) — CLOSED
 
 | Track | Status |
 |---|---|
-| REPOSITORY_RECOVERY | COMPLETE (clean checkout PASS) |
-| INCIDENT_DATA_REMEDIATION | COMPLETE: 53 incident rows deleted on Production after 9/9 pre-checks; strategy_registry untouched |
-| CREDENTIAL_ROTATION | **PENDING OWNER**: create a new Supabase secret key in the Dashboard, then follow `reports/security/AVL-FX-service-role-rotation-runbook-2026-09-27.md` (CRON/WATCHER/EA_REGISTRY in the same window). MT5_GATEWAY: separate plan (runbook §D) |
-| EA_BINARY_READINESS | v5.00 built and verified in `ea/dist/`; `public/ea` still v4 until the V2 Gateway is deployed |
-| DEPLOYMENT_READINESS | NOT READY |
+| REPOSITORY_RECOVERY | COMPLETE (clean checkout PASS without any env file) |
+| INCIDENT_DATA_REMEDIATION | COMPLETE |
+| SERVICE_ROLE_ROTATION | COMPLETE: TV legacy JWT keys disabled, old key 401, Gateway/TV/Console on the new `sb_secret_` key |
+| Other credential rotation | Deferred by Owner (CRON, WATCHER, MT5_GATEWAY, OpenAI, Google, EA_REGISTRY, Resend, TwelveData) |
+| EA_BINARY_READINESS | v5.00 verified in `ea/dist/`, distribution waits for the V2 deployment |
+| DEPLOYMENT_READINESS | NOT READY (migrations 035–038, V2 Gateway, EA swap, DEV Supabase) |
+| GIT_PUSH_READY | YES (not pushed) |
 
-Safety: mutating scripts need `AVL_ALLOW_LIVE_SCRIPT=1`, and a Production target also needs `AVL_ACK_PRODUCTION_MUTATION=<ref>`.
-Dev/Prod separation plan: `reports/repository/AVL-FX-development-environment-separation-plan.md`.
-Nothing has been pushed or deployed.
+Local `.env.local` no longer holds a Supabase privileged key. Production maintenance needs a temporary credential under a Human Gate.
+Console repo finding (separate system): `scripts/migrate-bar-data.ts` hardcodes the Console project's active service_role key.
 
 ## How to run the tests
 
