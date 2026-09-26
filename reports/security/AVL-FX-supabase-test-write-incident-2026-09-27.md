@@ -1,6 +1,6 @@
 # Incident — Integration test wrote to the Production Supabase
 
-Date: 2026-09-27 · Author: Claude Opus 5.5 (the agent that caused it) · Severity: P1 · Status: OPEN — Owner decisions pending
+Date: 2026-09-27 · Author: Claude Opus 5.5 (the agent that caused it) · Severity: P1 · Status: **DATA REMEDIATED 2026-09-27** (Owner Decision B) · Credential rotation PENDING_HUMAN_ACTION
 No secret values appear in this report.
 
 ## 1. Summary
@@ -98,3 +98,48 @@ Also recommended under the same gate: rotate `SUPABASE_PAT` (Management API, can
 - **C.** Credential rotation (service role + items in §8).
 - Optional: PITR/log lookup for the previous `strategy_registry.updated_at` / `backtest_status`.
 - Structural: create a separate non-production Supabase for development/testing. Today local dev = Production.
+
+
+## 11. Remediation executed — 2026-09-27 (Owner Decisions A, B)
+
+**A.** Owner acknowledged `bsmofroshpmomjwfxigh` = Production.
+**B.** Owner approved deleting exactly the incident rows; `strategy_registry` must not be modified.
+
+### Execution method
+
+The Supabase Management API rejected the local `SUPABASE_PAT` (HTTP 401, revoked/expired), and no DB password or CLI session exists locally. A multi-statement SQL transaction was therefore not possible. The cleanup ran as **one PostgREST `DELETE` statement** on `backtest_jobs`, which is **one database transaction**:
+
+- Filter: `id=e007b9f3-…` AND `strategy_id=4582c579-…` AND `status=COMPLETED` AND `period_label=AVAILABLE` AND `bar_count=1026` AND `created_at` in [15:27:46Z, 15:27:47Z).
+- `Prefer: handling=strict, max-affected=1`: PostgREST 14.15 rolls back if more than one job row would be affected.
+- The child rows in `backtest_results` / `backtest_trades` are removed by `ON DELETE CASCADE` (migration 005) **inside the same transaction**. If the live FK were not CASCADE, the statement would have failed with an FK error and deleted nothing. `strategy_versions.best_job_id` (no cascade) had 0 references and would also have blocked the delete.
+- This differs from the approved "delete trades → results → job with per-step counts" shape. The per-step exact counts were proven immediately before (pre-check) and after (post-check) instead of inside the transaction.
+
+### Pre-conditions (read-only, immediately before) — 9/9 PASS
+
+job count 1 · job id/strategy/status/created_at exact · result count 1 · result `681f708d-…` belongs to the job · trades 51 · all trades belong to the job and strategy · unexpected FK children 0 (`strategy_ai_analyses`, `strategy_versions.best_job_id`) · historical 2026-09-19 job `5edaa25b-…` exists separately · `strategy_registry` row exists and is not a target. A full 42-table snapshot (counts + latest timestamps) was saved before execution.
+
+### Result
+
+- Executed 2026-09-26T16:01:38Z (2026-09-27 01:01 JST). HTTP 200, `Content-Range */1`, 1 job row returned: `e007b9f3-67ff-4d96-aa0f-3ae3d4e759a2`.
+
+### Post-cleanup verification (read-only)
+
+| Check | Result |
+|---|---|
+| incident job | 0 |
+| incident result (by id and by job) | 0 |
+| incident trades (by job, and each of the 51 snapshotted ids) | 0 |
+| historical job `5edaa25b` / its result / its trades | 1 / 1 / 225 (unchanged) |
+| `strategy_registry` `4582c579…` | exists, **byte-identical to the pre-snapshot** (`backtest_status=PASSED`, `updated_at` still the incident time — not modified per Decision B) |
+| table-level diff vs the 42-table snapshot | only `backtest_jobs` −1, `backtest_results` −1, `backtest_trades` −51; **no other table changed** (ai_traders, ai_trader_versions, customer_knowledge, execution_commands, ai_positions, mt5_connections, bar_data, trade_history, …) |
+| MT5 / execution / money | not touched |
+
+`strategy_registry.updated_at` remains the incident timestamp and `backtest_status` remains PASSED (previous value UNKNOWN; not restored by design).
+
+### Credential rotation
+
+See `reports/security/AVL-FX-secret-rotation-inventory-2026-09-27.md`. Nothing was rotated: every consumer requires a redeploy/restart or a dashboard action, which this task does not permit. The service_role key is P1 highest priority for the Owner.
+
+### Additional prevention (2026-09-27)
+
+`src/lib/safety/live-target-guard.ts`: a Production (or undeterminable) Supabase target now needs `AVL_ACK_PRODUCTION_MUTATION=<ref>` in addition to `AVL_ALLOW_LIVE_SCRIPT=1` / `AVL_ALLOW_LIVE_DB_INTEGRATION=1`. Verified: 23 scripts × 3 modes (no env, `.env.local`, opt-in without ack) = 69/69 refused, 0 external network attempts. Unit tests 8/8.

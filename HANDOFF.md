@@ -41,26 +41,25 @@ Migration `038_customer_ai_trader_profile.sql`: **IMPLEMENTED / VERIFIED LOCALLY
 2. Only then deploy the Stage 5 application code. Deploying code first makes every trader fail closed with `config_error` (safe, but analysis stops).
 3. Update `STATE.json` `production_state.db_migration_applied`.
 
-## Repository recovery (2026-09-27) — IN_PROGRESS (Owner review)
+## Repository recovery / incident remediation (2026-09-27)
 
-Git now reproduces the tree: a clean `git worktree` of `eae59d8` passes `npm ci`, typecheck,
-build, gateway ci/build/test (111/111) and all 51 test files, with no env and no copied files.
-Commits: `9bfcc21` (recovery), `eae59d8` (live-DB test opt-in guard).
+| Track | Status |
+|---|---|
+| REPOSITORY_RECOVERY | COMPLETE (clean checkout PASS) |
+| INCIDENT_DATA_REMEDIATION | COMPLETE: 53 incident rows deleted on Production after 9/9 pre-checks; strategy_registry untouched |
+| CREDENTIAL_ROTATION | **PENDING OWNER**: service_role key (P1) and others; see `reports/security/AVL-FX-secret-rotation-inventory-2026-09-27.md` |
+| EA_BINARY_READINESS | v5.00 built and verified in `ea/dist/`; `public/ea` still v4 until the V2 Gateway is deployed |
+| DEPLOYMENT_READINESS | NOT READY |
 
-Open P1 for the Owner: a backtest integration test was run once against the `.env.local` Supabase —
-**proven Production** (`bsmofroshpmomjwfxigh`, same as avl-fx.vercel.app) — and wrote 53 test rows + 1 strategy update.
-Incident + proposed (unexecuted) cleanup: `reports/security/`. Mutating scripts now need `AVL_ALLOW_LIVE_SCRIPT=1`. Details, row ids and Owner
-decisions: `reports/repository/AVL-FX-git-reproducibility-final-2026-09-27.md`.
-
-Also for the Owner: move the repo out of iCloud-synced `~/Desktop` (creates `* 2.*` copies),
-decide on the 52 locally deleted docs, confirm the Vercel root directory, rotate the previously
-exposed service-role key, push `main` (nothing has been pushed).
+Safety: mutating scripts need `AVL_ALLOW_LIVE_SCRIPT=1`, and a Production target also needs `AVL_ACK_PRODUCTION_MUTATION=<ref>`.
+Dev/Prod separation plan: `reports/repository/AVL-FX-development-environment-separation-plan.md`.
+Nothing has been pushed or deployed.
 
 ## How to run the tests
 
 ```
 npx tsc --noEmit
-npx tsx --test $(find src -name "*.test.ts" -not -path "*/helpers/*")   # backtest integration skips unless AVL_ALLOW_LIVE_DB_INTEGRATION=1
+npx tsx --test $(find src -name "*.test.ts" -not -path "*/helpers/*" -not -name "* [0-9].*")   # live integration test skips by default
 (cd gateway && npm test)
 npm run build
 ```

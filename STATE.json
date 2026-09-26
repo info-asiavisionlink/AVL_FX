@@ -132,7 +132,7 @@
       "038_customer_ai_trader_profile"
     ]
   },
-  "updated_at": "2026-09-27T01:45:00+09:00",
+  "updated_at": "2026-09-27T02:30:00+09:00",
   "human_gate_action": "APPLY_MIGRATION_038_PRODUCTION",
   "human_gate_risk": "HIGH — schema change on Customer Supabase; deploy ordering dependency",
   "remediation_window": null,
@@ -141,8 +141,8 @@
   "codex_status": "DEFERRED",
   "self_review_status": "PASS",
   "repository_recovery": {
-    "status": "IN_PROGRESS",
-    "reason": "Clean checkout PASS; P1 incident: test wrote 53 rows + 1 strategy_registry update to PRODUCTION Supabase bsmofroshpmomjwfxigh (proven). Cleanup (Decision B) and credential rotation (Decision C) await Owner Human Gate.",
+    "status": "COMPLETE",
+    "reason": "Git reproducible; clean checkout PASS; incident data remediated; credential rotation tracked separately (PENDING_HUMAN_ACTION)",
     "base_commit": "2520b68",
     "recovery_commit": "9bfcc21",
     "safety_commit": "eae59d8",
@@ -165,5 +165,15 @@
     "safety_guards": "integration test opt-in (eae59d8); scripts/lib/live-guard.ts on 23 mutating scripts (AVL_ALLOW_LIVE_SCRIPT=1); test helpers force test secrets",
     "production_deploy_note": "avl-fx.vercel.app production deployment was created via Vercel CLI 2026-09-26 04:17 JST; no git commit recorded",
     "ea_binary": "public/ea/AVL_FX_Bridge.ex5 == 2026-09-11 build (v4 era); ea/AVL_FX_Bridge.mq5 is v5.0 (2026-09-26) — rebuild required; MQL5 compile NOT VERIFIED"
-  }
+  },
+  "remediation_statuses": {
+    "REPOSITORY_RECOVERY": "COMPLETE",
+    "INCIDENT_DATA_REMEDIATION": "COMPLETE — 1 job/1 result/51 trades deleted 2026-09-26T16:01:38Z; strategy_registry untouched; post-verification PASS",
+    "CREDENTIAL_ROTATION": "ROTATION_PENDING_HUMAN_ACTION — service_role (P1, exposed, used by Vercel/Railway/Console), CRON/WATCHER (exposed, Railway), MT5_GATEWAY_SECRET (exposed, EA impact), OpenAI/Google/EA_REGISTRY/Resend/TwelveData; SUPABASE_PAT already rejected (401)",
+    "EA_BINARY_READINESS": "BUILT_AND_VERIFIED (v5.00, 0 errors/1 P3 warning, ea/dist) — DISTRIBUTION PENDING V2 DEPLOYMENT (production Gateway lacks V2 /market-data routes)",
+    "DEPLOYMENT_READINESS": "NOT READY — requires secret rotation, migrations 035-038 (Human Gate), V2 Gateway deploy, EA swap, DEV Supabase separation, push"
+  },
+  "open_p1": [
+    "Production service_role key exposed in AI session transcripts and still active (rotation pending Owner)"
+  ]
 }

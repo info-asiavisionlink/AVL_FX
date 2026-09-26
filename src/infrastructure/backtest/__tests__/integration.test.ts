@@ -13,8 +13,10 @@
  *   AVL_ALLOW_LIVE_DB_INTEGRATION=1 npx tsx src/infrastructure/backtest/__tests__/integration.test.ts
  */
 
-if (process.env.AVL_ALLOW_LIVE_DB_INTEGRATION !== "1") {
-  console.log("SKIP backtest integration: writes to a real Supabase; set AVL_ALLOW_LIVE_DB_INTEGRATION=1 against a non-production project.");
+import { checkLiveTarget } from "@/lib/safety/live-target-guard";
+const liveTarget = checkLiveTarget("AVL_ALLOW_LIVE_DB_INTEGRATION");
+if (!liveTarget.allowed) {
+  console.log(`SKIP backtest integration (writes to a real Supabase): ${liveTarget.reason}.`);
   process.exit(0);
 }
 
@@ -26,7 +28,7 @@ if (!globalThis.WebSocket) {
 }
 
 import { config } from "dotenv";
-if (process.env.AVL_ALLOW_LIVE_DB_INTEGRATION === "1") config({ path: ".env.local" });
+if (liveTarget.allowed) config({ path: ".env.local" });
 
 import { createAdminClient }  from "@/infrastructure/supabase/admin";
 import { runBacktestJob }     from "@/infrastructure/backtest/BacktestService";
