@@ -1,16 +1,16 @@
 {
   "project": "avl-fx",
   "version": "2.0.0",
-  "current_stage": "V2-Stage-3",
-  "stage_status": "IN_PROGRESS",
-  "last_builder_commit": "1522465",
-  "last_reviewed_commit": null,
+  "current_stage": "V2-Stage-5",
+  "stage_status": "COMPLETE",
+  "last_builder_commit": "09a974f",
+  "last_reviewed_commit": "09a974f",
   "review_cycle_count": 0,
   "last_test_status": "PASS",
-  "last_reviewer_status": "NOT_RUN",
+  "last_reviewer_status": "PASS",
   "pending_findings": [],
-  "human_gate_required": false,
-  "human_gate_reason": null,
+  "human_gate_required": true,
+  "human_gate_reason": "Migration 038 (and 035-037) not applied to Production. Stage 5 app code must not be deployed before 038 is applied (runtime fails closed: every trader → config_error).",
   "v1_safety_baseline": {
     "inherited_stages": [
       "V1-Stage-1",
@@ -46,6 +46,44 @@
       "completed_at": "2026-09-26T09:43:34.064Z",
       "commit": "11aa575",
       "codex_status": "PASS"
+    },
+    "V2-Stage-3": {
+      "status": "COMPLETE",
+      "completed_at": "2026-09-26T10:55:39.722Z",
+      "commit": "6d799c4",
+      "self_review_status": "PASS",
+      "codex_status": "DEFERRED",
+      "tests_status": "PASS",
+      "typecheck_status": "PASS",
+      "build_status": "PASS"
+    },
+    "V2-Stage-4": {
+      "status": "COMPLETE",
+      "completed_at": "2026-09-26T11:21:28.436Z",
+      "commit": "847d8ed",
+      "self_review_status": "PASS",
+      "codex_status": "DEFERRED",
+      "tests_status": "PASS",
+      "typecheck_status": "PASS",
+      "build_status": "PASS"
+    },
+    "V2-Stage-5": {
+      "status": "COMPLETE",
+      "frozen": true,
+      "completed_at": "2026-09-27T00:00:00+09:00",
+      "implementation_baseline_commit": "8b24d6a",
+      "commit": "09a974f",
+      "self_review_status": "PASS",
+      "reviewer": "Claude Opus 5.5",
+      "p0": 0,
+      "p1": 0,
+      "codex_status": "DEFERRED",
+      "tests_status": "PASS",
+      "typecheck_status": "PASS",
+      "build_status": "PASS",
+      "migration_038": "IMPLEMENTED / VERIFIED LOCALLY / NOT APPLIED TO PRODUCTION",
+      "report": "reports/builder/V2-Stage-5-self-review-2026-09-26.json",
+      "notes": "Recovered from interrupted session. 6 P1 found and fixed in 09a974f (see report)."
     }
   },
   "production_state": {
@@ -88,8 +126,18 @@
     ],
     "stage10c_active": false,
     "v2_migration_pending": [
-      "035_customer_bar_data"
+      "035_customer_bar_data",
+      "036_customer_backfill_logs",
+      "037_customer_knowledge",
+      "038_customer_ai_trader_profile"
     ]
   },
-  "updated_at": "2026-09-26T09:49:56.952Z"
+  "updated_at": "2026-09-27T00:00:00+09:00",
+  "human_gate_action": "APPLY_MIGRATION_038_PRODUCTION",
+  "human_gate_risk": "HIGH — schema change on Customer Supabase; deploy ordering dependency",
+  "remediation_window": null,
+  "typecheck_status": "PASS",
+  "build_status": "PASS",
+  "codex_status": "DEFERRED",
+  "self_review_status": "PASS"
 }

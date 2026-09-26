@@ -1,0 +1,156 @@
+{
+  "report_type": "CLAUDE_SELF_REVIEW",
+  "stage": "V2-Stage-5",
+  "scope": "Customer AI Trader Profile / Configuration",
+  "review_date": "2026-09-27",
+  "reviewer": "Claude Opus 5.5 (independent re-audit after interrupted session; Builder→Reviewer mode)",
+  "supersedes": "Unverified draft written by the interrupted session (reviewer 'Claude Sonnet 4.6', status PASS, never committed). Its conclusions were NOT relied upon; several were wrong (see recovery.previous_draft_errors).",
+  "implementation_baseline_commit": "8b24d6a",
+  "final_reviewed_code_commit": "09a974f",
+  "final_reviewed_code_commit_note": "The commit that adds this report/STATE/HANDOFF touches documentation only; code under review is identical to 09a974f.",
+  "status": "PASS",
+  "p0_count": 0,
+  "p1_count": 0,
+  "p1_found_and_fixed": 6,
+  "recovery": {
+    "initial_head": "8b24d6a",
+    "initial_stash_list": "empty",
+    "stash_forensics": "reflog 'reset: moving to HEAD' at 8b24d6a = git stash. Dangling stash commit 22d658e (WIP on main: 8b24d6a, index parent ca7eb6a, no untracked parent). Tracked-file diff between 22d658e and the working tree was empty → the stash had been popped back successfully; nothing lost, no apply needed. It contained only pre-existing unrelated working-tree changes, not Stage 5 code (Stage 5 code was already committed in 8b24d6a).",
+    "pre_existing_dirty_tree": "34 modified / 1096 deleted tracked files and ~140 untracked paths existed before Stage 5 (identical to stash 204baa6 taken at 9366c4a). Not part of Stage 5; left untouched.",
+    "previous_draft_errors": [
+      "Claimed smoke #2/#3 failures were pre-existing. Wrong: the 401 (unset WATCHER_SECRET) masked a Stage 5 regression; with secrets set, 847d8ed = 3/3 PASS and 8b24d6a = 1/3.",
+      "Claimed smoke #3 was skipped for lack of local Postgres. Wrong: it failed with 401 like #2.",
+      "Reported 'config loader verified'. The loader selected 3 columns that no migration creates; mocks could not detect it.",
+      "Did not detect that the Builder UI still sent knowledge_ids (422 on every creation) nor the H1 prompt camelCase/snake_case mismatch."
+    ]
+  },
+  "findings_fixed_in_09a974f": {
+    "P1-1": "customer-trader-config-loader SELECTed account_data_max_age_seconds, tick_data_max_age_seconds, max_spread_points — absent from migrations 001-038 and from the local 001-034 schema → PostgREST error → every trader config_error in H1 and M5. Fix: migration 038 adds the columns (NOT NULL, defaults 60/10/0 = buildDefaultRiskEngineProfile conservative values, CHECKed); schema-contract test parses migrations (mutation-verified).",
+    "P1-2": "Loader replaced NULL/invalid risk limits with defaults looser than the Risk Engine's (tick 30s vs 10s, exposure 0.2 vs 0.10), defaulted missing execution_mode, and silently used DEFAULT_DAY_TRADING when the profile row was missing. Fix: strict validation, INVALID_PROFILE / NO_TIMEFRAME_PROFILE / NO_ACTIVE_VERSION, no defaults for safety fields; kill_switch not explicitly false = engaged.",
+    "P1-3": "h1-strategy passed the camelCase config.version to a prompt builder reading snake_case keys (cast hid the type error) → trading_style, risk_profile, max_risk_per_trade, minimum_rr, news_sensitivity ignored (fixed defaults used). Fix: explicit toPromptProfile mapping; test asserts values reach the prompt (mutation-verified).",
+    "P1-4": "AITraderBuilder.tsx POSTed knowledge_ids; strict AITraderBuilderSaveSchema rejects it → 422 for every UI trader creation. Fix: payload no longer sends it; Builder no longer calls /api/knowledge (Console proxy).",
+    "P1-5": "Stage 4 production-path smoke regressed under Stage 5 (fixtures lacked a valid version/profile; execution_mode 'DEMO' is not a DB-valid value). Fix: fixtures follow the Stage 5 contract; helper sets test secrets so the 401 can no longer mask assertions; new fail-closed smoke cases.",
+    "P1-6": "position-review-runtime (open-position AI management, called from m5-close/h1-strategy) still called fetchActiveKnowledge() → Console Knowledge API was a required runtime dependency. Fix: Customer Knowledge loader (Stage 4), fail closed 503 KNOWLEDGE_UNAVAILABLE (mutation-verified)."
+  },
+  "other_changes_in_09a974f": [
+    "import-by-id: copies the source version's timeframe profile, compensating rollback on version/profile failure (previously left orphan traders).",
+    "h1-strategy: count ternary that always evaluated to 500 removed; H1 always fetched as scenario anchor (a profile without H1 previously meant permanent no_bar_data); TF sort uses exact '【TF — ' token over MN1..M1 (old prefix match would conflate M1/M15); config loaded before the ANALYZING transition; stale status/kill-switch re-check.",
+    "m5-close: dead `traderConfig ? … : null` branch and misleading 'fallback' comment removed; Risk Engine trader execution_mode/kill_switch taken from canonical config; watcher_events marked on config_error; stale status re-check.",
+    "migration 038: array_length('{}') is NULL so the non-empty CHECK passed empty arrays → cardinality(); timeframe value CHECK (M1..MN1); DROP POLICY IF EXISTS for idempotent re-run.",
+    "aiTraderSchema: duplicate timeframes rejected in timeframe profile.",
+    "task7b mutation tests were vacuous (payload always contained non-save keys → always threw); rebuilt with a control test; knowledge_ids rejection + timeframe profile validation tests added."
+  ],
+  "migration_038": {
+    "status": "IMPLEMENTED / VERIFIED LOCALLY / NOT APPLIED TO PRODUCTION",
+    "local_verification": "Throwaway Homebrew Postgres 15 (127.0.0.1:55435, data dir /private/tmp/avlfx_stage4_final_pg, 0 customer rows), inside BEGIN…ROLLBACK: applies on the 001-034 schema; re-run idempotent; backfill creates DAY_TRADING profile for existing versions; new risk columns default 60/10/0; rejected: empty entry/trend arrays, unsupported TF, bad style, interval 0, duplicate profile per version, tick age 0, negative spread, NULL account age; RLS enabled; policies = authenticated SELECT + service_role ALL; trader delete cascades version+profile; rollback leaves no table.",
+    "rls_isolation_test": "As role authenticated with auth.uid()=customer A: sees only A's profile (1 of 2), UPDATE affects 0 rows, INSERT for B's version denied (42501).",
+    "deploy_ordering": "Stage 5 application code requires 038. Deploying code first makes every trader fail closed (config_error) — safe but halts analysis. Apply 038 first (Human Gate)."
+  },
+  "architecture_verified": {
+    "customer_trading_view_is_builder_owner": "POST /api/traders + AITraderBuilder.tsx; import-by-id; no Console involvement",
+    "customer_supabase_is_config_source": "ai_traders + ai_trader_versions + ai_trader_timeframe_profiles via loadCustomerAITraderConfig",
+    "console_runtime_dependency": "NONE in AI Trader runtime paths (h1-strategy, m5-close entry, position review, trader creation). Remaining legacy: /api/knowledge Console proxy (no callers), knowledge-client.fetchActiveKnowledge, ai_trader_knowledge copy in import-by-id — Stage 9 cleanup.",
+    "console_holds": "Template / release / delivery / compatibility / admin metadata only (no change in Stage 5)"
+  },
+  "security_and_failure_semantics": {
+    "customer_A_to_B_config": "OWNER_MISMATCH (trader.user_id !== userId); forged userId variants tested; RLS verified in Postgres",
+    "forged_traderId": "NOT_FOUND",
+    "missing_active_version": "NO_ACTIVE_VERSION (also invalid current_version)",
+    "missing_timeframe_profile": "NO_TIMEFRAME_PROFILE (no default)",
+    "malformed_or_unsupported_timeframe": "INVALID_PROFILE (app) + CHECK (DB)",
+    "inactive_trader": "filtered by candidate query + re-checked on config (config_error:NOT_ACTIVE)",
+    "deleted_trader": "NOT_FOUND",
+    "missing_or_invalid_risk": "INVALID_PROFILE; Risk Engine additionally denies NaN",
+    "malformed_market": "INVALID_PROFILE",
+    "console_unavailable": "no effect on config/knowledge runtime paths",
+    "customer_supabase_unavailable": "SERVER_ERROR → config_error, no analysis/execution",
+    "db_partial_failure_on_create": "compensating delete + FK cascade (POST /api/traders, import-by-id)",
+    "duplicate_profile": "UNIQUE(ai_trader_version_id)",
+    "service_role_exposure": "admin client only in server routes; no client component imports; no NEXT_PUBLIC service key",
+    "browser_admin_bypass": "authenticated has SELECT-only RLS on profiles; writes only via server routes that check ownership",
+    "live_execution_accidental_enablement": "not possible: loader allows only ANALYSIS_ONLY | MANUAL_APPROVAL | DEMO_AUTONOMOUS (DB CHECK identical); new/imported traders ANALYSIS_ONLY",
+    "autonomous_execution_accidental_enablement": "not possible: creation paths never set DEMO_AUTONOMOUS; missing mode is INVALID_PROFILE, never defaulted"
+  },
+  "testing_results": {
+    "typecheck": "PASS (tsc --noEmit)",
+    "build": "PASS (next build)",
+    "stage5_config_loader": "68/68 PASS",
+    "stage5_position_review_knowledge": "2/2 PASS",
+    "stage4_production_path_smoke": "6/6 PASS (with and without WATCHER_SECRET/CRON_SECRET in env)",
+    "customer_knowledge_loader": "14/14 PASS",
+    "knowledge_client": "4/4 PASS",
+    "gateway": "111/111 PASS",
+    "ai_trader_and_trading_suites": "23 files, 207/207 PASS (incl. task7b 17/17, task7h 5/5, stage6e two-customer isolation 3/3, stage6f bar-data isolation 3/3, task7d risk enforcement 8/8)",
+    "mutation_checks": "schema-contract test fails if a 038 risk column is removed; H1 prompt test fails with the old camelCase alias; position-review test fails if Console fetchActiveKnowledge is restored"
+  },
+  "stage4_smoke_regression_analysis": {
+    "without_secrets": {
+      "847d8ed": "1/3 (#2,#3 = 401)",
+      "8b24d6a": "1/3 (#2,#3 = 401)",
+      "09a974f": "6/6"
+    },
+    "with_secrets": {
+      "847d8ed": "3/3",
+      "8b24d6a": "1/3 (config_error:NO_ACTIVE_VERSION → entryCalls 0)",
+      "09a974f": "6/6"
+    },
+    "classification": {
+      "401_on_unset_secret": "PRE_EXISTING_NON_STAGE5_FAILURE (environment; handler correctly fails closed) — now neutralised by test helper",
+      "entryCalls_0": "STAGE5_REGRESSION — fixed in 09a974f"
+    },
+    "task7b_task7h": "847d8ed: 11/3 and 4/1 (schema functions missing); 8b24d6a: 13/1 and 4/1 (knowledge_ids rejected); 09a974f: 17/0 and 5/0"
+  },
+  "pre_existing_non_stage5": {
+    "P2-REPO-INTEGRITY": "A clean checkout of 847d8ed and of 8b24d6a both fail tsc with the same 12 missing modules: tsconfig.json, next.config.ts and ~71 src files (runtime-service, risk-engine, execution-service, core-runtime, …) are untracked, plus Finder-style '* 2.ts' duplicates. Builds pass only from this working tree. Not caused or worsened by Stage 5 (09a974f adds position-review-runtime.ts and 3 previously untracked tests to git). Must be resolved before any git-based (Vercel) deploy — Owner decision.",
+    "ENV-LOCAL-PG": "Smoke #1/#3 require the local Postgres on 127.0.0.1:55435.",
+    "LINT": "3 pre-existing no-unused-vars warnings in touched files (CustomerKnowledgeItem import, currentPriceNow, TIMEFRAME_OPTIONS)."
+  },
+  "findings_open": {
+    "p0": [],
+    "p1": [],
+    "p2": [
+      "Deploy ordering: Stage 5 code must follow migration 038 (fails closed otherwise).",
+      "DAY_TRADING default changes the H1 analysis bar set from V1 H4/H1/M30/M15 to H4/H1/M15/M5 (documented in 038).",
+      "position-review-runtime reads magic_number from ai_trader_versions directly rather than through the config loader (same table/version; not a second config source for risk)."
+    ],
+    "p3": [
+      "/api/knowledge Console proxy has no callers; fetchActiveKnowledge and ai_trader_knowledge legacy remain (Stage 9).",
+      "import-by-id copies only part of the risk columns (others take conservative DB defaults) — pre-existing.",
+      "M5 NOT_ACTIVE skip does not update watcher_events.analysis_result.",
+      "service_role RLS policy on ai_trader_timeframe_profiles is redundant (service_role bypasses RLS).",
+      "Builder UI has no timeframe-style selector; profile is API-configurable, UI saves DAY_TRADING.",
+      "config_error status is an unstructured string."
+    ]
+  },
+  "dod_checklist": {
+    "customer_tv_is_ai_trader_builder_owner": true,
+    "customer_supabase_is_config_source": true,
+    "console_runtime_dependency_none": true,
+    "ownership_and_isolation_verified": true,
+    "active_version_semantics": true,
+    "timeframe_profile_storable_and_enforced": true,
+    "risk_config_storable_and_enforced": true,
+    "knowledge_runtime_binding_customer_owned": true,
+    "execution_mode_safe": true,
+    "canonical_runtime_config_loader": true,
+    "h1_integration": true,
+    "m5_entry_integration": true,
+    "position_review_integration": true,
+    "fail_closed": true,
+    "stage4_regression_pass": true,
+    "stage3_gateway_regression_pass": true,
+    "typecheck_pass": true,
+    "build_pass": true,
+    "p0_zero": true,
+    "p1_zero": true,
+    "production_unchanged": true,
+    "live_money_false": true,
+    "codex": "DEFERRED / OPTIONAL_AUDIT",
+    "human_gate": "REQUIRED for Production migration 038 — not bypassed",
+    "stage6_not_started": true
+  },
+  "codex_status": "DEFERRED / OPTIONAL_AUDIT — a future Codex P0/P1 reopens Stage 5",
+  "production_changes": "NONE (no Production DB, ENV, secret, customer data, Gateway, MT5 or real-money action)",
+  "ea_status": "NOT APPLICABLE — no MQL5 changes",
+  "reviewer_conclusion": "After fixing 6 P1 defects found in the re-audit, the final code at 09a974f meets the Stage 5 DoD with P0=0, P1=0. Stage 5 may be frozen. Migration 038 awaits the Human Gate; the pre-existing repository-integrity issue (untracked core files) must be resolved before any git-based deploy."
+}

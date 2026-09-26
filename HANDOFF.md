@@ -1,99 +1,66 @@
 # AVL-FX V2 — Handoff Document
 
-**Stage:** V2-Stage-2 — Historical Backfill / Recovery  
-**Status:** IN_PROGRESS — Implementation COMPLETE, Codex review pending (rate limit reset)  
-**Builder:** Claude Code  
-**Updated:** 2026-09-26
+**Stage:** V2-Stage-5 — Customer AI Trader Profile / Configuration
+**Status:** COMPLETE / FROZEN (self-review PASS, P0=0, P1=0) — awaiting Owner confirmation before Stage 6
+**Reviewer:** Claude Opus 5.5 (recovery re-audit after an interrupted session)
+**Updated:** 2026-09-27
 
 ---
 
-## Current Objective
+## Commits
 
-Implement `customer_bar_data` table + Customer Gateway endpoints for bar ingestion, backfill, and gap detection. This is the foundation of Customer Self-Contained Market Data Architecture.
+| Role | SHA |
+|------|-----|
+| Implementation baseline | `8b24d6a` |
+| Final reviewed code | `09a974f` |
+| Report / STATE / HANDOFF | commit following `09a974f` (docs only) |
 
-## Completed Work (this session)
+Report: `reports/builder/V2-Stage-5-self-review-2026-09-26.json`
 
-### Stage 0 — Architecture Freeze (COMPLETE)
-- docs/v2/ reviewed: 18 documents confirmed consistent
-- V2 Stage roadmap confirmed canonical
-- V1 Safety Baseline inheritance documented
-- ZERO code changes in Stage 0
-- STATE.json initialized
-- reports/ directory created
+## What Stage 5 delivers
 
-### Stage 1 — COMPLETE (pending Codex review)
-- [x] Supabase migration: 035_customer_bar_data.sql
-- [x] Gateway module: customerBarDataStore.ts
-- [x] Gateway routes: /market-data/bars, /market-data/backfill, /market-data/last-bar
-- [x] Unit tests: customer-bar-data.test.ts — 23/23 PASS
-- [x] Typecheck PASS
-- [x] Build PASS
-- [x] Commit: b07df7c
+- Customer Trading View owns AI Trader creation/configuration (`POST /api/traders`, `AITraderBuilder.tsx`, `import-by-id`).
+- Customer Supabase is the only config source: `ai_traders` → active `ai_trader_versions` (incl. risk limits) → `ai_trader_timeframe_profiles`.
+- `loadCustomerAITraderConfig()` is the canonical runtime loader, strictly fail-closed
+  (`NOT_FOUND`, `OWNER_MISMATCH`, `NO_ACTIVE_VERSION`, `NO_TIMEFRAME_PROFILE`, `INVALID_PROFILE`, `SERVER_ERROR`, `CONFIG_ERROR`).
+- H1 strategy, M5 entry recheck and position review read config / knowledge only from Customer Supabase. No Console runtime dependency.
 
-## Files Changed
+## Recovery audit (this session)
 
-| File | Type | Description |
-|------|------|-------------|
-| STATE.json | NEW | Orchestrator state |
-| HANDOFF.md | NEW | This handoff document |
-| reports/ | NEW | Reports directory structure |
-| supabase/migrations/035_customer_bar_data.sql | NEW | Additive schema migration |
-| gateway/src/customerBarDataStore.ts | NEW | Supabase ops for customer_bar_data |
-| gateway/src/customer-bar-data.test.ts | NEW | Unit tests |
-| gateway/src/index.ts | MODIFIED | Added /market-data/* routes |
-| gateway/package.json | MODIFIED | Added test script |
+The previous session stopped mid self-review. The stash it created had already been popped (nothing lost).
+Its draft report claimed PASS, but the re-audit found and fixed 6 P1 defects in `09a974f`:
+missing risk columns selected by the loader, silent unsafe defaults, H1 prompt ignoring trader config,
+Builder UI 422 on every save (`knowledge_ids`), a Stage 4 smoke regression masked by a 401, and a
+Console Knowledge runtime call in position review. Details are in the report.
 
-## V1 Safety Confirmation
+## Human Gate (REQUIRED — not bypassed)
 
-- V1 execution paths: UNCHANGED
-- Existing `/bar`, `/bars/bulk`, `/bridge/bars`, `/bridge/bars/bulk` routes: UNCHANGED
-- Existing `bar_data` table: UNCHANGED (no schema modification)
-- V1 chart continues using V1 mechanism (Stage 9 cutover pending)
+Migration `038_customer_ai_trader_profile.sql`: **IMPLEMENTED / VERIFIED LOCALLY / NOT APPLIED TO PRODUCTION**.
 
-## Stage 1 DoD
+1. Apply 035–038 to Production Customer Supabase (Owner action).
+2. Only then deploy the Stage 5 application code. Deploying code first makes every trader fail closed with `config_error` (safe, but analysis stops).
+3. Update `STATE.json` `production_state.db_migration_applied`.
+
+## Blocker to resolve before any git-based deploy (pre-existing, not Stage 5)
+
+A clean checkout does not build: `tsconfig.json`, `next.config.ts` and ~71 `src/` files
+(`runtime-service.ts`, `risk-engine.ts`, `execution-service.ts`, …) are untracked, alongside
+Finder-style `* 2.ts` duplicates. Same at `847d8ed` (before Stage 5). Owner decision needed on
+which files to commit and which duplicates to delete.
+
+## How to run the tests
 
 ```
-[x] customer_bar_data migration created
-[x] Gateway /market-data/bars — single + batch ingestion
-[x] Gateway /market-data/backfill — recovery source ingestion
-[x] Gateway /market-data/last-bar — gap detection
-[x] Idempotent upsert: UNIQUE (connection_id, canonical_symbol, timeframe, time_utc)
-[x] UTC timestamp validation
-[x] Symbol canonicalization (broker_symbol → canonical_symbol)
-[x] Data validation: reject open=0, high<low, future timestamp
-[x] Customer isolation: RLS connection-scoped
-[x] Integration tests: ingestion, deduplication, normalization, isolation
-[x] Typecheck PASS
-[x] Build PASS
+npx tsc --noEmit
+npx tsx --test src/lib/ai-trader/__tests__/*.test.ts src/lib/knowledge/__tests__/*.test.ts \
+  src/infrastructure/trading/__tests__/*.test.ts src/infrastructure/supabase/__tests__/*.test.ts src/lib/__tests__/*.test.ts
+(cd gateway && npm test)
+npm run build
 ```
 
-## Human Gate
+The Stage 4 smoke test needs the local Postgres on `127.0.0.1:55435`.
 
-**HUMAN GATE REQUIRED** before applying migration 035 to Production Supabase.
+## Next action
 
-When ready:
-1. Review migration SQL
-2. Apply via Supabase Dashboard or CLI to Production
-3. Confirm table created with RLS enabled
-4. Update STATE.json: `db_migration_applied` += "035"
-
-## Next Action
-
-Complete Stage 1 implementation → tests → commit → Codex review.
-
-## Known Issues / Debt
-
-None at this point.
-
----
-
-## Codex Review Target
-
-After implementation commit, Codex should review:
-- `supabase/migrations/035_customer_bar_data.sql`
-- `gateway/src/customerBarDataStore.ts`
-- `gateway/src/customer-bar-data.test.ts`
-- `gateway/src/index.ts` (diff only — new /market-data/* routes)
-- This HANDOFF.md and STATE.json
-
-Focus: idempotency correctness, UTC normalization, customer isolation (RLS), no V1 regression.
+Owner reviews the Stage 5 final report → Human Gate for migrations → decide on the untracked-files blocker → start Stage 6.
+Codex audit: DEFERRED / OPTIONAL. A future Codex P0/P1 reopens Stage 5.
