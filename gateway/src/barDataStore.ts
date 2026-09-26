@@ -68,6 +68,7 @@ export interface BarRecord {
 }
 
 interface BarRow {
+  connection_id: string;
   symbol:    string;
   timeframe: string;
   time_utc:  string; // UTC ISO 文字列
@@ -78,8 +79,10 @@ interface BarRow {
   volume:    number;
 }
 
-function toRow(symbol: string, timeframe: string, bar: BarRecord): BarRow {
+function toRow(connectionId: string, symbol: string, timeframe: string, bar: BarRecord): BarRow {
+  if (!connectionId) throw new Error("BAR_DATA_CONNECTION_ID_REQUIRED");
   return {
+    connection_id: connectionId,
     symbol:    symbol.toUpperCase(),
     timeframe: timeframe.toUpperCase(),
     time_utc:  new Date(bar.time).toISOString(), // UTC ms → ISO (UTC)
@@ -101,6 +104,7 @@ function sleep(ms: number): Promise<void> {
 // ------------------------------------------------------------------
 
 export async function upsertBulkBars(
+  connectionId: string,
   symbol:    string,
   timeframe: string,
   bars:      BarRecord[]
@@ -108,8 +112,8 @@ export async function upsertBulkBars(
   const db = getClient();
   if (!db || bars.length === 0) return;
 
-  const rows = bars.map(b => toRow(symbol, timeframe, b));
-  const key  = `${symbol.toUpperCase()}:${timeframe.toUpperCase()}`;
+  const rows = bars.map(b => toRow(connectionId, symbol, timeframe, b));
+  const key  = `${connectionId}:${symbol.toUpperCase()}:${timeframe.toUpperCase()}`;
   let   saved = 0;
 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
@@ -118,7 +122,7 @@ export async function upsertBulkBars(
     const { error } = await db
       .from("bar_data")
       .upsert(batch, {
-        onConflict:       "symbol,timeframe,time_utc",
+        onConflict:       "connection_id,symbol,timeframe,time_utc",
         ignoreDuplicates: true,
       });
 
@@ -143,6 +147,7 @@ export async function upsertBulkBars(
 // ------------------------------------------------------------------
 
 export async function upsertSingleBar(
+  connectionId: string,
   symbol:    string,
   timeframe: string,
   bar:       BarRecord
@@ -150,12 +155,12 @@ export async function upsertSingleBar(
   const db = getClient();
   if (!db) return;
 
-  const row = toRow(symbol, timeframe, bar);
+  const row = toRow(connectionId, symbol, timeframe, bar);
 
   const { error } = await db
     .from("bar_data")
     .upsert(row, {
-      onConflict:       "symbol,timeframe,time_utc",
+      onConflict:       "connection_id,symbol,timeframe,time_utc",
       ignoreDuplicates: false, // 確定バーは値を上書きする
     });
 
@@ -173,8 +178,10 @@ export async function upsertSingleBar(
 // ------------------------------------------------------------------
 
 export async function syncBarStoreToSupabase(
+  connectionId: string,
   barStore: Map<string, BarRecord[]>
 ): Promise<void> {
+  if (!connectionId) throw new Error("BAR_DATA_CONNECTION_ID_REQUIRED");
   const db = getClient();
   if (!db) return;
 
@@ -187,14 +194,14 @@ export async function syncBarStoreToSupabase(
     const [symbol, timeframe] = key.split(":");
     if (!symbol || !timeframe) continue;
 
-    const rows = bars.map(b => toRow(symbol, timeframe, b));
+    const rows = bars.map(b => toRow(connectionId, symbol, timeframe, b));
 
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const batch = rows.slice(i, i + BATCH_SIZE);
       const { error } = await db
         .from("bar_data")
         .upsert(batch, {
-          onConflict:       "symbol,timeframe,time_utc",
+          onConflict:       "connection_id,symbol,timeframe,time_utc",
           ignoreDuplicates: true,
         });
 
