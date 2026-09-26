@@ -97,19 +97,31 @@ bool     g_BackfillNeeded     = false;   // set on reconnect, cleared after Modu
 int      g_BackfillTFIndex    = 0;       // which TF to process next (bounded: 1 per timer tick)
 datetime g_RecoveryCursor[];             // per-TF independent recovery cursor (separate from realtime)
 
-// [E/F/G] Sync timing
+// [E/F/G] Sync timing (use GetTickCount for monotonic advance independent of quote feed)
+uint g_LastPositionTick = 0;
+uint g_LastDealTick     = 0;
+uint g_LastHeartbeatTick = 0;
+uint g_LastPollTick      = 0;
+uint g_LastBackfillTick  = 0;
+// [D] Symbol spec tracking
+bool g_SymbolSpecSent = false;
+uint g_LastSymbolSpecTick = 0;
+#define SYMBOL_SPEC_REFRESH_SEC 300  // refresh spec every 5 min
+
+// Keep datetime versions for legacy compatibility with Module_G_DealSync
 datetime g_LastPositionSync = 0;
 datetime g_LastDealSync     = 0;
 
 // [H] Execution safety flags (updated from heartbeat response)
-bool   g_TradingEnabled = false;  // safe default: disabled until heartbeat confirms
-bool   g_EmergencyStop  = true;   // safe default: emergency until heartbeat
-string g_AccountMode    = "HEDGING";
-bool   g_IsDemo         = false;
-long   g_Login          = 0;
-string g_Broker         = "";
-datetime g_LastPollTime = 0;
-datetime g_LastHeartbeat = 0;
+bool   g_TradingEnabled  = false;  // safe default: disabled until heartbeat confirms
+bool   g_EmergencyStop   = true;   // safe default: emergency until heartbeat
+string g_AccountMode     = "HEDGING";
+bool   g_IsDemo          = false;
+long   g_Login           = 0;
+string g_Broker          = "";
+// [H] Connection failure backoff
+int    g_HeartbeatFailCount = 0;
+#define MAX_HEARTBEAT_BACKOFF_SEC 60
 
 // [H] Idempotency cache
 string g_ProcessedIds[];
@@ -213,50 +225,77 @@ void OnTick()
 //=================================================================//
 void OnTimer()
 {
-   datetime now = TimeCurrent();
+   // P1-2: Use GetTickCount() — advances monotonically even when no market quotes arrive.
+   // TimeCurrent() = last quote time: stops on weekends/feed outage, breaking intervals.
+   uint nowMs   = GetTickCount();
+   uint elapsedHb  = nowMs - g_LastHeartbeatTick;
+   uint elapsedPos = nowMs - g_LastPositionTick;
+   uint elapsedDeal= nowMs - g_LastDealTick;
+   uint elapsedPoll= nowMs - g_LastPollTick;
+   uint elapsedSpec= nowMs - g_LastSymbolSpecTick;
+
+   // Exponential backoff for heartbeat on failure (DoD requirement)
+   int hbIntervalMs = InpHeartbeatSec * 1000;
+   if(g_HeartbeatFailCount > 0) {
+      int backoffSec = InpHeartbeatSec * (1 << MathMin(g_HeartbeatFailCount, 6)); // 2^n, max 64×
+      if(backoffSec > MAX_HEARTBEAT_BACKOFF_SEC) backoffSec = MAX_HEARTBEAT_BACKOFF_SEC;
+      hbIntervalMs = backoffSec * 1000;
+   }
 
    // [A/E] Heartbeat + safety flags
-   if((int)(now - g_LastHeartbeat) >= InpHeartbeatSec) {
+   if(elapsedHb >= (uint)hbIntervalMs) {
       g_PrevConnected = g_Connected;
-      Module_A_Heartbeat();
-      g_LastHeartbeat = now;
-      // P1-8: Detect reconnect → schedule backfill + re-submit symbol spec
+      bool ok = Module_A_Heartbeat();
+      g_LastHeartbeatTick = nowMs;
+      if(ok) { g_HeartbeatFailCount = 0; }
+      else   { g_HeartbeatFailCount++; }
+
+      // Reconnect detection → schedule backfill + re-submit symbol spec
       if(!g_PrevConnected && g_Connected) {
          if(InpOHLCEnabled) {
             Print("[Bridge][A] Reconnect → backfill scheduled");
             g_BackfillNeeded = true;
          }
-         // P1-3: Re-submit symbol spec on reconnect (may have failed at startup if Gateway was down)
+         // Re-submit symbol spec on reconnect (P1-4)
          Module_D_SymbolSpec(g_Symbol);
+         g_SymbolSpecSent     = true;
+         g_LastSymbolSpecTick = nowMs;
+      }
+   }
+
+   // [D] Periodic symbol spec refresh (P1-4)
+   if(!g_SymbolSpecSent || elapsedSpec >= (uint)(SYMBOL_SPEC_REFRESH_SEC * 1000)) {
+      if(g_Connected) {
+         Module_D_SymbolSpec(g_Symbol);
+         g_SymbolSpecSent     = true;
+         g_LastSymbolSpecTick = nowMs;
       }
    }
 
    // [F] Position sync
-   if(InpPositionEnabled && (int)(now - g_LastPositionSync) >= InpTimerSec) {
+   if(InpPositionEnabled && elapsedPos >= (uint)(InpTimerSec * 1000)) {
       Module_F_PositionSync();
-      g_LastPositionSync = now;
+      g_LastPositionSync  = TimeCurrent();
+      g_LastPositionTick  = nowMs;
    }
 
    // [G] Deal sync
-   if(InpDealEnabled) {
-      if(g_LastDealSync == 0 || (int)(now - g_LastDealSync) >= 300) {
-         // P2: Pass true for initial sync (g_LastDealSync==0) to use InpDealDays window
-         Module_G_DealSync(g_LastDealSync == 0);
-         g_LastDealSync = now;
-      }
+   if(InpDealEnabled && (g_LastDealTick == 0 || elapsedDeal >= 300000U)) {
+      Module_G_DealSync(g_LastDealSync == 0);
+      g_LastDealSync = TimeCurrent();
+      g_LastDealTick = nowMs;
    }
 
-   // [H] Execution command poll (module-independent of Market Data)
-   if((int)(now - g_LastPollTime) >= InpPollIntervalSec) {
+   // [H] Execution command poll (module-independent of Market Data — always runs)
+   if(elapsedPoll >= (uint)(InpPollIntervalSec * 1000)) {
       Module_H_CommandPoll();
-      g_LastPollTime = now;
+      g_LastPollTick = nowMs;
    }
 
    // [C] Backfill: bounded — process ONE timeframe per timer tick.
-   // Execution polling above always runs first on each tick.
-   // P1-2: Never block all 9 TFs synchronously in a single timer event.
    if(InpOHLCEnabled) {
-      bool periodicBackfill = ((int)(now - g_LastBackfillCheck) >= InpBackfillSec);
+      bool periodicBackfill = (elapsedHb >= (uint)(InpBackfillSec * 1000) ||
+                               g_LastBackfillTick == 0);
       if(g_BackfillNeeded || periodicBackfill) {
          int tfTotal = ArraySize(g_TfList);
          // Process one TF this tick; next tick processes the next TF
@@ -265,9 +304,10 @@ void OnTimer()
          g_BackfillTFIndex++;
          if(g_BackfillTFIndex >= tfTotal) {
             // All TFs processed in this pass
-            g_BackfillTFIndex = 0;
-            g_BackfillNeeded  = false;
-            g_LastBackfillCheck = now;
+            g_BackfillTFIndex   = 0;
+            g_BackfillNeeded    = false;
+            g_LastBackfillTick  = nowMs;
+            g_LastBackfillCheck = TimeCurrent();
          }
       }
    }
@@ -439,7 +479,15 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
    bool gapExists = (!hasLastBar || (now > lastBarSec + tfPeriodSec));
    if(!gapExists) {
       Print("[Bridge][C] No gap detected: ", g_Symbol, ":", tfStr);
+      if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) g_RecoveryCursor[tfIdx] = 0;
       return;
+   }
+
+   // P1-1: Set recovery cursor to gap start IMMEDIATELY on gap detection.
+   // This ensures realtime Module_B writes can't advance lastBarSec past the cursor
+   // before the first POST succeeds. Cursor starts at lastBarSec (or 0 if no history).
+   if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor) && g_RecoveryCursor[tfIdx] == 0) {
+      g_RecoveryCursor[tfIdx] = hasLastBar ? lastBarSec : 0;
    }
 
    // Step 3: Calculate how many bars to fetch
@@ -466,9 +514,11 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
       datetime recoveryCursor = (tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor))
          ? g_RecoveryCursor[tfIdx] : 0;
       datetime startFrom = (recoveryCursor > 0) ? recoveryCursor : lastBarSec;
-      // Start from bar AFTER cursor, exclude current forming bar (stop = now - 1 TF)
-      datetime fromTime = startFrom + (datetime)tfPeriodSec;
-      datetime toTime   = now - (datetime)tfPeriodSec;
+      // P1-3: Use startFrom + 1 second so CopyRates uses MT5-native bar boundaries.
+      // Adding tfPeriodSec fails for MN1 (calendar months aren't fixed-duration).
+      // CopyRates time-range form returns bars whose open >= fromTime, respecting actual boundaries.
+      datetime fromTime = startFrom + 1;  // 1 second past cursor = start of next bar
+      datetime toTime   = now - 60;        // exclude any currently forming bar (conservatively 60s)
       if(fromTime >= toTime) {
          Print("[Bridge][C] Recovery complete or no gap: ", g_Symbol, ":", tfStr);
          if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) g_RecoveryCursor[tfIdx] = 0;
