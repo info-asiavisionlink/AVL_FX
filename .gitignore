@@ -31,6 +31,9 @@ node_modules/
 **/.env.*
 !/.env.example
 !/gateway/.env.example
+# iCloud/Finder copies such as ".env 2.example" / ".env 2" can hold real values
+.env *
+**/.env *
 
 # Keys / credentials
 *.pem
