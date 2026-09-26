@@ -1460,10 +1460,10 @@ app.post("/market-data/tick", auth, async (req, res) => {
     return;
   }
 
-  // Update connection-scoped store
+  // Update connection-scoped store only.
+  // P1-7: Do NOT write to global tickStore — it is served by unauthenticated GET /tick/:symbol.
+  // Connection-scoped ticks must not be publicly readable or writable by other customers.
   connectionMarketStore.setTick(connectionId, tick);
-  // Legacy tickStore kept in sync for GET /tick/:symbol backward compat (removed Stage 9)
-  tickStore.set(tick.symbol.toUpperCase(), tick);
   lastTickTs = Date.now();
   broadcastToConnection(connectionId, { type: "TICK", symbol: tick.symbol, data: tick, ts: Date.now() });
   res.json({ ok: true });

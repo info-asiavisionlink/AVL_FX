@@ -79,7 +79,8 @@ input int    InpHeartbeatSec    = 15;    // Heartbeat interval (seconds)
 //=================================================================//
 
 // [A] Connection
-bool g_Connected   = false;
+bool g_Connected     = false;
+bool g_PrevConnected = false;  // for reconnect detection (P1-8)
 
 // [B] Market Data
 string   g_Symbol;
@@ -140,10 +141,9 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    }
 
-   // [H] CTrade configuration
+   // [H] CTrade configuration — filling mode set per-symbol at execution time (P1-5)
    g_Trade.SetExpertMagicNumber(0);
    g_Trade.SetDeviationInPoints((ulong)InpDeviationPoints);
-   g_Trade.SetTypeFilling(ORDER_FILLING_IOC);
    g_Trade.SetAsyncMode(false);
 
    // [H] Idempotency cache init
@@ -212,8 +212,15 @@ void OnTimer()
 
    // [A/E] Heartbeat + safety flags
    if((int)(now - g_LastHeartbeat) >= InpHeartbeatSec) {
+      g_PrevConnected = g_Connected;
       Module_A_Heartbeat();
       g_LastHeartbeat = now;
+      // P1-8: Detect reconnect → trigger backfill to recover outage gap
+      if(!g_PrevConnected && g_Connected && InpOHLCEnabled) {
+         Print("[Bridge][A] Reconnect detected → triggering backfill");
+         Module_C_BackfillAll();
+         g_LastBackfillCheck = now;
+      }
    }
 
    // [F] Position sync
@@ -328,22 +335,22 @@ void Module_B_OnBarClose()
       if(curTime == 0) continue;
 
       if(g_LastBarTimes[i] != 0 && curTime > g_LastBarTimes[i]) {
-         // Confirmed bar (shift=1)
-         Module_B_SendBar(tf, 1, true);
+         // P1-2: Only send confirmed (closed) bars to /market-data/bars.
+         // Forming bars must NOT be persisted as confirmed history.
+         Module_B_SendBar(tf, 1);
       }
       g_LastBarTimes[i] = curTime;
-      // Forming bar (shift=0)
-      Module_B_SendBar(tf, 0, false);
+      // Forming bar: do NOT send to /market-data/bars (would be persisted as confirmed)
    }
 }
 
-void Module_B_SendBar(ENUM_TIMEFRAMES tf, int shift, bool confirmed)
+void Module_B_SendBar(ENUM_TIMEFRAMES tf, int shift)
 {
    MqlRates rates[];
    if(CopyRates(g_Symbol, tf, shift, 1, rates) <= 0) return;
 
-   // Broker server UTC offset for normalization
-   int utcOffset = (int)(TimeCurrent() - TimeGMT());
+   // P1-1: UTC offset in HOURS (not seconds). TimeCurrent()-TimeGMT() returns seconds.
+   int utcOffsetHours = (int)((TimeCurrent() - TimeGMT()) / 3600);
 
    string body = StringFormat(
       "{\"bars\":[{"
@@ -359,7 +366,7 @@ void Module_B_SendBar(ENUM_TIMEFRAMES tf, int shift, bool confirmed)
       rates[0].open, rates[0].high,
       rates[0].low,  rates[0].close,
       (long)rates[0].tick_volume,
-      utcOffset
+      utcOffsetHours
    );
    HTTP_Post("/market-data/bars", body);
 }
@@ -381,14 +388,20 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf)
 {
    string tfStr = TF_ToString(tf);
 
+   // P1-1: UTC offset in HOURS (not seconds)
+   int utcOffsetHours = (int)((TimeCurrent() - TimeGMT()) / 3600);
+
+   // P1-3: URL-encode symbol — '#' must be '%23' to avoid URL fragment
+   string encodedSymbol = g_Symbol;
+   StringReplace(encodedSymbol, "#", "%23");
+
    // Step 1: Query last persisted bar time
    char   req[], res[];
    string headers = BuildHeaders();
    string resHdr;
-   string url = StringFormat(
-      "%s/market-data/last-bar?symbol=%s&timeframe=%s",
-      InpGatewayURL, g_Symbol, tfStr
-   );
+   string url = InpGatewayURL
+      + "/market-data/last-bar?symbol=" + encodedSymbol
+      + "&timeframe=" + tfStr;
 
    int code = WebRequest("GET", url, headers, 8000, req, res, resHdr);
    if(code != 200 || ArraySize(res) == 0) {
@@ -429,11 +442,10 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf)
       return;
    }
 
-   int utcOffset    = (int)(TimeCurrent() - TimeGMT());
-   int barsSent     = 0;
-   int barsAccepted = 0;
-   string fromUtc   = "";
-   string toUtc     = "";
+   int    barsSent     = 0;
+   int    barsAccepted = 0;
+   string fromUtc      = "";
+   string toUtc        = "";
 
    // rates is oldest→newest; send in batches
    int batchSize = 500;
@@ -453,15 +465,18 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf)
             rates[j].open, rates[j].high, rates[j].low, rates[j].close,
             (long)rates[j].tick_volume
          );
-         if(j == start)
-            fromUtc = TimeToString(rates[j].time + utcOffset * 3600, TIME_DATE|TIME_MINUTES) + ":00Z";
+         // P1-4: UTC = broker_time - offset*3600 (subtract, not add).
+         // Preserve first batch's lower bound across batches.
+         datetime utcTime = (datetime)(rates[j].time - utcOffsetHours * 3600);
+         if(j == start && StringLen(fromUtc) == 0)
+            fromUtc = TimeToString(utcTime, TIME_DATE|TIME_MINUTES) + ":00Z";
          if(j == end - 1)
-            toUtc = TimeToString(rates[j].time + utcOffset * 3600, TIME_DATE|TIME_MINUTES) + ":00Z";
+            toUtc = TimeToString(utcTime, TIME_DATE|TIME_MINUTES) + ":00Z";
       }
 
       string batchBody = StringFormat(
          "{\"bars\":[%s],\"utc_offset_hours\":%d}",
-         barsJson, utcOffset
+         barsJson, utcOffsetHours
       );
 
       char   breq[], bres[];
@@ -583,7 +598,9 @@ void Module_F_PositionSync()
 
 void Module_G_DealSync(const bool initialSync)
 {
-   datetime from = TimeCurrent() - (initialSync ? 30 : 1) * 86400;
+   // P2: Use InpDealDays for initial sync, 1-day incremental for periodic
+   int days = initialSync ? InpDealDays : 1;
+   datetime from = TimeCurrent() - (datetime)(days * 86400);
    HistorySelect(from, TimeCurrent());
 
    string dealArr = "";
@@ -773,15 +790,29 @@ void Module_H_ProcessCommand(const string cmdJson)
       return;
    }
 
-   // ── CHECK 6: Symbol presence ─────────────────────────────────
+   // ── CHECK 6: Symbol presence + broker suffix resolution (P1-6) ──
    if(StringLen(symbol) == 0) {
       Module_H_SendFailed(commandId, "EMPTY_SYMBOL");
       return;
    }
-   if(!SymbolSelect(symbol, true)) {
-      Module_H_SendFailed(commandId, "SYMBOL_NOT_FOUND: " + symbol);
-      return;
+   // Resolve broker symbol: command may use canonical name (e.g. "GOLD")
+   // but broker exposes suffixed symbol (e.g. "GOLD#"). Try chart symbol if direct fails.
+   string brokerSymbol = symbol;
+   if(!SymbolSelect(brokerSymbol, true)) {
+      // Try chart symbol: if chart=GOLD# and command=GOLD, use GOLD#
+      if(StringFind(g_Symbol, symbol) == 0 && StringLen(g_Symbol) > StringLen(symbol)) {
+         brokerSymbol = g_Symbol;
+         if(!SymbolSelect(brokerSymbol, true)) {
+            Module_H_SendFailed(commandId, "SYMBOL_NOT_FOUND: " + symbol);
+            return;
+         }
+         Print("[Bridge][H] Resolved canonical '", symbol, "' → broker '", brokerSymbol, "'");
+      } else {
+         Module_H_SendFailed(commandId, "SYMBOL_NOT_FOUND: " + symbol);
+         return;
+      }
    }
+   symbol = brokerSymbol;  // use resolved broker symbol for all operations
 
    // ── CHECK 7: Magic number range ──────────────────────────────
    bool magicValid = (magicNumber >= 20001 && magicNumber <= 29999)
@@ -866,6 +897,9 @@ bool Module_H_ExecuteBUY(const string commandId, const string symbol,
    }
    if(roundedTP > 0 && roundedTP - ask < stopsLevel) roundedTP = 0;
 
+   // P1-5: Set per-symbol filling mode before order submission
+   Apply_FillingMode(symbol);
+
    bool ok  = g_Trade.Buy(volume, symbol, 0, roundedSL, roundedTP, "AVL-Bridge");
    retcode  = (int)g_Trade.ResultRetcode();
    orderTkt = (long)g_Trade.ResultOrder();
@@ -907,6 +941,8 @@ bool Module_H_ExecuteSELL(const string commandId, const string symbol,
       return false;
    }
    if(roundedTP > 0 && bid - roundedTP < stopsLevel) roundedTP = 0;
+
+   Apply_FillingMode(symbol);  // P1-5: per-symbol filling mode
 
    bool ok  = g_Trade.Sell(volume, symbol, 0, roundedSL, roundedTP, "AVL-Bridge");
    retcode  = (int)g_Trade.ResultRetcode();
@@ -1048,6 +1084,19 @@ void Module_H_SendFailed(const string commandId, const string reason)
 //=================================================================//
 //  UTILITIES                                                      //
 //=================================================================//
+
+// P1-5: Apply the symbol's supported filling mode before order submission.
+// Symbols may support FOK, IOC, or RETURN; using a wrong mode causes RETCODE 10030.
+void Apply_FillingMode(const string symbol)
+{
+   long fillMode = SymbolInfoInteger(symbol, SYMBOL_FILLING_MODE);
+   if((fillMode & SYMBOL_FILLING_FOK) != 0)
+      g_Trade.SetTypeFilling(ORDER_FILLING_FOK);
+   else if((fillMode & SYMBOL_FILLING_IOC) != 0)
+      g_Trade.SetTypeFilling(ORDER_FILLING_IOC);
+   else
+      g_Trade.SetTypeFilling(ORDER_FILLING_RETURN);
+}
 
 bool Validate_Volume(const string symbol, const double volume)
 {
