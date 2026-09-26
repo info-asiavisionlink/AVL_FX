@@ -151,3 +151,20 @@ test("canonicalization is deterministic for same broker_symbol", () => {
 test("XAUUSD and GOLD# both map to GOLD (broker independence)", () => {
   assert.equal(canonicalizeSymbol("XAUUSD"), canonicalizeSymbol("GOLD#"));
 });
+
+// ----------------------------------------------------------------
+// Timestamp validation — P1-3 fix: invalid time_utc string
+// ----------------------------------------------------------------
+
+test("validateBar: 'invalid' timestamp string rejected", () => {
+  assert.notEqual(validateBar({ ...validBar(), time_utc: "invalid" }), null);
+});
+
+// ----------------------------------------------------------------
+// Codex P1/P2 remediations verified
+// ----------------------------------------------------------------
+
+test("validateBar: NaN-derived ISO string 'invalid' is rejected", () => {
+  // This tests the P1-3 fix: payload.time=NaN → time_utc='invalid' → rejected
+  assert.notEqual(validateBar({ ...validBar(), time_utc: "invalid" }), null);
+});

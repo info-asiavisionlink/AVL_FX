@@ -1,0 +1,7 @@
+{
+  "stage": "V2-Stage-1",
+  "commit": "b07df7c",
+  "review_cycle": 1,
+  "error": "Codex output is not parseable JSON:\nThe committed gateway has missing dependencies, an authentication bypass for last-bar reads, unsafe input conversion, and a V1 persistence regression. The migration is additive and UTC subtraction is correctly directed, but the 23 pure-function tests do not cover these failures; build and typecheck success cannot be established for this commit.\n\nFull review comments:\n\n- [P1] Include the dependencies required by the changed gateway — /Users/tanakayoshiki/Desktop/AVL_FX　trading view/gateway/src/in",
+  "timestamp": "2026-09-26T04:40:35.287Z"
+}

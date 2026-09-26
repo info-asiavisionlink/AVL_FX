@@ -169,7 +169,16 @@ export async function upsertCustomerBars(bars: BarIngestionInput[]): Promise<Ups
     return result;
   }
 
-  const rows = valid.map((b) => ({
+  // Deduplicate by canonical key before upsert.
+  // PostgreSQL ON CONFLICT UPDATE rejects two rows targeting the same key in one statement.
+  const dedupMap = new Map<string, BarIngestionInput>();
+  for (const b of valid) {
+    const key = `${b.connection_id}|${b.canonical_symbol}|${b.timeframe}|${b.time_utc}`;
+    dedupMap.set(key, b); // last bar for same key wins
+  }
+  const deduped = [...dedupMap.values()];
+
+  const rows = deduped.map((b) => ({
     user_id:          b.user_id,
     connection_id:    b.connection_id,
     canonical_symbol: b.canonical_symbol,

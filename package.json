@@ -9,7 +9,12 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "dev:gateway": "cd gateway && npm run dev",
-    "build:gateway": "cd gateway && npm run build"
+    "build:gateway": "cd gateway && npm run build",
+    "avl:status": "node scripts/orchestrator/orchestrator.mjs status",
+    "avl:resume": "node scripts/orchestrator/orchestrator.mjs resume",
+    "avl:review": "node scripts/orchestrator/orchestrator.mjs review",
+    "avl:next":   "node scripts/orchestrator/orchestrator.mjs next",
+    "avl:auto":   "node scripts/orchestrator/orchestrator.mjs auto"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -43,6 +48,7 @@
     "@types/node": "^20.19.43",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "playwright": "^1.62.1",

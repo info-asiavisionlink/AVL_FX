@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AVL-FX Codex Review Result",
+  "description": "Machine-readable review result from Codex independent reviewer",
+  "type": "object",
+  "required": ["stage", "reviewed_commit", "review_cycle", "status", "findings", "next_action", "reviewer_notes"],
+  "additionalProperties": false,
+  "properties": {
+    "stage": {
+      "type": "string",
+      "description": "Stage being reviewed, e.g. V2-Stage-1"
+    },
+    "reviewed_commit": {
+      "type": "string",
+      "description": "Git commit SHA that was reviewed (short or full)"
+    },
+    "review_cycle": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Which review attempt this is (1, 2, 3)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "HUMAN_REVIEW_REQUIRED"],
+      "description": "PASS = no P0/P1 findings. FAIL = P0 or P1 exist."
+    },
+    "findings": {
+      "type": "object",
+      "required": ["p0", "p1", "p2", "p3"],
+      "additionalProperties": false,
+      "properties": {
+        "p0": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Blocking: security holes, data loss, V1 breakage"
+        },
+        "p1": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Must fix before production: correctness, safety"
+        },
+        "p2": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Should fix: test coverage, maintainability"
+        },
+        "p3": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional: style, minor improvements"
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "description": "Stage-specific boolean checks",
+      "additionalProperties": { "type": "boolean" }
+    },
+    "next_action": {
+      "type": "string",
+      "enum": ["PROCEED_TO_NEXT_STAGE", "FIX_AND_RESUBMIT", "HUMAN_GATE"],
+      "description": "What should happen next"
+    },
+    "reviewer_notes": {
+      "type": "string",
+      "description": "Brief human-readable summary from reviewer"
+    }
+  }
+}

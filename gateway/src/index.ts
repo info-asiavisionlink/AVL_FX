@@ -663,6 +663,8 @@ app.post("/bar", auth, async (req, res) => {
     dedupAndSort([...connectionBars, normalizeBar(bar)]),
     MAX_BARS,
   );
+  // V1 persistence: persist confirmed bar to bar_data (V1 safety baseline — do not remove until Stage 9)
+  upsertBar(connectionId, bar.symbol, bar.timeframe, bar);
   broadcastToConnection(connectionId, { type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
 
   // ── M5確定検知 ──────────────────────────────────────────────────
@@ -765,6 +767,8 @@ app.post("/bridge/bars", auth, async (req, res) => {
     dedupAndSort([...existing, normalizeBar(bar)]),
     MAX_BARS,
   );
+  // V1 persistence: persist confirmed bar to bar_data (V1 safety baseline — do not remove until Stage 9)
+  upsertBar(connectionId, bar.symbol, bar.timeframe, bar);
   broadcastToConnection(connectionId, { type: "BAR", symbol: bar.symbol, timeframe: bar.timeframe, data: bar, ts: Date.now() });
   res.json({ ok: true });
 });
@@ -1453,10 +1457,20 @@ function buildBarIngestionInput(
   source: BarSource,
   bodyDefaults: Pick<MarketDataBarsBody, "broker" | "broker_server" | "utc_offset_hours">,
 ): BarIngestionInput {
-  const utcOffsetHours = payload.utc_offset_hours ?? bodyDefaults.utc_offset_hours ?? 0;
-  const brokerTimeSec  = payload.time;
-  const utcTimeSec     = brokerTimeSec - utcOffsetHours * 3600;
-  const timeUtc        = new Date(utcTimeSec * 1000).toISOString();
+  const utcOffsetHours = typeof payload.utc_offset_hours === "number" && Number.isFinite(payload.utc_offset_hours)
+    ? payload.utc_offset_hours
+    : (typeof bodyDefaults.utc_offset_hours === "number" && Number.isFinite(bodyDefaults.utc_offset_hours)
+        ? bodyDefaults.utc_offset_hours
+        : 0);
+
+  const brokerTimeSec = typeof payload.time === "number" && Number.isFinite(payload.time)
+    ? payload.time
+    : NaN;
+
+  // Let validateBar reject the NaN timestamp via "not a valid ISO timestamp"
+  const timeUtc = Number.isFinite(brokerTimeSec)
+    ? new Date((brokerTimeSec - utcOffsetHours * 3600) * 1000).toISOString()
+    : "invalid";
 
   return {
     connection_id:    connectionId,
@@ -1558,10 +1572,25 @@ app.post("/market-data/backfill", auth, async (req, res) => {
   res.json({ ok: true, accepted: result.accepted, rejected: result.rejected, errors: result.errors });
 });
 
-/** V2: Bridge EA gap detection — get last persisted bar time */
+/** V2: Bridge EA gap detection — get last persisted bar time.
+ * Requires bridge credentials (connection_id + connection_token).
+ * Gateway SECRET alone is not accepted — per market-data isolation requirement. */
 app.get("/market-data/last-bar", auth, async (req, res) => {
-  if (!await enforceConnectionAuth(req, res)) return;
-  const connectionId = req.headers["x-connection-id"] as string;
+  const connectionId    = req.headers["x-connection-id"]    as string | undefined;
+  const connectionToken = req.headers["x-connection-token"] as string | undefined;
+  if (!connectionId || !connectionToken) {
+    res.status(401).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
+    return;
+  }
+  if (!isExecutionEnabled()) {
+    res.status(503).json({ error: "Supabase未設定" });
+    return;
+  }
+  const flags = await verifyBridgeAuth(connectionId, connectionToken);
+  if (!flags) {
+    res.status(401).json({ error: "認証失敗" });
+    return;
+  }
 
   const symbol    = (req.query["symbol"]    ?? "") as string;
   const timeframe = (req.query["timeframe"] ?? "") as string;
