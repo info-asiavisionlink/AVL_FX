@@ -1763,32 +1763,29 @@ function dedupAndSort(bars: Bar[]): Bar[] {
   return Array.from(map.values()).sort((a, b) => a.time - b.time);
 }
 
-/** barStore へバーをアップサート（同時刻は上書き、新時刻は追加）
+/** V1 bar_data persistence: detect confirmed bars and persist to Supabase.
  *
- * 確定バー検出ロジック:
- *   - 同じ time のバーが来た場合 → 未確定バーの更新（in-memory のみ、Supabase保存なし）
- *   - 新しい time のバーが来た場合 → 前のバーが確定した = Supabase に永続化
+ * Reads previous bar from connection-scoped store (not global barStore) to
+ * prevent cross-customer contamination. In-memory state management is handled
+ * by callers via connectionMarketStore.upsertBars(). This function only
+ * handles the V1 Supabase persistence side-effect.
+ *
+ * Confirmed bar logic:
+ *   - New timestamp → previous bar is confirmed → persist to V1 bar_data
+ *   - Same timestamp → forming bar update, no persistence
  */
 function upsertBar(connectionId: string, symbol: string, timeframe: string, rawBar: Bar & { symbol?: string; timeframe?: string }): void {
-  const key  = storeKey(symbol, timeframe);
-  const bars = barStore.get(key) ?? [];
+  const bars = connectionMarketStore.getBars(connectionId, symbol, timeframe);
   const last = bars[bars.length - 1];
   const bar  = normalizeBar(rawBar);
 
-  if (last && last.time === bar.time) {
-    // 同時刻 → 未確定バー更新（in-memory のみ）
-    bars[bars.length - 1] = { time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume };
-  } else {
-    // 新時刻 → 前バーが確定 → Supabase に永続化（fire-and-forget）
-    if (last) {
-      upsertSingleBar(connectionId, symbol, timeframe, last as BarRecord).catch((err: unknown) => {
-        console.warn(`[barData] confirmed bar upsert failed ${symbol}:${timeframe}:`, err);
-      });
-    }
-    bars.push({ time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume });
-    if (bars.length > MAX_BARS) bars.shift();
+  if (last && last.time !== bar.time) {
+    // New timestamp → previous bar confirmed → persist to V1 bar_data (fire-and-forget)
+    upsertSingleBar(connectionId, symbol, timeframe, last as BarRecord).catch((err: unknown) => {
+      console.warn(`[barData] confirmed bar upsert failed ${symbol}:${timeframe}:`, err);
+    });
   }
-  barStore.set(key, bars);
+  // In-memory state is managed by callers via connectionMarketStore.upsertBars()
 }
 
 // -----------------------------------------------------------------
