@@ -1,7 +1,7 @@
 # AVL-FX V2 — Handoff Document
 
-**Stage:** V2-Stage-1 — Customer Market Data Persistence  
-**Status:** IN_PROGRESS  
+**Stage:** V2-Stage-2 — Historical Backfill / Recovery  
+**Status:** IN_PROGRESS — Implementation COMPLETE, Codex review pending (rate limit reset)  
 **Builder:** Claude Code  
 **Updated:** 2026-09-26
 
@@ -21,13 +21,14 @@ Implement `customer_bar_data` table + Customer Gateway endpoints for bar ingesti
 - STATE.json initialized
 - reports/ directory created
 
-### Stage 1 — In Progress
-- [ ] Supabase migration: 035_customer_bar_data.sql
-- [ ] Gateway module: customerBarDataStore.ts
-- [ ] Gateway routes: /market-data/bars, /market-data/backfill, /market-data/last-bar
-- [ ] Integration tests: customer-bar-data.test.ts
-- [ ] Typecheck PASS
-- [ ] Build PASS
+### Stage 1 — COMPLETE (pending Codex review)
+- [x] Supabase migration: 035_customer_bar_data.sql
+- [x] Gateway module: customerBarDataStore.ts
+- [x] Gateway routes: /market-data/bars, /market-data/backfill, /market-data/last-bar
+- [x] Unit tests: customer-bar-data.test.ts — 23/23 PASS
+- [x] Typecheck PASS
+- [x] Build PASS
+- [x] Commit: b07df7c
 
 ## Files Changed
 
