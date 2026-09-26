@@ -28,6 +28,7 @@ import { createAdminClient }          from "@/infrastructure/supabase/admin";
 import { getOpenAIClient, MODELS }    from "@/infrastructure/ai/openai-client";
 import { type KnowledgeSnapshot } from "@/lib/knowledge/knowledge-client";
 import { loadCustomerKnowledge, selectCustomerKnowledge, snapshotCustomerKnowledge, formatKnowledgeForPrompt, KnowledgeUnavailableError, type CustomerKnowledgeItem } from "@/lib/knowledge/customer-knowledge-loader";
+import { loadCustomerAITraderConfig, TraderConfigError, type CustomerAITraderRuntimeConfig } from "@/lib/ai-trader/customer-trader-config-loader";
 import { isClosedBar } from "@/lib/ai-trader/core-runtime";
 import { createProductionRuntimeService } from "@/lib/ai-trader/runtime-service";
 import type { RuntimeService } from "@/lib/ai-trader/runtime-service";
@@ -50,6 +51,8 @@ export interface H1StrategyDependencies {
   // V2: accepts traderId+userId so the loader can read from Customer Supabase.
   // Test mocks may declare fewer parameters — TypeScript allows this (callback compatibility).
   fetchKnowledge: (traderId: string, userId: string, market: string, timeframe?: string) => Promise<{ text: string; snapshot: KnowledgeSnapshot[] }>;
+  // V2 Stage 5: canonical config loader — test mocks may declare fewer params.
+  loadTraderConfig: (traderId: string, userId: string) => Promise<CustomerAITraderRuntimeConfig>;
   fetchBars: (connId: string, symbol: string, tf: string, count?: number) => Promise<Bar[]>;
   fetchBarsFallback: (symbol: string, tf: string, count?: number) => Promise<Bar[]>;
   fetchEconomicEvents: () => Promise<string>;
@@ -63,6 +66,7 @@ export function createProductionH1StrategyDependencies(db: ReturnType<typeof cre
     db,
     aiClientFactory: getOpenAIClient,
     fetchKnowledge: makeCustomerKnowledgeFetcher(db),
+    loadTraderConfig: (traderId, userId) => loadCustomerAITraderConfig(db, traderId, userId),
     fetchBars,
     fetchBarsFallback,
     fetchEconomicEvents,
@@ -390,17 +394,17 @@ export async function handleH1StrategyRequest(
 
     try {
       await h1Deps.runtimeFactory(h1Deps.db).transitionState(primary.id, ["FLAT", "ANALYZING", "WATCHING_ENTRY"], "ANALYZING");
-      // プロフィール取得（代表のみ）
-      const { data: profile } = await db
-        .from("ai_trader_versions")
-        .select("*")
-        .eq("ai_trader_id", primary.id)
-        .eq("version", primary.current_version)
-        .single();
-      if (!profile) {
-        group.forEach(t => results.push({ traderId: t.id, name: t.name, status: "no_profile" }));
+      // V2 Stage 5: canonical runtime config (timeframe profile + version + risk config).
+      let traderConfig: CustomerAITraderRuntimeConfig;
+      try {
+        traderConfig = await h1Deps.loadTraderConfig(primary.id as string, primary.user_id as string);
+      } catch (configErr) {
+        const code = configErr instanceof TraderConfigError ? configErr.code : "SERVER_ERROR";
+        console.error(`[h1-strategy] Config load failed trader=${primary.id} code=${code}`, configErr);
+        group.forEach(t => results.push({ traderId: t.id, name: t.name, status: `config_error:${code}` }));
         continue;
       }
+      const profile = traderConfig.version;  // backward-compat alias
 
       // MT5接続確認（代表のユーザーのみ）
       const { data: conn } = await db
@@ -439,14 +443,16 @@ export async function handleH1StrategyRequest(
       // シンボル決定
       const symbol = primary.market === "GOLD" ? "GOLD#" : (primary.market as string);
 
-      // ── バーデータ取得（500本・全TF並列）────────────────────────
-      // H4=500本(約3.5ヶ月), H1=500本(約3週間), M30=500本(約10日), M15=500本(約5日)
-      const tfConfigs: { tf: string; count: number }[] = [
-        { tf: "H4",  count: 500 },
-        { tf: "H1",  count: 500 },
-        { tf: "M30", count: 500 },
-        { tf: "M15", count: 500 },
-      ];
+      // ── バーデータ取得 — profile-driven timeframes ───────────────
+      // V2 Stage 5: use trend_context + setup timeframes from the trader's
+      // timeframe profile (instead of hardcoded H4/H1/M30/M15).
+      // Default DAY_TRADING profile: [H4, H1] + [M15, M5] matches V1 behaviour.
+      const { trend_context_timeframes, setup_timeframes } = traderConfig.timeframeProfile;
+      const analysisTimeframes = [...new Set([...trend_context_timeframes, ...setup_timeframes])];
+      const tfConfigs: { tf: string; count: number }[] = analysisTimeframes.map(tf => ({
+        tf,
+        count: tf.startsWith("H") || tf.startsWith("D") || tf.startsWith("W") || tf.startsWith("M") && tf.length > 2 ? 500 : 500,
+      }));
       const barSummaries: string[] = [];
       let latestClosedH1Ms = 0;
       await Promise.all(tfConfigs.map(async ({ tf, count }) => {

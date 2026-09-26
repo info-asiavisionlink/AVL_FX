@@ -7,8 +7,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient }          from "@/infrastructure/supabase/admin";
 import { createClient }               from "@/infrastructure/supabase/server";
 import {
-  AITraderCreateSchema,
+  normalizeAndValidateBuilderSave,
   generateTraderPublicId,
+  DEFAULT_DAY_TRADING_TIMEFRAME_PROFILE,
   type AITrader,
 } from "@/lib/aiTraderSchema";
 
@@ -60,16 +61,19 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
 
     const body = await req.json();
-    const validation = AITraderCreateSchema.safeParse(body);
-    if (!validation.success) {
+    let input;
+    try {
+      input = normalizeAndValidateBuilderSave(body);
+    } catch (error) {
       return NextResponse.json(
-        { error: "入力が無効です", details: validation.error.issues },
+        { error: "入力が無効です", details: error instanceof Error ? error.message : "validation_failed" },
         { status: 422 }
       );
     }
 
-    const input = validation.data;
-    const db    = createAdminClient();
+    // V2: knowledge is deployed via admin HUMAN GATE operation (customer_knowledge table).
+    // knowledge_ids are no longer accepted at trader creation time.
+    const db = createAdminClient();
 
     // Public ID（衝突チェック付き）
     let publicId = generateTraderPublicId();
@@ -91,11 +95,22 @@ export async function POST(req: NextRequest) {
         market:          input.market,
         status:          "DRAFT",
         current_version: 1,
+        // A newly built trader is never autonomous.  The DB CHECK accepts
+        // this canonical safe mode and later approval is a separate action.
+        execution_mode:  "ANALYSIS_ONLY",
       })
       .select()
       .single();
 
     if (traderErr) throw traderErr;
+
+    // Supabase REST does not expose a transaction for these two inserts.
+    // Compensate before returning on any later failure so the API never
+    // reports success with a partial Builder save.
+    const rollbackTrader = async () => {
+      const { error } = await db.from("ai_traders").delete().eq("id", trader.id).eq("user_id", user.id);
+      if (error) console.error("[POST /api/traders] rollback failed", error);
+    };
 
     // 2. ai_trader_versions v1 作成
     const { data: version, error: versionErr } = await db
@@ -121,36 +136,26 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    if (versionErr) throw versionErr;
+    if (versionErr) {
+      await rollbackTrader();
+      throw versionErr;
+    }
 
-    // 3. Knowledge Snapshot（Console API から詳細を取得してバージョン固定）
-    if (input.knowledge_ids.length > 0) {
-      // Console から ACTIVE Knowledge を取得してスナップショット保存
-      const consoleUrl = process.env.CONSOLE_URL ?? "https://avl-fx-console.vercel.app";
-      const knowledgeSecret = process.env.KNOWLEDGE_API_SECRET ?? "";
-      let knowledgeMap: Map<string, { version: number; title: string; category: string }> = new Map();
-      try {
-        const res = await fetch(`${consoleUrl}/api/trading-knowledge?status=ACTIVE`, {
-          headers: { "x-knowledge-api-secret": knowledgeSecret },
-          signal: AbortSignal.timeout(8_000),
-        });
-        if (res.ok) {
-          const data = await res.json() as { items?: { id: string; title: string; category: string; version: number }[] };
-          (data.items ?? []).forEach(k => knowledgeMap.set(k.id, { version: k.version, title: k.title, category: k.category }));
-        }
-      } catch { /* Console未接続でも続行 */ }
-
-      const knowledgeRows = input.knowledge_ids.map((kid: string) => {
-        const snapshot = knowledgeMap.get(kid);
-        return {
-          ai_trader_version_id: version.id,
-          knowledge_id:         kid,
-          knowledge_version:    snapshot?.version ?? null,   // バージョン固定
-          knowledge_title:      snapshot?.title ?? null,     // タイトルスナップショット
-          knowledge_category:   snapshot?.category ?? null,
-        };
-      });
-      await db.from("ai_trader_knowledge").insert(knowledgeRows);
+    // 3. Timeframe Profile (V2 Stage 5)
+    const tfProfile = input.timeframe_profile ?? DEFAULT_DAY_TRADING_TIMEFRAME_PROFILE;
+    const { error: tfErr } = await db.from("ai_trader_timeframe_profiles").insert({
+      ai_trader_version_id:     version.id,
+      timeframe_style:          tfProfile.timeframe_style,
+      macro_context_timeframes: tfProfile.macro_context_timeframes,
+      trend_context_timeframes: tfProfile.trend_context_timeframes,
+      setup_timeframes:         tfProfile.setup_timeframes,
+      entry_timeframes:         tfProfile.entry_timeframes,
+      management_timeframes:    tfProfile.management_timeframes,
+      monitor_interval_minutes: tfProfile.monitor_interval_minutes,
+    });
+    if (tfErr) {
+      await rollbackTrader();
+      throw tfErr;
     }
 
     return NextResponse.json(

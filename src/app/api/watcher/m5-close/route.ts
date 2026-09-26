@@ -24,6 +24,7 @@ import { runCommonRiskCheck, createEntryExecutionCommand, buildDefaultRiskEngine
 import type { RiskEngineTrader } from "@/lib/ai-trader/risk-engine";
 import { validateBarsForEntry, validateTickForEntry } from "@/lib/ai-trader/market-data-validator";
 import { loadCustomerKnowledge, selectCustomerKnowledge, snapshotCustomerKnowledge, KnowledgeUnavailableError, type CustomerKnowledgeItem } from "@/lib/knowledge/customer-knowledge-loader";
+import { loadCustomerAITraderConfig, TraderConfigError, type CustomerAITraderRuntimeConfig } from "@/lib/ai-trader/customer-trader-config-loader";
 import { handleManagePositions } from "@/lib/ai-trader/position-review-runtime";
 
 export const runtime    = "nodejs";
@@ -87,6 +88,8 @@ export interface M5CloseDependencies {
   // V2: accepts traderId+userId to load from Customer Supabase.
   // Test mocks may declare fewer parameters — TypeScript allows this (callback compatibility).
   fetchKnowledge: (traderId: string, userId: string) => Promise<CustomerKnowledgeItem[]>;
+  // V2 Stage 5: canonical config loader.
+  loadTraderConfig: (traderId: string, userId: string) => Promise<CustomerAITraderRuntimeConfig>;
   checkNewsEvent: typeof checkNewsEvent;
   aiClientFactory: typeof getOpenAIClient;
   runtimeFactory: typeof createProductionRuntimeService;
@@ -100,6 +103,7 @@ export function createProductionM5CloseDependencies(
     db,
     fetchMarketData,
     fetchKnowledge: (traderId, userId) => loadCustomerKnowledge(db, traderId, userId),
+    loadTraderConfig: (traderId, userId) => loadCustomerAITraderConfig(db, traderId, userId),
     checkNewsEvent,
     aiClientFactory: getOpenAIClient,
     runtimeFactory: createProductionRuntimeService,
@@ -906,11 +910,34 @@ export async function handleM5CloseRequest(
       }
 
       // Production cutover: invoke RuntimeService.entryRecheck directly.
-      const { data: version } = await db.from("ai_trader_versions")
-        .select("id, magic_number, max_daily_trades, max_daily_loss_usd, max_consecutive_losses, max_total_exposure_lots, account_data_max_age_seconds, tick_data_max_age_seconds, max_spread_points, max_risk_per_trade, minimum_rr, max_positions")
-        .eq("ai_trader_id", trader.id)
-        .eq("is_active", true)
-        .order("version", { ascending: false }).limit(1).maybeSingle();
+      // V2 Stage 5: load canonical config via config loader, then fall back to
+      // direct version query for the risk fields (backward-compat while tests migrate).
+      let traderConfig: CustomerAITraderRuntimeConfig | null = null;
+      try {
+        traderConfig = await m5Deps.loadTraderConfig(trader.id as string, trader.user_id as string);
+      } catch (cfgErr) {
+        const code = cfgErr instanceof TraderConfigError ? cfgErr.code : "SERVER_ERROR";
+        console.error(`[m5-close] Config load failed trader=${trader.id} code=${code}`, cfgErr);
+        results.push({ trader: trader.name as string, reason, status: `config_error:${code}` });
+        continue;
+      }
+      // version alias from config for risk engine (replaces direct DB query)
+      const version = traderConfig
+        ? {
+            id:                         traderConfig.version.id,
+            magic_number:               traderConfig.version.magicNumber,
+            max_daily_trades:           traderConfig.version.maxDailyTrades,
+            max_daily_loss_usd:         traderConfig.version.maxDailyLossUsd,
+            max_consecutive_losses:     traderConfig.version.maxConsecutiveLosses,
+            max_total_exposure_lots:    traderConfig.version.maxTotalExposureLots,
+            account_data_max_age_seconds: traderConfig.version.accountDataMaxAgeSeconds,
+            tick_data_max_age_seconds:  traderConfig.version.tickDataMaxAgeSeconds,
+            max_spread_points:          traderConfig.version.maxSpreadPoints,
+            max_risk_per_trade:         traderConfig.version.maxRiskPerTrade,
+            minimum_rr:                 traderConfig.version.minimumRR,
+            max_positions:              traderConfig.version.maxPositions,
+          }
+        : null;
       let analyzeStatus = "entry_failed";
       try {
         const knowledgeItems = await m5Deps.fetchKnowledge(trader.id as string, trader.user_id as string);
