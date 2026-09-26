@@ -136,7 +136,7 @@ export function parseTextReview(text, stage, commitSha, reviewCycle) {
  * Run Codex review on a specific commit.
  * Returns the structured ReviewResult.
  */
-export function runCodexReview({ commitSha, stage, reviewCycle, prompt, repoPath, outputDir }) {
+export function runCodexReview({ commitSha, stage, reviewCycle, prompt, repoPath, outputDir, baseCommit }) {
   mkdirSync(outputDir, { recursive: true });
 
   const tmpOut = join(tmpdir(), `avl-codex-${randomUUID()}.txt`);
@@ -154,6 +154,9 @@ export function runCodexReview({ commitSha, stage, reviewCycle, prompt, repoPath
   // Write prompt to temp file for stdin
   const promptFile = join(tmpdir(), `avl-codex-prompt-${randomUUID()}.txt`);
   writeFileSync(promptFile, prompt, "utf-8");
+
+  // Note: --base and [PROMPT] are mutually exclusive in codex exec review.
+  // Use stdin prompt and embed git range instructions in the prompt itself.
 
   const args = [
     "exec", "review",

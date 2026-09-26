@@ -57,6 +57,7 @@ export interface UpsertResult {
 
 export interface LastBarResult {
   time_utc: string | null;
+  error?: string;  // present only on query failure, to distinguish from empty history
 }
 
 // ----------------------------------------------------------------
@@ -66,12 +67,14 @@ export interface LastBarResult {
 // ----------------------------------------------------------------
 
 export function canonicalizeSymbol(brokerSymbol: string): string {
+  // Uppercase first so aliases apply consistently regardless of input case
   return brokerSymbol
+    .toUpperCase()
     .replace("#", "")
     .replace("XAU", "GOLD")
-    .replace("USD", "")
-    .replace(/[-_].*/, "")
-    .toUpperCase();
+    .replace(/^GOLD.*USD$/, "GOLD")  // catch GOLDUSD edge case after XAU→GOLD
+    .replace(/USD$/, "")
+    .replace(/[-_].*/, "");
 }
 
 // ----------------------------------------------------------------
@@ -84,10 +87,10 @@ export function validateBar(
 ): string | null {
   const now = nowMs ?? Date.now();
 
-  if (!bar.open || bar.open <= 0) return "open must be > 0";
-  if (!bar.close || bar.close <= 0) return "close must be > 0";
-  if (!bar.high || bar.high <= 0) return "high must be > 0";
-  if (!bar.low || bar.low <= 0) return "low must be > 0";
+  if (typeof bar.open !== "number" || !Number.isFinite(bar.open) || bar.open <= 0) return "open must be a finite number > 0";
+  if (typeof bar.close !== "number" || !Number.isFinite(bar.close) || bar.close <= 0) return "close must be a finite number > 0";
+  if (typeof bar.high !== "number" || !Number.isFinite(bar.high) || bar.high <= 0) return "high must be a finite number > 0";
+  if (typeof bar.low !== "number" || !Number.isFinite(bar.low) || bar.low <= 0) return "low must be a finite number > 0";
   if (bar.high < bar.low) return "high must be >= low";
   if (bar.high < bar.open) return "high must be >= open";
   if (bar.high < bar.close) return "high must be >= close";
@@ -243,7 +246,7 @@ export async function getLastCustomerBar(
 
   if (error) {
     console.error("[customerBarData] last-bar query error:", error.message);
-    return { time_utc: null };
+    return { time_utc: null, error: error.message };
   }
 
   return { time_utc: data?.time_utc ?? null };

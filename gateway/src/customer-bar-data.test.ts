@@ -27,6 +27,10 @@ test("canonicalizeSymbol: lowercase input uppercased", () => {
   assert.equal(canonicalizeSymbol("gold#"), "GOLD");
 });
 
+test("canonicalizeSymbol: lowercase xauusd → GOLD (P2 fix: uppercase before alias)", () => {
+  assert.equal(canonicalizeSymbol("xauusd"), "GOLD");
+});
+
 // ----------------------------------------------------------------
 // Timeframe set
 // ----------------------------------------------------------------
@@ -167,4 +171,15 @@ test("validateBar: 'invalid' timestamp string rejected", () => {
 test("validateBar: NaN-derived ISO string 'invalid' is rejected", () => {
   // This tests the P1-3 fix: payload.time=NaN → time_utc='invalid' → rejected
   assert.notEqual(validateBar({ ...validBar(), time_utc: "invalid" }), null);
+});
+
+test("validateBar: string OHLC values rejected (P2 runtime type check)", () => {
+  // Runtime payloads are cast from JSON, so strings must be rejected
+  assert.notEqual(validateBar({ ...validBar(), open: "abc" as unknown as number }), null);
+  assert.notEqual(validateBar({ ...validBar(), high: null as unknown as number }), null);
+});
+
+test("validateBar: Infinity OHLC rejected", () => {
+  assert.notEqual(validateBar({ ...validBar(), open: Infinity }), null);
+  assert.notEqual(validateBar({ ...validBar(), close: -Infinity }), null);
 });

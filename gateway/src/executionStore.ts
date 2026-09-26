@@ -128,9 +128,41 @@ export interface BridgeDeal {
   profit:         number;
   commission:     number;
   swap:           number;
-  dealTime:       string;
+  dealTime:       string | number;  // EA may send Unix epoch seconds (number) or formatted string
   magicNumber:    number;
   commandId:      string | null;
+}
+
+/** Persistence boundary for execution-result and position-snapshot paths. */
+export interface ExecutionStore {
+  submitCommandResult(result: BridgeResultInput, connectionId: string): Promise<{ rowsAffected: number }>;
+  upsertPositions(connectionId: string, userId: string, positions: BridgePosition[], complete?: boolean): Promise<void>;
+}
+
+/** Production store keeps the existing Supabase-backed behavior lazy. */
+export function createProductionExecutionStore(): ExecutionStore {
+  return {
+    submitCommandResult,
+    upsertPositions: (connectionId, userId, positions, complete) => upsertPositions(connectionId, userId, positions, undefined, complete),
+  };
+}
+
+export async function processExecutionResult(
+  result: BridgeResultInput,
+  connectionId: string,
+  store: ExecutionStore = createProductionExecutionStore(),
+): Promise<{ rowsAffected: number }> {
+  return store.submitCommandResult(result, connectionId);
+}
+
+export async function reconcilePositionSnapshot(
+  connectionId: string,
+  userId: string,
+  positions: BridgePosition[],
+  store: ExecutionStore = createProductionExecutionStore(),
+  options: { complete?: boolean } = {},
+): Promise<void> {
+  await store.upsertPositions(connectionId, userId, positions, options.complete === true);
 }
 
 // ------------------------------------------------------------------
@@ -142,8 +174,19 @@ export async function verifyBridgeAuth(
   connectionId: string,
   connectionToken: string,
 ): Promise<ConnectionSafetyFlags | null> {
+  const result = await verifyBridgeAuthStatus(connectionId, connectionToken);
+  return result === "unavailable" || result === "denied" ? null : result;
+}
+
+export type BridgeAuthStatus = ConnectionSafetyFlags | "denied" | "unavailable";
+
+/** Detailed auth result for HTTP handlers that must distinguish outage from denial. */
+export async function verifyBridgeAuthStatus(
+  connectionId: string,
+  connectionToken: string,
+): Promise<BridgeAuthStatus> {
   const sb = getClient();
-  if (!sb) return null;
+  if (!sb) return "unavailable";
 
   const { data, error } = await sb
     .from("mt5_connections")
@@ -151,13 +194,14 @@ export async function verifyBridgeAuth(
     .eq("id", connectionId)
     .single();
 
-  if (error || !data) return null;
+  if (error) return "unavailable";
+  if (!data) return "denied";
 
   // Token hash照合（平文Tokenはログに出さない）
   const hash = createHash("sha256").update(connectionToken).digest("hex");
   if (hash !== data.connection_token_hash) {
     console.warn(`[executionStore] auth FAIL connection_id=${connectionId} (token hash mismatch)`);
-    return null;
+    return "denied";
   }
 
   return {
@@ -247,11 +291,15 @@ export async function claimCommand(
 // Command Result提出（Terminal State移行）
 // ------------------------------------------------------------------
 
+// STAGE1-05 AUDIT-022: connectionId パラメータ追加（コマンド所有者チェック）
+// Returns: rowsAffected — 0 = ownership mismatch or terminal state (no update)
 export async function submitCommandResult(
   result: BridgeResultInput,
-): Promise<void> {
-  const sb = getClient();
-  if (!sb) return;
+  connectionId: string,
+  dbOverride?: SupabaseClient | null,
+): Promise<{ rowsAffected: number }> {
+  const sb = dbOverride === undefined ? getClient() : dbOverride;
+  if (!sb) return { rowsAffected: 0 };
 
   const now = new Date().toISOString();
 
@@ -263,21 +311,99 @@ export async function submitCommandResult(
   };
 
   if (result.success && result.status === "FILLED") {
-    update.executed_at        = result.brokerTime ?? now;
-    update.broker_order_ticket   = result.orderTicket;
-    update.broker_deal_ticket    = result.dealTicket;
+    update.executed_at            = result.brokerTime ?? now;
+    update.broker_order_ticket    = result.orderTicket;
+    update.broker_deal_ticket     = result.dealTicket;
     update.broker_position_ticket = result.positionTicket;
-    update.execution_price    = result.executionPrice;
-    update.executed_volume    = result.executedVolume;
+    update.execution_price        = result.executionPrice;
+    update.executed_volume        = result.executedVolume;
   }
 
-  await sb
+  // STAGE1-05 AUDIT-022: connection_id ownership check + select to detect 0-row updates
+  const { data: updated } = await sb
     .from("execution_commands")
     .update(update)
     .eq("command_id", result.commandId)
-    .in("status", ["CLAIMED", "EXECUTING"]);  // Terminal Stateには書き込まない
+    .eq("connection_id", connectionId)        // 所有接続のコマンドのみ
+    .in("status", ["CLAIMED", "EXECUTING"])   // Terminal Stateには書き込まない
+    .select("command_id, action, ai_position_id, user_id, connection_id, stop_loss, take_profit, created_at");
 
-  console.log(`[executionStore] result commandId=${result.commandId} status=${result.status}`);
+  const rowsAffected = (updated ?? []).length;
+  if (rowsAffected > 0 && result.success && result.status === "FILLED") {
+    const { data: command } = await sb.from("execution_commands")
+      .select("command_id, action, ai_position_id, user_id, connection_id, stop_loss, take_profit, created_at")
+      .eq("command_id", result.commandId)
+      .eq("connection_id", connectionId)
+      .maybeSingle();
+    if (command && (command.action === "MODIFY_SL" || command.action === "MODIFY_TP") && !command.ai_position_id) {
+      throw new Error(`MODIFY_POSITION_SYNC_FAILED:MISSING_AI_POSITION_CORRELATION:${command.command_id}`);
+    }
+    if (command?.ai_position_id) {
+      if (command.action === "MODIFY_SL" || command.action === "MODIFY_TP") {
+        // A later-created successful modification is authoritative. This keeps
+        // a delayed broker result from rolling back a newer confirmed value.
+        const { data: latest } = await sb.from("execution_commands")
+          .select("command_id, created_at")
+          .eq("ai_position_id", command.ai_position_id)
+          .eq("user_id", command.user_id)
+          .eq("connection_id", command.connection_id)
+          .eq("action", command.action)
+          .eq("status", "FILLED")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latest?.command_id !== command.command_id) {
+          console.warn(`[executionStore] stale modify result ignored commandId=${result.commandId}`);
+        } else {
+          const requested = command.action === "MODIFY_SL" ? command.stop_loss : command.take_profit;
+          const confirmed = command.action === "MODIFY_SL"
+            ? (Number.isFinite(result.stopLoss) ? result.stopLoss : requested)
+            : (Number.isFinite(result.takeProfit) ? result.takeProfit : requested);
+          if (confirmed === null || confirmed === undefined || !Number.isFinite(Number(confirmed))) {
+            throw new Error(`MODIFY_SYNC_MISSING_CONFIRMED_VALUE:${command.action}`);
+          }
+          const protectionUpdate = command.action === "MODIFY_SL"
+            ? { stop_loss: Number(confirmed) }
+            : { take_profit: Number(confirmed) };
+          const { data: synced, error: syncError } = await sb.from("ai_positions")
+            .update(protectionUpdate)
+            .eq("id", command.ai_position_id)
+            .eq("user_id", command.user_id)
+            .eq("connection_id", command.connection_id)
+            .eq("status", "OPEN")
+            .select("id");
+          if (syncError || !synced || synced.length === 0) {
+            const { data: currentPosition } = await sb.from("ai_positions")
+              .select("id, status")
+              .eq("id", command.ai_position_id)
+              .eq("user_id", command.user_id)
+              .eq("connection_id", command.connection_id)
+              .maybeSingle();
+            if (currentPosition?.status !== "CLOSED") {
+              throw new Error(`MODIFY_POSITION_SYNC_FAILED:${syncError?.message ?? "position_not_open_or_owned"}`);
+            }
+            console.warn(`[executionStore] modify result ignored for closed position=${command.ai_position_id}`);
+          }
+        }
+      } else {
+        await sb.from("ai_positions")
+          .update({
+            status: "OPEN",
+            position_ticket: result.positionTicket ?? null,
+            order_ticket: result.orderTicket ?? null,
+            entry_deal_ticket: result.dealTicket ?? null,
+            entry_price: result.executionPrice ?? null,
+            volume: result.executedVolume ?? undefined,
+            opened_at: result.brokerTime ?? now,
+          })
+          .eq("id", command.ai_position_id)
+          .eq("user_id", command.user_id)
+          .eq("connection_id", command.connection_id);
+      }
+    }
+  }
+  console.log(`[executionStore] result commandId=${result.commandId} status=${result.status} rows=${rowsAffected}`);
+  return { rowsAffected };
 }
 
 // ------------------------------------------------------------------
@@ -306,11 +432,18 @@ export async function updateHeartbeat(
   const { data, error } = await sb
     .from("mt5_connections")
     .update({
-      last_heartbeat_at: now,
-      status:            "CONNECTED",
-      account_type:      bridgeData.accountType,
-      account_mode:      bridgeData.accountMode,
-      leverage:          bridgeData.leverage,
+      last_heartbeat_at:           now,
+      status:                      "CONNECTED",
+      account_type:                bridgeData.accountType,
+      account_mode:                bridgeData.accountMode,
+      leverage:                    bridgeData.leverage,
+      // Phase 3.5: account balance/equity をリアルタイム保存
+      // Risk Engine の Source of Truth として使用する
+      balance:                     bridgeData.balance,
+      equity:                      bridgeData.equity,
+      margin:                      bridgeData.margin,
+      free_margin:                 bridgeData.freeMargin,
+      account_balance_updated_at:  now,
     })
     .eq("id", connectionId)
     .select("id, user_id, trading_enabled, emergency_stop, account_type, account_mode")
@@ -353,9 +486,34 @@ export async function upsertPositions(
   connectionId: string,
   userId: string,
   positions: BridgePosition[],
+  dbOverride?: SupabaseClient | null,
+  complete = false,
 ): Promise<void> {
-  const sb = getClient();
-  if (!sb || positions.length === 0) return;
+  const sb = dbOverride === undefined ? getClient() : dbOverride;
+  if (!sb) return;
+
+  const invalid = positions.some((p) =>
+    !Number.isInteger(p.positionTicket) || p.positionTicket <= 0 ||
+    !p.symbol || !["BUY", "SELL"].includes(p.direction) ||
+    !Number.isFinite(p.volume) || p.volume <= 0 ||
+    !Number.isFinite(p.openPrice) || p.openPrice <= 0 ||
+    !Number.isFinite(p.currentPrice) || p.currentPrice <= 0 ||
+    (p.stopLoss !== null && (!Number.isFinite(p.stopLoss) || p.stopLoss < 0)) ||
+    (p.takeProfit !== null && (!Number.isFinite(p.takeProfit) || p.takeProfit < 0))
+  );
+  if (invalid) throw new Error("POSITION_SNAPSHOT_INVALID_ITEM");
+
+  // Only an explicitly authoritative complete snapshot may close positions
+  // absent from the payload. Unknown/partial snapshots are upsert-only.
+  if (positions.length === 0 && complete) {
+    const { error } = await sb.from("live_positions")
+      .update({ status: "CLOSED", last_synced_at: new Date().toISOString() })
+      .eq("connection_id", connectionId)
+      .eq("user_id", userId)
+      .eq("status", "OPEN");
+    if (error) throw new Error(`POSITION_RECONCILIATION_CLOSE_FAILED:${error.message}`);
+    return;
+  }
 
   const rows = positions.map(p => ({
     user_id:          userId,
@@ -384,12 +542,59 @@ export async function upsertPositions(
       ignoreDuplicates:  false,
     });
 
-  if (error) console.warn("[executionStore] positions upsert:", error.message);
+  if (error) throw new Error(`POSITION_RECONCILIATION_UPSERT_FAILED:${error.message}`);
+
+  if (!complete) return;
+
+  const seen = rows.map((row) => row.position_ticket);
+  const { data: openRows, error: readError } = await sb.from("live_positions")
+    .select("position_ticket")
+    .eq("connection_id", connectionId)
+    .eq("user_id", userId)
+    .eq("status", "OPEN");
+  if (readError) throw new Error(`POSITION_RECONCILIATION_READ_FAILED:${readError.message}`);
+  const stale = (openRows ?? [])
+    .map((row: { position_ticket: number }) => row.position_ticket)
+    .filter((ticket: number) => !seen.includes(ticket));
+  if (stale.length > 0) {
+    const { error: closeError } = await sb.from("live_positions")
+      .update({ status: "CLOSED", last_synced_at: new Date().toISOString() })
+      .eq("connection_id", connectionId)
+      .eq("user_id", userId)
+      .in("position_ticket", stale);
+    if (closeError) throw new Error(`POSITION_RECONCILIATION_CLOSE_FAILED:${closeError.message}`);
+  }
 }
 
 // ------------------------------------------------------------------
 // Live Deals Upsert
 // ------------------------------------------------------------------
+
+/**
+ * Normalize a deal timestamp to ISO 8601 for PostgreSQL TIMESTAMPTZ.
+ *
+ * The EA sends one of two formats:
+ *   (a) Unix epoch seconds as a bare number:  1790335988
+ *   (b) MQL5 TimeToString string: "2026.09.25 11:33:08 UTC"
+ *
+ * PostgreSQL TIMESTAMPTZ rejects bare epoch-second integers and dot-separated
+ * date strings, so we normalise to "YYYY-MM-DDTHH:MM:SS.000Z" in all cases.
+ * Seconds timestamps must be multiplied by 1000 before constructing Date to
+ * avoid treating them as milliseconds (which would give dates near 1970-01-01).
+ */
+function normalizeDealTime(raw: string | number): string {
+  // Case 1: numeric (EA sent plain epoch seconds without TimeToString)
+  const asNum = typeof raw === "number" ? raw : (String(raw).match(/^\d{9,12}$/) ? Number(raw) : NaN);
+  if (!isNaN(asNum) && asNum > 1_000_000_000 && asNum < 9_999_999_999) {
+    return new Date(asNum * 1000).toISOString();
+  }
+  // Case 2: MQL5 "YYYY.MM.DD HH:MM:SS UTC" — replace dots with dashes
+  if (typeof raw === "string") {
+    const normalized = raw.trim().replace(/^(\d{4})\.(\d{2})\.(\d{2})/, "$1-$2-$3");
+    return normalized;
+  }
+  return String(raw);
+}
 
 export async function upsertDeals(
   connectionId: string,
@@ -413,7 +618,7 @@ export async function upsertDeals(
     profit:           d.profit,
     commission:       d.commission,
     swap:             d.swap,
-    deal_time:        d.dealTime,
+    deal_time:        normalizeDealTime(d.dealTime),
     magic_number:     d.magicNumber,
     command_id:       d.commandId ?? null,
     synced_at:        new Date().toISOString(),
@@ -427,6 +632,71 @@ export async function upsertDeals(
     });
 
   if (error) console.warn("[executionStore] deals upsert:", error.message);
+}
+
+// ------------------------------------------------------------------
+// Symbol Specification Upsert（Bridge EA から送信されたスペックを DB 保存）
+// Risk Engine の Lot 計算・Stop Level 検証の Source of Truth
+// ------------------------------------------------------------------
+
+export interface SymbolSpecInput {
+  connectionId:      string;
+  userId:            string;
+  symbol:            string;  // canonical symbol (e.g., "GOLD")
+  brokerSymbol:      string;  // actual MT5 symbol (e.g., "GOLD#")
+  contractSize:      number;
+  volumeMin:         number;
+  volumeMax:         number;
+  volumeStep:        number;
+  tickSize:          number;
+  tickValue:         number;  // per lot per tick in deposit currency
+  pointSize:         number;
+  digits:            number;
+  stopsLevelPoints:  number;
+  stopsLevelPrice:   number;
+  currencyProfit:    string;
+  currencyMargin:    string;
+  marginInitial:     number;
+  spreadCurrent:     number;
+}
+
+export async function upsertSymbolSpec(spec: SymbolSpecInput): Promise<boolean> {
+  const sb = getClient();
+  if (!sb) return false;
+
+  const { error } = await sb
+    .from("symbol_specs")
+    .upsert({
+      user_id:              spec.userId,
+      connection_id:        spec.connectionId,
+      symbol:               spec.symbol,
+      broker_symbol:        spec.brokerSymbol,
+      contract_size:        spec.contractSize,
+      volume_min:           spec.volumeMin,
+      volume_max:           spec.volumeMax,
+      volume_step:          spec.volumeStep,
+      tick_size:            spec.tickSize,
+      tick_value:           spec.tickValue,
+      point_size:           spec.pointSize,
+      digits:               spec.digits,
+      stops_level_points:   spec.stopsLevelPoints,
+      stops_level_price:    spec.stopsLevelPrice,
+      currency_profit:      spec.currencyProfit,
+      currency_margin:      spec.currencyMargin,
+      margin_initial:       spec.marginInitial,
+      spread_current:       spec.spreadCurrent,
+      updated_at:           new Date().toISOString(),
+    }, {
+      onConflict: "connection_id,broker_symbol",
+    });
+
+  if (error) {
+    console.warn("[executionStore] symbol_spec upsert:", error.message);
+    return false;
+  }
+
+  console.log(`[executionStore] symbol_spec saved: ${spec.brokerSymbol} contract=${spec.contractSize} tickVal=${spec.tickValue}`);
+  return true;
 }
 
 // ------------------------------------------------------------------

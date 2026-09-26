@@ -578,10 +578,12 @@ function auth(req: Request, res: Response, next: NextFunction): void {
 async function enforceConnectionAuth(req: Request, res: Response): Promise<boolean> {
   const connectionId = (req.headers["x-connection-id"] ?? "") as string;
   const connectionToken = (req.headers["x-connection-token"] ?? "") as string;
-  // Server-to-server callers may use the dedicated internal header, but must
-  // still bind the request to an explicit connection id.  The public gateway
-  // secret by itself is never accepted as a customer identity.
-  const internalAuth = (req.headers["x-internal-service-auth"] ?? "") as string;
+  // Internal service header is DISABLED for /market-data/* endpoints.
+  // All customer-data endpoints must use verified bridge credentials.
+  // The x-internal-service-auth bypass is retained only for non-customer-data
+  // endpoints (heartbeat, status) and must not be used for identity substitution.
+  const isMarketDataPath = (req.path ?? "").startsWith("/market-data/");
+  const internalAuth = isMarketDataPath ? "" : (req.headers["x-internal-service-auth"] ?? "") as string;
   if (internalAuth && SECRET && internalAuth === SECRET && connectionId) return true;
   if (!connectionId || !connectionToken) {
     res.status(401).json({ error: "X-Connection-Id / X-Connection-Token が必要です" });
@@ -1459,6 +1461,12 @@ function buildBarIngestionInput(
   source: BarSource,
   bodyDefaults: Pick<MarketDataBarsBody, "broker" | "broker_server" | "utc_offset_hours">,
 ): BarIngestionInput {
+  // Validate required string/numeric fields before any conversion
+  if (typeof payload.symbol !== "string" || !payload.symbol) throw new Error("bar.symbol must be a non-empty string");
+  if (typeof payload.timeframe !== "string" || !payload.timeframe) throw new Error("bar.timeframe must be a non-empty string");
+  // OHLC are validated by validateBar after ingestion; here just guard against missing keys
+  if (payload === null || typeof payload !== "object") throw new Error("bar payload must be an object");
+
   const utcOffsetHours = typeof payload.utc_offset_hours === "number" && Number.isFinite(payload.utc_offset_hours)
     ? payload.utc_offset_hours
     : (typeof bodyDefaults.utc_offset_hours === "number" && Number.isFinite(bodyDefaults.utc_offset_hours)
@@ -1469,8 +1477,15 @@ function buildBarIngestionInput(
     ? payload.time
     : NaN;
 
-  // Let validateBar reject the NaN timestamp via "not a valid ISO timestamp"
-  const timeUtc = Number.isFinite(brokerTimeSec)
+  // Validate Unix second range: must be between 2000-01-01 and 2100-01-01
+  const MIN_EPOCH_SEC = 946_684_800;  // 2000-01-01 UTC
+  const MAX_EPOCH_SEC = 4_102_444_800; // 2100-01-01 UTC
+  const inRange = Number.isFinite(brokerTimeSec)
+    && brokerTimeSec >= MIN_EPOCH_SEC
+    && brokerTimeSec <= MAX_EPOCH_SEC;
+
+  // Let validateBar reject "invalid" via "not a valid ISO timestamp"
+  const timeUtc = inRange
     ? new Date((brokerTimeSec - utcOffsetHours * 3600) * 1000).toISOString()
     : "invalid";
 
@@ -1522,9 +1537,15 @@ app.post("/market-data/bars", auth, async (req, res) => {
     return;
   }
 
-  const inputs = body.bars.map((p) =>
-    buildBarIngestionInput(p, connectionId, flags.userId, "bridge_realtime", body),
-  );
+  let inputs: BarIngestionInput[];
+  try {
+    inputs = body.bars.map((p) =>
+      buildBarIngestionInput(p, connectionId, flags.userId, "bridge_realtime", body),
+    );
+  } catch (e) {
+    res.status(400).json({ ok: false, error: `Payload construction failed: ${(e as Error).message}` });
+    return;
+  }
 
   const result = await upsertCustomerBars(inputs);
   if (result.db_error) {
@@ -1562,9 +1583,15 @@ app.post("/market-data/backfill", auth, async (req, res) => {
     return;
   }
 
-  const inputs = body.bars.map((p) =>
-    buildBarIngestionInput(p, connectionId, flags.userId, "bridge_recovery", body),
-  );
+  let inputs: BarIngestionInput[];
+  try {
+    inputs = body.bars.map((p) =>
+      buildBarIngestionInput(p, connectionId, flags.userId, "bridge_recovery", body),
+    );
+  } catch (e) {
+    res.status(400).json({ ok: false, error: `Payload construction failed: ${(e as Error).message}` });
+    return;
+  }
 
   const result = await upsertCustomerBars(inputs);
   if (result.db_error) {
@@ -1608,6 +1635,10 @@ app.get("/market-data/last-bar", auth, async (req, res) => {
 
   const canonical = canonicalizeSymbol(symbol);
   const result    = await getLastCustomerBar(connectionId, canonical, timeframe);
+  if (result.error) {
+    res.status(503).json({ ok: false, error: result.error });
+    return;
+  }
   res.json({ ok: true, connection_id: connectionId, symbol: canonical, timeframe, last_bar_utc: result.time_utc });
 });
 

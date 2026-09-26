@@ -25,7 +25,7 @@ const { readState, updateState, setHumanGate, recordReviewResult } =
   await import(join(__dirname, "state-manager.mjs"));
 const { printHumanGateRequired, PRODUCTION_MIGRATIONS_PENDING } =
   await import(join(__dirname, "human-gate.mjs"));
-const { buildReviewPrompt, STAGE_DEFINITIONS } =
+const { buildReviewPrompt, STAGE_DEFINITIONS, V2_STAGE_BASELINES } =
   await import(join(__dirname, "stage-defs.mjs"));
 const { runCodexReview, validateReviewResult } =
   await import(join(__dirname, "codex-adapter.mjs"));
@@ -188,11 +188,16 @@ async function cmdReview() {
     process.exit(1);
   }
 
+  const baseCommit = V2_STAGE_BASELINES[stage] ?? null;
+
   console.log(`[avl:review] Stage:  ${stage}`);
   console.log(`[avl:review] Commit: ${commitSha}`);
   console.log(`[avl:review] Cycle:  ${reviewCycle} / ${MAX_REVIEW_CYCLES}`);
+  if (baseCommit) {
+    console.log(`[avl:review] Base: ${baseCommit} (cumulative stage review)`);
+  }
 
-  const prompt = buildReviewPrompt(stage, commitSha, reviewCycle);
+  const prompt = buildReviewPrompt(stage, commitSha, reviewCycle, baseCommit);
 
   let result;
   try {
@@ -203,6 +208,7 @@ async function cmdReview() {
       prompt,
       repoPath:  REPO_ROOT,
       outputDir: join(REPO_ROOT, "reports", "codex"),
+      baseCommit,
     });
   } catch (err) {
     console.error(`\n[avl:review] Codex invocation FAILED:`);

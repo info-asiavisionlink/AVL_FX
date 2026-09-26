@@ -2,6 +2,13 @@
 // Source of truth: docs/v2/V2_IMPLEMENTATION_ROADMAP.md
 // This file provides the structured review context sent to Codex for each stage.
 
+// Commit SHA just before V2 Stage 1 started (last V1 commit).
+// Used as --base for cumulative stage review.
+export const V2_STAGE_BASELINES = {
+  "V2-Stage-1": "f530d5e",
+  // Add future stage baselines here
+};
+
 export const STAGE_DEFINITIONS = {
   "V2-Stage-1": {
     name:    "Customer Market Data Persistence",
@@ -78,7 +85,7 @@ export const STAGE_DEFINITIONS = {
  * Get the review prompt for a given stage and commit.
  * This is sent to Codex as the review instruction.
  */
-export function buildReviewPrompt(stageName, commitSha, reviewCycle) {
+export function buildReviewPrompt(stageName, commitSha, reviewCycle, baseCommit) {
   const def = STAGE_DEFINITIONS[stageName];
   if (!def) {
     throw new Error(`No stage definition found for: ${stageName}`);
@@ -89,17 +96,21 @@ export function buildReviewPrompt(stageName, commitSha, reviewCycle) {
   const v1List   = def.v1_safety.map(s => `  - ${s}`).join("\n");
   const focusList = def.codex_focus.map(f => `  - ${f}`).join("\n");
   const filesList = def.files_changed.map(f => `  - ${f}`).join("\n");
+  const resolvedBase = baseCommit ?? (V2_STAGE_BASELINES[stageName] ?? "HEAD~10");
+  const gitRangeInstructions = `
+HOW TO FIND ALL STAGE CHANGES:
+  This stage spans multiple commits since baseline ${resolvedBase}.
+  Run: git log ${resolvedBase}..HEAD --oneline
+  Run: git diff ${resolvedBase} HEAD -- supabase/migrations/035_customer_bar_data.sql
+  Run: git diff ${resolvedBase} HEAD -- gateway/src/customerBarDataStore.ts
+  Run: git diff ${resolvedBase} HEAD -- gateway/src/customer-bar-data.test.ts
+  Run: git diff ${resolvedBase} HEAD -- gateway/src/index.ts
+  Run: git diff ${resolvedBase} HEAD -- gateway/src/barDataStore.ts`;
 
   return `You are Codex, an INDEPENDENT code reviewer for the AVL-FX trading system.
 
 ROLE: REVIEWER ONLY. Do NOT modify any files. Do NOT write code. Only read and review.
-
-HOW TO FIND THE CHANGES:
-  Run: git show ${commitSha} --stat
-  Run: git show ${commitSha} -- supabase/migrations/035_customer_bar_data.sql
-  Run: git show ${commitSha} -- gateway/src/customerBarDataStore.ts
-  Run: git show ${commitSha} -- gateway/src/customer-bar-data.test.ts
-  Run: git diff ${commitSha}~1 ${commitSha} -- gateway/src/index.ts
+${gitRangeInstructions}
 
 ═══════════════════════════════════════════════════
 REVIEW TARGET
