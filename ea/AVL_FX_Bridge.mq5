@@ -431,9 +431,17 @@ void Module_B_OnBarClose()
             // Cursor anchored here (> 0) prevents Module C's DB-watermark fallback from
             // overwriting it (the !cursorActive guard blocks the fallback when cursor > 0).
             if(i < ArraySize(g_RecoveryCursor) && g_RecoveryCursor[i] == 0) {
-               datetime anchor = (i < ArraySize(g_LastSuccessSentTime) && g_LastSuccessSentTime[i] > 0)
-                                ? g_LastSuccessSentTime[i]
-                                : 0;
+               datetime anchor;
+               if(i < ArraySize(g_LastSuccessSentTime) && g_LastSuccessSentTime[i] > 0) {
+                  // Anchor at last confirmed delivery; cursor+1 starts exactly at the gap.
+                  anchor = g_LastSuccessSentTime[i];
+               } else if(g_LastBarTimes[i] > 0) {
+                  // No prior success: anchor one second before the failed bar so it is included
+                  // in fromTime = anchor + 1 when Module C computes the recovery start.
+                  anchor = g_LastBarTimes[i] - 1;
+               } else {
+                  anchor = 0;
+               }
                if(anchor > 0) g_RecoveryCursor[i] = anchor;
             }
             g_BackfillNeeded = true;
@@ -599,12 +607,12 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
          if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) g_RecoveryCursor[tfIdx] = 0;
          return;
       }
-      // Use count-limited CopyRates (start_time + count) to bound memory usage upfront.
-      // Then strip any bars at or after the forming candle that may appear at the tail.
-      n = CopyRates(g_Symbol, tf, fromTime, InpBackfillBars, rates);
-      if(n > 0 && formingOpen > 0) {
-         while(n > 0 && rates[n - 1].time >= formingOpen) n--;
-      }
+      // Use time-range CopyRates (fromTime → boundedTo) to fetch bars FORWARD from cursor.
+      // CopyRates(sym, tf, start_time, count, rates) goes backwards in history — wrong direction.
+      // Bound the upper end to at most InpBackfillBars periods ahead to limit memory usage.
+      datetime boundedTo = MathMin(toTime,
+         fromTime + (datetime)((long)InpBackfillBars * tfPeriodSec));
+      n = CopyRates(g_Symbol, tf, fromTime, boundedTo, rates);
    } else {
       // No history: get most recent N confirmed bars using shift=1 (skip forming)
       n = CopyRates(g_Symbol, tf, 1, barsToFetch, rates);
