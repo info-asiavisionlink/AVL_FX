@@ -830,6 +830,8 @@ app.post("/positions", auth, async (req, res) => {
   if (!await enforceConnectionAuth(req, res)) return;
   const connectionId = req.headers["x-connection-id"] as string;
   const { positions: pos, symbol } = req.body as { positions: Position[]; symbol: string };
+  // Update global positions snapshot for GET /positions backward compat (scoped by Stage 9)
+  if (Array.isArray(pos)) positions = pos;
   broadcastToConnection(connectionId, { type: "POSITIONS", symbol, data: pos ?? [], ts: Date.now() });
   res.json({ ok: true });
 });
@@ -1483,11 +1485,14 @@ function buildBarIngestionInput(
   // OHLC are validated by validateBar after ingestion; here just guard against missing keys
   if (payload === null || typeof payload !== "object") throw new Error("bar payload must be an object");
 
-  const utcOffsetHours = typeof payload.utc_offset_hours === "number" && Number.isFinite(payload.utc_offset_hours)
-    ? payload.utc_offset_hours
-    : (typeof bodyDefaults.utc_offset_hours === "number" && Number.isFinite(bodyDefaults.utc_offset_hours)
-        ? bodyDefaults.utc_offset_hours
-        : 0);
+  // Use 0 only when the offset is absent/null — reject supplied non-numeric/out-of-range values
+  const rawOffset = payload.utc_offset_hours ?? bodyDefaults.utc_offset_hours;
+  if (rawOffset !== undefined && rawOffset !== null) {
+    if (typeof rawOffset !== "number" || !Number.isFinite(rawOffset) || rawOffset < -14 || rawOffset > 14) {
+      throw new Error(`bar.utc_offset_hours must be a number in [-14, 14], got: ${JSON.stringify(rawOffset)}`);
+    }
+  }
+  const utcOffsetHours = (rawOffset !== undefined && rawOffset !== null) ? (rawOffset as number) : 0;
 
   const brokerTimeSec = typeof payload.time === "number" && Number.isFinite(payload.time)
     ? payload.time

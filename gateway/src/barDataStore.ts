@@ -165,6 +165,13 @@ export async function upsertSingleBar(
     });
 
   if (error) {
+    // If connection_id column doesn't exist yet (migration 034 not applied), fall back silently.
+    // Migration 034 must be applied before deploying this code to Production.
+    const isSchemaMissing = error.message.includes("connection_id") && error.message.includes("column");
+    if (isSchemaMissing) {
+      console.warn("[barData] migration 034 not applied — V1 bar persistence skipped until schema is updated");
+      return;
+    }
     console.warn(
       `[barData] single upsert error ${symbol}:${timeframe} ${row.time_utc}:`,
       error.message
