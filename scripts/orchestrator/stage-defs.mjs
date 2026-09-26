@@ -6,6 +6,7 @@
 // Used as --base for cumulative stage review.
 export const V2_STAGE_BASELINES = {
   "V2-Stage-1": "f530d5e",
+  "V2-Stage-2": "9b3e77c",  // last commit of Stage 1 FROZEN
   // Add future stage baselines here
 };
 
@@ -63,21 +64,42 @@ export const STAGE_DEFINITIONS = {
     name:    "Historical Backfill / Recovery",
     doc:     "docs/v2/CUSTOMER_MARKET_DATA_ARCHITECTURE.md#6-historical-backfill--recovery",
     summary: "Bridge EA reconnect automatically backfills missing bars from MT5 history.",
-    files_changed: [],
-    dod: [
-      "GET /market-data/last-bar returns MAX(time_utc) correctly",
-      "Gap detection logic: compare last_bar vs current time",
-      "Backfill batch processing: CopyRates-equivalent, ≤500 bars/batch",
-      "Idempotent batch upsert (ON CONFLICT DO NOTHING for confirmed bars)",
-      "Out-of-order batch handling",
-      "Partial batch retry (entire batch on failure — idempotent)",
-      "Completeness verification post-backfill",
-      "Data quality validation per bar",
-      "backfill_summary log",
+    files_changed: [
+      "supabase/migrations/036_customer_backfill_logs.sql",
+      "gateway/src/customerBarDataStore.ts (conflict resolution, countBarsInRange, logBackfill)",
+      "gateway/src/customer-backfill.test.ts",
+      "gateway/src/index.ts (GET /market-data/bar-count, POST /market-data/backfill/complete)",
     ],
-    security_checklist: [],
-    v1_safety: ["No V1 execution path modified"],
-    codex_focus: [],
+    dod: [
+      "GET /market-data/last-bar returns MAX(time_utc) per connection+symbol+tf (Stage 1 carries forward)",
+      "Conflict resolution: bridge_recovery/backfill → ignoreDuplicates=true (never overwrite realtime)",
+      "GET /market-data/bar-count: returns count of bars in a time range for completeness verification",
+      "POST /market-data/backfill/complete: EA signals completion, Gateway logs backfill_summary",
+      "customer_backfill_logs table (migration 036, additive)",
+      "countCustomerBarsInRange() for completeness verification",
+      "logCustomerBackfill() writes summary to customer_backfill_logs",
+      "All three endpoints authenticated via verifyBridgeAuth",
+      "25 unit tests: gap detection, idempotency, out-of-order, conflict resolution, large-gap, partial retry, completeness, memory safety",
+      "Typecheck PASS, Build PASS",
+    ],
+    security_checklist: [
+      "All /market-data/* endpoints require verifyBridgeAuth (not just gateway SECRET)",
+      "No cross-customer data leakage in bar-count query (connection_id scoped)",
+      "backfill_logs RLS: authenticated users see only their own logs",
+    ],
+    v1_safety: [
+      "Migration 036 is additive (new table only)",
+      "No V1 execution path modified",
+      "No changes to Stage 1 features",
+    ],
+    codex_focus: [
+      "Idempotency: does ignoreDuplicates=true correctly prevent realtime bar overwrite?",
+      "Completeness: does bar-count use correct connection_id scope?",
+      "Authentication: are bar-count and backfill/complete using verifyBridgeAuth?",
+      "No false success on partial failure (error propagation)",
+      "Memory safety: no unbounded batch accumulation",
+      "UTC normalization: is timestamp handling consistent with Stage 1?",
+    ],
   },
 };
 
