@@ -426,7 +426,16 @@ void Module_B_OnBarClose()
             if(i < ArraySize(g_LastSuccessSentTime))
                g_LastSuccessSentTime[i] = g_LastBarTimes[i];
          } else {
-            // Realtime send failed — trigger Module C to recover this bar on next timer tick.
+            // Realtime send failed — anchor recovery cursor at last confirmed send so that
+            // subsequent successful realtime sends do not advance lastBarSec past this gap.
+            // Cursor anchored here (> 0) prevents Module C's DB-watermark fallback from
+            // overwriting it (the !cursorActive guard blocks the fallback when cursor > 0).
+            if(i < ArraySize(g_RecoveryCursor) && g_RecoveryCursor[i] == 0) {
+               datetime anchor = (i < ArraySize(g_LastSuccessSentTime) && g_LastSuccessSentTime[i] > 0)
+                                ? g_LastSuccessSentTime[i]
+                                : 0;
+               if(anchor > 0) g_RecoveryCursor[i] = anchor;
+            }
             g_BackfillNeeded = true;
          }
       }
@@ -590,9 +599,12 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
          if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) g_RecoveryCursor[tfIdx] = 0;
          return;
       }
-      // P1-1: CopyRates with time range — MQL5 date-range overload (no CopyRatesByTime)
-      n = CopyRates(g_Symbol, tf, fromTime, toTime, rates);
-      if(n > InpBackfillBars) n = InpBackfillBars; // page: send oldest portion first
+      // Use count-limited CopyRates (start_time + count) to bound memory usage upfront.
+      // Then strip any bars at or after the forming candle that may appear at the tail.
+      n = CopyRates(g_Symbol, tf, fromTime, InpBackfillBars, rates);
+      if(n > 0 && formingOpen > 0) {
+         while(n > 0 && rates[n - 1].time >= formingOpen) n--;
+      }
    } else {
       // No history: get most recent N confirmed bars using shift=1 (skip forming)
       n = CopyRates(g_Symbol, tf, 1, barsToFetch, rates);
