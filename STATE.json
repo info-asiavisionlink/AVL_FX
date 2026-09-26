@@ -132,12 +132,32 @@
       "038_customer_ai_trader_profile"
     ]
   },
-  "updated_at": "2026-09-27T00:00:00+09:00",
+  "updated_at": "2026-09-27T01:00:00+09:00",
   "human_gate_action": "APPLY_MIGRATION_038_PRODUCTION",
   "human_gate_risk": "HIGH — schema change on Customer Supabase; deploy ordering dependency",
   "remediation_window": null,
   "typecheck_status": "PASS",
   "build_status": "PASS",
   "codex_status": "DEFERRED",
-  "self_review_status": "PASS"
+  "self_review_status": "PASS",
+  "repository_recovery": {
+    "status": "IN_PROGRESS",
+    "reason": "Technically reproducible (clean checkout PASS at eae59d8); blocked on P1 incident: live-DB test write to the .env.local Supabase project (possibly Production) — Owner review required",
+    "base_commit": "2520b68",
+    "recovery_commit": "9bfcc21",
+    "safety_commit": "eae59d8",
+    "git_reproducible": true,
+    "clean_checkout_build": "PASS",
+    "clean_checkout_tests": "PASS",
+    "deployment_source_complete": true,
+    "incident": {
+      "job_id": "e007b9f3-67ff-4d96-aa0f-3ae3d4e759a2",
+      "strategy_id": "4582c579-8990-4790-a000-e33b2f68acbb",
+      "rows": "backtest_jobs 1, backtest_results 1, backtest_trades 51, strategy_registry 1 updated",
+      "at": "2026-09-26T15:27:46Z"
+    },
+    "security_follow_up": "ROTATE service-role credential previously exposed in dev output (Owner Human Gate)",
+    "report": "reports/repository/AVL-FX-git-reproducibility-final-2026-09-27.md",
+    "reviewer": "Claude Opus 5.5"
+  }
 }
