@@ -139,3 +139,16 @@ The new `sb_secret_` key was read from `.env.local` `CANDIDATE_SUPABASE_SECRET_K
 Rollback (until legacy is disabled):
 - Railway: set `SUPABASE_SERVICE_KEY` back from `.env.local` `SUPABASE_SERVICE_ROLE_KEY` via stdin, then redeploy.
 - Vercel: promote `dpl_HEr6xs…` (TV) / `dpl_7ZcwF2eY…` (Console); they carry the old env.
+
+## F. Closure — 2026-09-27
+
+- **Transient P0 (resolved):** The first "Disable JWT-based API keys" was applied to **AVL_FX console** (`ghufhqodgrkftmhjozhj`) instead of Trading View. The Console's own Vercel app and Railway Gateway use legacy service_role JWTs for that project, so they got 401 (seen at 17:24–17:26Z). The Owner re-enabled Console legacy keys; the Console Railway key returned 200 again at 17:27:52Z. No Console error logs were found afterwards.
+- The Owner then disabled legacy keys on **AVL_FX trading view** (`bsmofroshpmomjwfxigh`): the Management API reports `enabled: false`. The exposed old key was rejected (401) from 17:28:06Z on REST, apikey-only and Auth admin.
+- The new `sb_secret_` key passes 5/5 access patterns.
+- Health check 7/7. Gateway ok (eaConnected), MT5 `a7bb2d9b` heartbeat 0 s. TV / Console / Gateway: 0 Supabase-auth errors. Console customer pages 200.
+- `execution_commands` and `ai_positions` changed in the last 30 min: 0 / 0.
+- **SERVICE_ROLE_ROTATION = COMPLETE · SERVICE_ROLE_EXPOSURE = REMEDIATED · P1_SERVICE_ROLE = CLOSED.**
+- Follow-ups:
+  - Local `.env.local` / `gateway/.env` still hold the now-dead legacy key.
+  - The Console project still runs on legacy JWT keys (its own rotation is separate).
+  - A valid account PAT is stored in `gateway/.env` and `gateway/.env 2.example` (git-ignored).

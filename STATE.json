@@ -132,7 +132,7 @@
       "038_customer_ai_trader_profile"
     ]
   },
-  "updated_at": "2026-09-27T02:25:00+09:00",
+  "updated_at": "2026-09-27T02:35:00+09:00",
   "human_gate_action": "APPLY_MIGRATION_038_PRODUCTION",
   "human_gate_risk": "HIGH — schema change on Customer Supabase; deploy ordering dependency",
   "remediation_window": null,
@@ -169,15 +169,22 @@
   "remediation_statuses": {
     "REPOSITORY_RECOVERY": "COMPLETE",
     "INCIDENT_DATA_REMEDIATION": "COMPLETE",
-    "SERVICE_ROLE_ROTATION": "CUTOVER_COMPLETE — Railway fdc53900, Vercel TV dpl_8To1goeSZsYTYCo9oS7b3L1iXBbu, Console dpl_DmTVKboeJ9tkzdsp7Sb5mVvw8GYw on new sb_secret key; health PASS; LEGACY JWT STILL ACTIVE — Owner to disable in Supabase Dashboard",
+    "SERVICE_ROLE_ROTATION": "COMPLETE — legacy JWT keys disabled on bsmofroshpmomjwfxigh (old key 401 since 2026-09-26T17:28:06Z); all consumers on sb_secret key; health PASS",
     "CRON_ROTATION": "PENDING — bundled with service_role window (Vercel redeploy + Railway restart)",
     "WATCHER_ROTATION": "PENDING — bundled with service_role window",
     "OTHER_CREDENTIAL_ROTATION": "PENDING_HUMAN — OpenAI, Google, Resend, TwelveData (dashboard); EA_REGISTRY bundled; SUPABASE_PAT already 401",
     "MT5_GATEWAY_ROTATION": "PLANNED — dual-secret Gateway deploy required; customer EAs use per-connection tokens (unaffected)",
     "EA_BINARY_READINESS": "BUILT_AND_VERIFIED v5.00 in ea/dist; distribution pending V2 deployment",
-    "DEPLOYMENT_READINESS": "NOT READY"
+    "DEPLOYMENT_READINESS": "NOT READY",
+    "CREDENTIAL_ROTATION": "PARTIAL — service_role COMPLETE; CRON/WATCHER/MT5_GATEWAY/OpenAI/Google/EA_REGISTRY/Resend/TwelveData pending (Owner-deferred)"
   },
-  "open_p1": [
-    "Exposed legacy service_role JWT still ACTIVE until Owner disables JWT-based API keys (all consumers already migrated)"
+  "open_p1": [],
+  "open_p2": [
+    "Other exposed credentials not rotated (CRON, WATCHER, MT5_GATEWAY 64-char, OpenAI, Google client secret, EA_REGISTRY, Resend, TwelveData)",
+    "Valid account-level Supabase PAT stored in gateway/.env and \"gateway/.env 2.example\" (ignored) — remove from runtime env files",
+    "Local dev env points at Production; no DEV Supabase",
+    "EA v5 distribution pending V2 deployment",
+    "Production deployed via CLI (no git commit linkage)",
+    "Console project still on legacy JWT keys (separate rotation)"
   ]
 }
