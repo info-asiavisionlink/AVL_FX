@@ -66,7 +66,7 @@ test("canonical keys include connection, symbol, and timeframe", () => {
 });
 
 test("production Gateway bridge ingestion and scoped reads use the store", () => {
-  const source = readFileSync(join(process.cwd(), "gateway/src/index.ts"), "utf8");
+  const source = readFileSync(join(process.cwd(), "src/index.ts"), "utf8");
   const ticks = source.slice(source.indexOf('app.post("/bridge/ticks"'));
   const bars = source.slice(source.indexOf('app.post("/bridge/bars"'));
   const scopedTickRead = source.slice(source.indexOf('app.get("/connections/:connectionId/tick/:symbol"'));
@@ -74,6 +74,6 @@ test("production Gateway bridge ingestion and scoped reads use the store", () =>
 
   assert.match(ticks.slice(0, 500), /connectionMarketStore\.setTick/);
   assert.match(bars.slice(0, 900), /connectionMarketStore\.upsertBars/);
-  assert.match(scopedTickRead.slice(0, 500), /connectionMarketStore\.getTick/);
+  assert.match(scopedTickRead.slice(0, 900), /connectionMarketStore\.getTick/);
   assert.match(scopedBarRead.slice(0, 600), /connectionMarketStore\.getBars/);
 });

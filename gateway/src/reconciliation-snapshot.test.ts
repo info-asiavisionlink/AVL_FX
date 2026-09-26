@@ -102,7 +102,7 @@ test("read and close failures are explicit; already closed rows remain closed", 
 });
 
 test("EA position payload explicitly identifies an authoritative complete snapshot", () => {
-  const ea = fs.readFileSync("ea/AVL_ExecutionBridge.mq5", "utf8");
+  const ea = fs.readFileSync("../ea/AVL_FX_Bridge.mq5", "utf8");
   assert.match(ea, /snapshot_complete\\\":true/);
   assert.match(ea, /PositionsTotal\(\)/);
 });

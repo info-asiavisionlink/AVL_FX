@@ -4,9 +4,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
-const gateway = readFileSync(join(root, "gateway/src/index.ts"), "utf8");
-const client = readFileSync(join(root, "src/infrastructure/connection/GatewayClient.ts"), "utf8");
-const tokenRoute = readFileSync(join(root, "src/app/api/live/connection/ws-token/route.ts"), "utf8");
+const gateway = readFileSync(join(root, "src/index.ts"), "utf8");
+const client = readFileSync(join(root, "../src/infrastructure/connection/GatewayClient.ts"), "utf8");
+const tokenRoute = readFileSync(join(root, "../src/app/api/live/connection/ws-token/route.ts"), "utf8");
 
 test("WebSocket handshake requires a short-lived signed scoped access token", () => {
   assert.match(gateway, /accessToken/);
