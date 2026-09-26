@@ -132,7 +132,7 @@
       "038_customer_ai_trader_profile"
     ]
   },
-  "updated_at": "2026-09-27T02:30:00+09:00",
+  "updated_at": "2026-09-27T03:30:00+09:00",
   "human_gate_action": "APPLY_MIGRATION_038_PRODUCTION",
   "human_gate_risk": "HIGH — schema change on Customer Supabase; deploy ordering dependency",
   "remediation_window": null,
@@ -168,12 +168,16 @@
   },
   "remediation_statuses": {
     "REPOSITORY_RECOVERY": "COMPLETE",
-    "INCIDENT_DATA_REMEDIATION": "COMPLETE — 1 job/1 result/51 trades deleted 2026-09-26T16:01:38Z; strategy_registry untouched; post-verification PASS",
-    "CREDENTIAL_ROTATION": "ROTATION_PENDING_HUMAN_ACTION — service_role (P1, exposed, used by Vercel/Railway/Console), CRON/WATCHER (exposed, Railway), MT5_GATEWAY_SECRET (exposed, EA impact), OpenAI/Google/EA_REGISTRY/Resend/TwelveData; SUPABASE_PAT already rejected (401)",
-    "EA_BINARY_READINESS": "BUILT_AND_VERIFIED (v5.00, 0 errors/1 P3 warning, ea/dist) — DISTRIBUTION PENDING V2 DEPLOYMENT (production Gateway lacks V2 /market-data routes)",
-    "DEPLOYMENT_READINESS": "NOT READY — requires secret rotation, migrations 035-038 (Human Gate), V2 Gateway deploy, EA swap, DEV Supabase separation, push"
+    "INCIDENT_DATA_REMEDIATION": "COMPLETE",
+    "SERVICE_ROLE_ROTATION": "ROTATION_PENDING_HUMAN_ACTION — consumers mapped (Vercel avl-fx, Vercel avl-fx-console x3 envs, Railway gateway); compatibility proven for current code pattern; new sb_secret key must be created in Supabase Dashboard (PAT 401); runbook reports/security/AVL-FX-service-role-rotation-runbook-2026-09-27.md",
+    "CRON_ROTATION": "PENDING — bundled with service_role window (Vercel redeploy + Railway restart)",
+    "WATCHER_ROTATION": "PENDING — bundled with service_role window",
+    "OTHER_CREDENTIAL_ROTATION": "PENDING_HUMAN — OpenAI, Google, Resend, TwelveData (dashboard); EA_REGISTRY bundled; SUPABASE_PAT already 401",
+    "MT5_GATEWAY_ROTATION": "PLANNED — dual-secret Gateway deploy required; customer EAs use per-connection tokens (unaffected)",
+    "EA_BINARY_READINESS": "BUILT_AND_VERIFIED v5.00 in ea/dist; distribution pending V2 deployment",
+    "DEPLOYMENT_READINESS": "NOT READY"
   },
   "open_p1": [
-    "Production service_role key exposed in AI session transcripts and still active (rotation pending Owner)"
+    "Production service_role key exposed in AI session transcripts and still active — ROTATION_PENDING_HUMAN_ACTION (Supabase Dashboard key creation, then runbook)"
   ]
 }

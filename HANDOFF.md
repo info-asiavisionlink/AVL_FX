@@ -47,7 +47,7 @@ Migration `038_customer_ai_trader_profile.sql`: **IMPLEMENTED / VERIFIED LOCALLY
 |---|---|
 | REPOSITORY_RECOVERY | COMPLETE (clean checkout PASS) |
 | INCIDENT_DATA_REMEDIATION | COMPLETE: 53 incident rows deleted on Production after 9/9 pre-checks; strategy_registry untouched |
-| CREDENTIAL_ROTATION | **PENDING OWNER**: service_role key (P1) and others; see `reports/security/AVL-FX-secret-rotation-inventory-2026-09-27.md` |
+| CREDENTIAL_ROTATION | **PENDING OWNER**: create a new Supabase secret key in the Dashboard, then follow `reports/security/AVL-FX-service-role-rotation-runbook-2026-09-27.md` (CRON/WATCHER/EA_REGISTRY in the same window). MT5_GATEWAY: separate plan (runbook §D) |
 | EA_BINARY_READINESS | v5.00 built and verified in `ea/dist/`; `public/ea` still v4 until the V2 Gateway is deployed |
 | DEPLOYMENT_READINESS | NOT READY |
 

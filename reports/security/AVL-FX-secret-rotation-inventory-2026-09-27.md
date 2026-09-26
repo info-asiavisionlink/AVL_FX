@@ -45,3 +45,27 @@ The Console repository's `.env.local` (ref `ghufhqodgrkftmhjozhj`) was not in sc
 5. OpenAI, Resend, Twelve Data, Google: new key → Vercel/Supabase → redeploy → revoke the old.
 6. `MT5_GATEWAY_SECRET`: separate change with a dual-secret Gateway release and per-terminal EA update.
 7. Remove `SUPABASE_PAT` from `.env.local`. Stop pasting or printing env files into AI sessions. Consider deleting old transcripts under `~/.claude/projects/*AVL-FX*` after rotation.
+
+## Update — credential rotation maintenance (2026-09-27, later)
+
+The consumer map was verified against the **deployed** sources:
+- Vercel `dpl_HEr6xs…` source read via the Vercel API (supabase-js 2.112.0; 3 raw REST calls use `apikey`+`Bearer`; no legacy anon anywhere).
+- The Console code.
+- Railway variables (names and equality only).
+
+The key-model probe showed that the current `apikey`+`Bearer` pattern is compatible with both key models and "apikey only" is not. **No code change is needed.**
+
+The full procedure is in `AVL-FX-service-role-rotation-runbook-2026-09-27.md`. Read-only tooling: `scripts/rotation/verify-supabase-key.ts`, `scripts/rotation/prod-health-check.ts` (baseline 7/7 PASS).
+
+| Secret | Status | Blocking reason |
+|---|---|---|
+| Supabase service_role | **ROTATION_PENDING_HUMAN_ACTION** | New secret key can only be created in the Dashboard (PAT 401, no CLI). Runbook step 1 |
+| CRON_SECRET | PENDING (same window) | Needs Vercel redeploy + Railway restart; the deployed Railway source is not retrievable; bundled with service_role to restart MT5 bridges once |
+| WATCHER_SECRET | PENDING (same window) | Same as CRON |
+| OPENAI_API_KEY | PENDING_HUMAN | New key only in the OpenAI dashboard; then `vercel env add --force` + the same redeploy |
+| GOOGLE_CLIENT_SECRET | PENDING_HUMAN | Google Cloud Console + Supabase Auth provider settings (Dashboard) |
+| EA_REGISTRY_SECRET | PENDING (same window) | TV and Console must change together; both redeploy in the runbook window |
+| RESEND_API_KEY | PENDING_HUMAN (low) | Resend dashboard |
+| TWELVE_DATA_API_KEY | PENDING_HUMAN (low) | Optional legacy quote API (`/api/market/external`); **not** an AVL-FX market-data dependency (live data = MT5 Bridge only) — the Owner may simply delete it instead of rotating |
+| MT5_GATEWAY_SECRET | PLANNED (runbook §D) | Needs a dual-secret Gateway deploy; customer EAs are unaffected (per-connection tokens) |
+| SUPABASE_PAT | EFFECTIVELY_REVOKED (401) | Owner confirms in the Dashboard |
