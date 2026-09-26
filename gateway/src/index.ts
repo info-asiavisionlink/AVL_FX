@@ -659,8 +659,8 @@ app.post("/bar", auth, async (req, res) => {
     const norm = normalizeTime(bar.time);
     console.log(`[BAR/M1] raw=${bar.time} norm=${norm} close=${bar.close}`);
   }
-  // V1 persistence: detect confirmed bar BEFORE updating store (ordering is critical)
-  upsertBar(connectionId, bar.symbol, bar.timeframe, bar);
+  // V2: V1 bar_data persistence stopped; customer bars now go to customer_bar_data only.
+  // V1 readers (backtest, chart) continue using Console Research API until Stage 9 cutover.
   const connectionBars = connectionMarketStore.getBars(connectionId, bar.symbol, bar.timeframe);
   connectionMarketStore.upsertBars(
     connectionId,
@@ -735,13 +735,7 @@ app.post("/bars/bulk", auth, async (req, res) => {
     persistSave(); // Bulk受信は重要データなので即座に保存
   }
 
-  // Supabase への永続化（barStore の結果とは独立して常にupsert）
-  // fire-and-forget: Gatewayレスポンスをブロックしない
-  if (normalized.length > 0) {
-    upsertBulkBars(connId, symbol, timeframe, normalized as BarRecord[]).catch((err: unknown) => {
-      console.warn(`[barData] bulk upsert failed ${key}:`, err);
-    });
-  }
+  // V2: V1 bar_data persistence stopped; bars go to customer_bar_data only.
 
   res.json({ ok: true });
 });
@@ -771,10 +765,7 @@ app.post("/bridge/bars", auth, async (req, res) => {
   if (!await enforceConnectionAuth(req, res)) return;
 
   const bar = req.body as Bar & { symbol: string; timeframe: string };
-  // V1 persistence: detect confirmed bar BEFORE updating store (ordering is critical).
-  // upsertBar reads connectionMarketStore to find the previous bar; calling it after
-  // upsertBars would make it see the new bar as "last", skipping persistence.
-  upsertBar(connectionId, bar.symbol, bar.timeframe, bar);
+  // V2: V1 bar_data persistence stopped; customer bars go to customer_bar_data only.
   const existing = connectionMarketStore.getBars(connectionId, bar.symbol, bar.timeframe);
   connectionMarketStore.upsertBars(
     connectionId,
@@ -816,11 +807,7 @@ app.post("/bridge/bars/bulk", auth, async (req, res) => {
     persistSave();
   }
 
-  if (normalized.length > 0) {
-    upsertBulkBars(connectionId, symbol, timeframe, normalized as BarRecord[]).catch((err: unknown) => {
-      console.warn(`[barData] bridge bulk upsert failed ${key}:`, err);
-    });
-  }
+  // V2: V1 bar_data persistence stopped; bars go to customer_bar_data only.
 
   res.json({ ok: true });
 });
