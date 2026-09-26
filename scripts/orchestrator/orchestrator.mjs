@@ -21,7 +21,7 @@ const REPO_ROOT  = join(__dirname, "..", "..");
 const REPORT_DIR = join(REPO_ROOT, "reports", "orchestrator");
 
 // Lazy imports
-const { readState, updateState, setHumanGate, recordReviewResult } =
+const { readState, updateState, setHumanGate, recordReviewResult, openRemediationWindow } =
   await import(join(__dirname, "state-manager.mjs"));
 const { printHumanGateRequired, PRODUCTION_MIGRATIONS_PENDING } =
   await import(join(__dirname, "human-gate.mjs"));
@@ -44,11 +44,16 @@ function cmdStatus() {
   console.log("╚══════════════════════════════════════════════╝");
   console.log(`  Project:         ${state.project}`);
   console.log(`  Version:         ${state.version}`);
+  const win = state.remediation_window;
   console.log(`  Current Stage:   ${state.current_stage}`);
   console.log(`  Stage Status:    ${state.stage_status}`);
   console.log(`  Builder Commit:  ${state.last_builder_commit ?? "(none)"}`);
   console.log(`  Reviewed Commit: ${state.last_reviewed_commit ?? "(none)"}`);
-  console.log(`  Review Cycles:   ${state.review_cycle_count}`);
+  if (win) {
+    console.log(`  Remediation Win: #${win.id}  cycle ${win.window_cycle_count}/${win.max_cycles}  total=${win.total_cycles_historical + win.window_cycle_count}`);
+  } else {
+    console.log(`  Review Cycles:   ${state.review_cycle_count}`);
+  }
   console.log(`  Test Status:     ${state.last_test_status}`);
   console.log(`  Reviewer Status: ${state.last_reviewer_status}`);
   console.log(`  Human Gate:      ${state.human_gate_required ? "⚠  REQUIRED" : "✓ clear"}`);
@@ -177,13 +182,21 @@ async function cmdReview() {
     process.exit(0);
   }
 
-  const reviewCycle = (state.review_cycle_count ?? 0) + 1;
-  if (reviewCycle > MAX_REVIEW_CYCLES) {
-    console.error(`ERROR: MAX_REVIEW_CYCLES (${MAX_REVIEW_CYCLES}) exceeded for ${stage}.`);
+  // Use window-based cycle count (session-restart safe) when available.
+  // Falls back to top-level review_cycle_count for backward compat.
+  const win = state.remediation_window;
+  const reviewCycle = win
+    ? (win.window_cycle_count ?? 0) + 1
+    : (state.review_cycle_count ?? 0) + 1;
+  const maxCycles  = win?.max_cycles ?? MAX_REVIEW_CYCLES;
+  const windowInfo = win ? ` (window #${win.id})` : "";
+
+  if (reviewCycle > maxCycles) {
+    console.error(`ERROR: MAX review cycles (${maxCycles}) exceeded for ${stage}${windowInfo}.`);
     setHumanGate(
-      `Max review cycles (${MAX_REVIEW_CYCLES}) exceeded without PASS`,
+      `Max review cycles (${maxCycles}) exceeded for ${stage}${windowInfo} without PASS`,
       "Owner must review P0/P1 findings manually and decide next action",
-      "Automated loop is not converging",
+      "Automated loop is not converging — run: node scripts/orchestrator/orchestrator.mjs open-window",
     );
     process.exit(1);
   }
@@ -192,7 +205,7 @@ async function cmdReview() {
 
   console.log(`[avl:review] Stage:  ${stage}`);
   console.log(`[avl:review] Commit: ${commitSha}`);
-  console.log(`[avl:review] Cycle:  ${reviewCycle} / ${MAX_REVIEW_CYCLES}`);
+  console.log(`[avl:review] Cycle:  ${reviewCycle} / ${maxCycles}${windowInfo}`);
   if (baseCommit) {
     console.log(`[avl:review] Base: ${baseCommit} (cumulative stage review)`);
   }
@@ -342,6 +355,31 @@ function cmdNext() {
 }
 
 // ----------------------------------------------------------------
+// command: open-window
+// Opens a new Owner-approved remediation window, resetting the
+// per-window cycle count.  This is the ONLY authorised way to
+// continue past MAX_REVIEW_CYCLES.  Must be called explicitly after
+// Owner approves continuation — never called automatically.
+// ----------------------------------------------------------------
+
+function cmdOpenWindow() {
+  const state = readState();
+  const stage = state.current_stage;
+
+  if (!state.human_gate_required && state.remediation_window?.window_cycle_count === 0) {
+    console.log("No action needed — gate is clear and window cycle count is already 0.");
+    process.exit(0);
+  }
+
+  const newState = openRemediationWindow(stage, MAX_REVIEW_CYCLES, "Owner CLI approval");
+  const win = newState.remediation_window;
+  console.log(`\n✓ Opened remediation window #${win.id} for ${stage}`);
+  console.log(`  Max cycles:  ${win.max_cycles}`);
+  console.log(`  Historical:  ${win.total_cycles_historical} total cycles in prior windows`);
+  console.log("\nRun: npm run avl:review — to start Codex review in the new window.\n");
+}
+
+// ----------------------------------------------------------------
 // command: auto
 // ----------------------------------------------------------------
 
@@ -386,8 +424,11 @@ switch (cmd) {
   case "auto":
     await cmdAuto();
     break;
+  case "open-window":
+    cmdOpenWindow();
+    break;
   default:
     console.error(`Unknown command: ${cmd}`);
-    console.error("Usage: node orchestrator.mjs [status|resume|review|next|auto]");
+    console.error("Usage: node orchestrator.mjs [status|resume|review|next|auto|open-window]");
     process.exit(1);
 }

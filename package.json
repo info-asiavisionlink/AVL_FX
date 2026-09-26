@@ -14,7 +14,8 @@
     "avl:resume": "node scripts/orchestrator/orchestrator.mjs resume",
     "avl:review": "node scripts/orchestrator/orchestrator.mjs review",
     "avl:next":   "node scripts/orchestrator/orchestrator.mjs next",
-    "avl:auto":   "node scripts/orchestrator/orchestrator.mjs auto"
+    "avl:auto":        "node scripts/orchestrator/orchestrator.mjs auto",
+    "avl:open-window": "node scripts/orchestrator/orchestrator.mjs open-window"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
