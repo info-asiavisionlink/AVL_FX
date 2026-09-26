@@ -220,10 +220,14 @@ void OnTimer()
       g_PrevConnected = g_Connected;
       Module_A_Heartbeat();
       g_LastHeartbeat = now;
-      // P1-8: Detect reconnect → schedule backfill (NOT synchronous — P1-3)
-      if(!g_PrevConnected && g_Connected && InpOHLCEnabled) {
-         Print("[Bridge][A] Reconnect detected → backfill scheduled");
-         g_BackfillNeeded = true;
+      // P1-8: Detect reconnect → schedule backfill + re-submit symbol spec
+      if(!g_PrevConnected && g_Connected) {
+         if(InpOHLCEnabled) {
+            Print("[Bridge][A] Reconnect → backfill scheduled");
+            g_BackfillNeeded = true;
+         }
+         // P1-3: Re-submit symbol spec on reconnect (may have failed at startup if Gateway was down)
+         Module_D_SymbolSpec(g_Symbol);
       }
    }
 
@@ -456,10 +460,12 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
    MqlRates rates[];
    int n = 0;
    if(hasLastBar) {
-      // Determine recovery start: use stored cursor or fall back to last DB bar
+      // P1-1: Use recovery cursor independently of DB watermark.
+      // Once a recovery session is started (cursor != 0), use cursor ONLY — never the DB
+      // watermark (lastBarSec) which advances when realtime bars are written by Module_B.
       datetime recoveryCursor = (tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor))
          ? g_RecoveryCursor[tfIdx] : 0;
-      datetime startFrom = (recoveryCursor > lastBarSec) ? recoveryCursor : lastBarSec;
+      datetime startFrom = (recoveryCursor > 0) ? recoveryCursor : lastBarSec;
       // Start from bar AFTER cursor, exclude current forming bar (stop = now - 1 TF)
       datetime fromTime = startFrom + (datetime)tfPeriodSec;
       datetime toTime   = now - (datetime)tfPeriodSec;
@@ -528,18 +534,19 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
 
       int batchCount = end - start;
       barsSent += batchCount;
-      if(bCode == 200)
+      if(bCode == 200) {
          barsAccepted += batchCount;
-      else
-         Print("[Bridge][C] backfill batch FAIL code=", bCode, " tf=", tfStr);
+         // P1-2: Advance cursor only after successful POST.
+         // Failed batches leave the cursor unchanged; next timer tick retries from same position.
+         if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) {
+            g_RecoveryCursor[tfIdx] = rates[end - 1].time;
+         }
+      } else {
+         Print("[Bridge][C] backfill batch FAIL code=", bCode, " tf=", tfStr, " — stopping pagination");
+         break;  // P1-2: Stop on first failure; retry entire remaining range next timer tick
+      }
 
       Sleep(30);
-   }
-
-   // P1-3: Advance recovery cursor to the last bar we sent.
-   // Next call continues from here, independent of realtime Module_B writes.
-   if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor) && n > 0) {
-      g_RecoveryCursor[tfIdx] = rates[n - 1].time;
    }
 
    // Step 5: Notify completion
