@@ -1621,8 +1621,21 @@ app.get("/market-data/last-bar", auth, async (req, res) => {
     return;
   }
 
-  const symbol    = (req.query["symbol"]    ?? "") as string;
-  const timeframe = (req.query["timeframe"] ?? "") as string;
+  const rawSymbol = req.query["symbol"];
+  const rawTf     = req.query["timeframe"];
+
+  // Reject array params (e.g., ?symbol[]=GOLD): TypeScript cast won't catch these at runtime
+  if (typeof rawSymbol !== "string" || !rawSymbol) {
+    res.status(400).json({ error: "symbol must be a non-empty string query parameter" });
+    return;
+  }
+  if (typeof rawTf !== "string" || !rawTf) {
+    res.status(400).json({ error: "timeframe must be a non-empty string query parameter" });
+    return;
+  }
+
+  const symbol    = rawSymbol;
+  const timeframe = rawTf;
 
   if (!symbol) {
     res.status(400).json({ error: "symbol query param is required" });
@@ -2062,8 +2075,11 @@ async function restoreFromSupabase(): Promise<void> {
   let restored = 0;
   for (const { sym, tf, count } of RESTORE_TARGETS) {
     try {
+      // Fetch a larger window to ensure each connection gets `count` bars.
+      // Without this, a shared limit would be consumed by the most active connection.
+      const fetchLimit = count * 50; // generous headroom for multi-customer deployments
       const res = await fetch(
-        `${url}/rest/v1/bar_data?connection_id=not.is.null&symbol=eq.${encodeURIComponent(sym)}&timeframe=eq.${tf}&select=connection_id,time_utc,open,high,low,close,volume&order=time_utc.desc&limit=${count}`,
+        `${url}/rest/v1/bar_data?connection_id=not.is.null&symbol=eq.${encodeURIComponent(sym)}&timeframe=eq.${tf}&select=connection_id,time_utc,open,high,low,close,volume&order=time_utc.desc&limit=${fetchLimit}`,
         { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(8_000) }
       );
       if (!res.ok) continue;
@@ -2073,7 +2089,8 @@ async function restoreFromSupabase(): Promise<void> {
       for (const row of rows) {
         if (!row.connection_id) continue;
         const bars = byConnection.get(row.connection_id) ?? [];
-        bars.push({ time: Math.floor(new Date(row.time_utc).getTime() / 1000), open: row.open, high: row.high, low: row.low, close: row.close, volume: row.volume });
+        if (bars.length >= count) continue; // per-connection limit
+        bars.push({ time: new Date(row.time_utc).getTime(), open: row.open, high: row.high, low: row.low, close: row.close, volume: row.volume });
         byConnection.set(row.connection_id, bars);
       }
       for (const [connectionId, bars] of byConnection) {
