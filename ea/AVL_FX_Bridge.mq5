@@ -92,8 +92,10 @@ ENUM_TIMEFRAMES g_TfList[] = {
 };
 
 // [C] Historical Data
-datetime g_LastBackfillCheck = 0;
-bool     g_BackfillNeeded    = false;  // set on reconnect, cleared after Module_C runs
+datetime g_LastBackfillCheck  = 0;
+bool     g_BackfillNeeded     = false;   // set on reconnect, cleared after Module_C completes
+int      g_BackfillTFIndex    = 0;       // which TF to process next (bounded: 1 per timer tick)
+datetime g_RecoveryCursor[];             // per-TF independent recovery cursor (separate from realtime)
 
 // [E/F/G] Sync timing
 datetime g_LastPositionSync = 0;
@@ -150,6 +152,10 @@ int OnInit()
    // [H] Idempotency cache init
    ArrayResize(g_ProcessedIds, MAX_PROCESSED_CACHE);
    g_ProcessedCount = 0;
+
+   // [C] Recovery cursor init (one per TF)
+   ArrayResize(g_RecoveryCursor, ArraySize(g_TfList));
+   ArrayInitialize(g_RecoveryCursor, 0);
 
    Print("==============================================");
    Print("  AVL Bridge V2 (Unified) v", BRIDGE_VERSION);
@@ -242,13 +248,24 @@ void OnTimer()
       g_LastPollTime = now;
    }
 
-   // [C] Backfill: run when flagged (reconnect/startup) OR on periodic schedule.
-   // Execution polling always runs first (above); backfill is deferred to here.
-   bool periodicBackfill = (InpOHLCEnabled && (int)(now - g_LastBackfillCheck) >= InpBackfillSec);
-   if(g_BackfillNeeded || periodicBackfill) {
-      Module_C_BackfillAll();
-      g_LastBackfillCheck = now;
-      g_BackfillNeeded    = false;
+   // [C] Backfill: bounded — process ONE timeframe per timer tick.
+   // Execution polling above always runs first on each tick.
+   // P1-2: Never block all 9 TFs synchronously in a single timer event.
+   if(InpOHLCEnabled) {
+      bool periodicBackfill = ((int)(now - g_LastBackfillCheck) >= InpBackfillSec);
+      if(g_BackfillNeeded || periodicBackfill) {
+         int tfTotal = ArraySize(g_TfList);
+         // Process one TF this tick; next tick processes the next TF
+         int idx = g_BackfillTFIndex % tfTotal;
+         Module_C_BackfillTF(g_TfList[idx], idx);
+         g_BackfillTFIndex++;
+         if(g_BackfillTFIndex >= tfTotal) {
+            // All TFs processed in this pass
+            g_BackfillTFIndex = 0;
+            g_BackfillNeeded  = false;
+            g_LastBackfillCheck = now;
+         }
+      }
    }
 }
 
@@ -351,8 +368,8 @@ void Module_B_SendBar(ENUM_TIMEFRAMES tf, int shift)
    MqlRates rates[];
    if(CopyRates(g_Symbol, tf, shift, 1, rates) <= 0) return;
 
-   // P1-1: UTC offset in HOURS (not seconds). TimeCurrent()-TimeGMT() returns seconds.
-   int utcOffsetHours = (int)((TimeCurrent() - TimeGMT()) / 3600);
+   // P1-4: Use TimeTradeServer() for reliable broker offset (TimeCurrent() is stale on weekends)
+   int utcOffsetHours = (int)MathRound((double)(TimeTradeServer() - TimeGMT()) / 3600.0);
 
    string body = StringFormat(
       "{\"bars\":[{"
@@ -377,21 +394,16 @@ void Module_B_SendBar(ENUM_TIMEFRAMES tf, int shift)
 //  MODULE C: Historical Data — Backfill / Recovery (V2 Stage 2) //
 //=================================================================//
 
-void Module_C_BackfillAll()
-{
-   int tfCount = ArraySize(g_TfList);
-   for(int i = 0; i < tfCount; i++) {
-      Module_C_BackfillTF(g_TfList[i]);
-      Sleep(50); // avoid flooding gateway
-   }
-}
+// Module_C_BackfillAll is no longer called directly from OnTimer.
+// Processing is done one TF per timer tick via Module_C_BackfillTF(tf, idx).
 
-void Module_C_BackfillTF(ENUM_TIMEFRAMES tf)
+void Module_C_BackfillTF(ENUM_TIMEFRAMES tf, int tfIdx = -1)
 {
    string tfStr = TF_ToString(tf);
 
-   // P1-1: UTC offset in HOURS (not seconds)
-   int utcOffsetHours = (int)((TimeCurrent() - TimeGMT()) / 3600);
+   // P1-4: Use TimeTradeServer() for broker offset — TimeCurrent() is stale on weekends.
+   // TimeTradeServer() returns server time; TimeGMT() is current UTC.
+   int utcOffsetHours = (int)MathRound((double)(TimeTradeServer() - TimeGMT()) / 3600.0);
 
    // P1-3: URL-encode symbol — '#' must be '%23' to avoid URL fragment
    string encodedSymbol = g_Symbol;
@@ -436,27 +448,35 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf)
          " lastBar=", TimeToString(lastBarSec),
          " missing≈", barsMissing, " fetching=", barsToFetch);
 
-   // Step 4: CopyRates — shift=1 to exclude the currently forming (unconfirmed) candle.
-   // P1-1: Only persist confirmed/closed bars to customer_bar_data.
-   // P1-2: Use CopyRatesByTime to fetch from lastBarSec forward, not just newest N bars.
-   //       This prevents permanently skipping older gaps when gap > InpBackfillBars.
+   // Step 4: CopyRates — fetch CONFIRMED bars only.
+   // P1-1: shift=1 (not 0) when using position-based form excludes the forming candle.
+   // P1-2: Use recovery cursor (g_RecoveryCursor[tfIdx]) independently of realtime writes,
+   //       so Module_B_OnBarClose advancing the DB watermark doesn't skip historical gaps.
+   // P1-3 (recovery cursor): set on first gap detection; advances per batch; not reset by realtime.
    MqlRates rates[];
    int n = 0;
    if(hasLastBar) {
-      // Start from the bar AFTER the last stored confirmed bar
-      datetime fromTime = lastBarSec + (datetime)tfPeriodSec;
-      datetime toTime   = now - (datetime)tfPeriodSec; // exclude current forming bar
-      n = CopyRatesByTime(g_Symbol, tf, fromTime, toTime, rates);
-      if(n > InpBackfillBars) {
-         // Paginate: only send first InpBackfillBars; next reconnect will continue
-         n = InpBackfillBars;
+      // Determine recovery start: use stored cursor or fall back to last DB bar
+      datetime recoveryCursor = (tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor))
+         ? g_RecoveryCursor[tfIdx] : 0;
+      datetime startFrom = (recoveryCursor > lastBarSec) ? recoveryCursor : lastBarSec;
+      // Start from bar AFTER cursor, exclude current forming bar (stop = now - 1 TF)
+      datetime fromTime = startFrom + (datetime)tfPeriodSec;
+      datetime toTime   = now - (datetime)tfPeriodSec;
+      if(fromTime >= toTime) {
+         Print("[Bridge][C] Recovery complete or no gap: ", g_Symbol, ":", tfStr);
+         if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor)) g_RecoveryCursor[tfIdx] = 0;
+         return;
       }
+      // P1-1: CopyRates with time range — MQL5 date-range overload (no CopyRatesByTime)
+      n = CopyRates(g_Symbol, tf, fromTime, toTime, rates);
+      if(n > InpBackfillBars) n = InpBackfillBars; // page: send oldest portion first
    } else {
-      // No history: get most recent N confirmed bars (shift=1 = skip forming)
+      // No history: get most recent N confirmed bars using shift=1 (skip forming)
       n = CopyRates(g_Symbol, tf, 1, barsToFetch, rates);
    }
    if(n <= 0) {
-      Print("[Bridge][C] CopyRates failed or no bars available: ", g_Symbol, ":", tfStr);
+      Print("[Bridge][C] CopyRates: no bars available: ", g_Symbol, ":", tfStr);
       return;
    }
 
@@ -516,6 +536,12 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf)
       Sleep(30);
    }
 
+   // P1-3: Advance recovery cursor to the last bar we sent.
+   // Next call continues from here, independent of realtime Module_B writes.
+   if(tfIdx >= 0 && tfIdx < ArraySize(g_RecoveryCursor) && n > 0) {
+      g_RecoveryCursor[tfIdx] = rates[n - 1].time;
+   }
+
    // Step 5: Notify completion
    string completeBody = StringFormat(
       "{\"symbol\":\"%s\",\"timeframe\":\"%s\","
@@ -525,7 +551,7 @@ void Module_C_BackfillTF(ENUM_TIMEFRAMES tf)
    );
    HTTP_Post("/market-data/backfill/complete", completeBody);
 
-   Print("[Bridge][C] Backfill complete: ", g_Symbol, ":", tfStr,
+   Print("[Bridge][C] Backfill batch complete: ", g_Symbol, ":", tfStr,
          " sent=", barsSent, " accepted=", barsAccepted);
 }
 
